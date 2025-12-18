@@ -1,0 +1,373 @@
+version: '3.8'
+
+services:
+  # API Gateway
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    image: logistics-erp/gateway:latest
+    container_name: gateway
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - ENV=production
+      - AUTH_SERVICE_URL=${AUTH_SERVICE_URL}
+      - ORDERS_SERVICE_URL=${ORDERS_SERVICE_URL}
+      - WMS_SERVICE_URL=${WMS_SERVICE_URL}
+      - NEXT_PUBLIC_TMS_API_URL=${NEXT_PUBLIC_TMS_API_URL}
+      - BILLING_SERVICE_URL=${BILLING_SERVICE_URL}
+      - REDIS_URL=${REDIS_URL}
+    depends_on:
+      - auth-service
+      - redis
+    networks:
+      - logistics-network
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+
+  # Auth Service
+  auth-service:
+    build:
+      context: ./services/auth
+      dockerfile: Dockerfile
+    image: logistics-erp/auth-service:latest
+    environment:
+      - ENV=production
+      - DATABASE_URL=${AUTH_DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
+    depends_on:
+      - postgres-auth
+      - kafka
+      - redis
+    networks:
+      - logistics-network
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+
+  # Order Service
+  order-service:
+    build:
+      context: ./services/orders
+      dockerfile: Dockerfile
+    image: logistics-erp/order-service:latest
+    environment:
+      - ENV=production
+      - DATABASE_URL=${ORDERS_DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+    depends_on:
+      - postgres-orders
+      - kafka
+      - redis
+      - minio
+      - elasticsearch
+    networks:
+      - logistics-network
+    restart: unless-stopped
+    deploy:
+      replicas: 3
+
+  # Warehouse Management Service
+  wms-service:
+    build:
+      context: ./services/wms
+      dockerfile: Dockerfile
+    image: logistics-erp/wms-service:latest
+    environment:
+      - ENV=production
+      - DATABASE_URL=${WMS_DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
+    depends_on:
+      - postgres-wms
+      - kafka
+      - redis
+    networks:
+      - logistics-network
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+
+  # Transportation Management Service
+  tms-service:
+    build:
+      context: ./services/tms
+      dockerfile: Dockerfile
+    image: logistics-erp/tms-service:latest
+    environment:
+      - ENV=production
+      - DATABASE_URL=${TMS_DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
+      - TIMESCALEDB_URL=${TIMESCALEDB_URL}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+    depends_on:
+      - postgres-tms
+      - kafka
+      - redis
+      - timescaledb
+      - elasticsearch
+    networks:
+      - logistics-network
+    restart: unless-stopped
+    deploy:
+      replicas: 3
+
+  # Billing Service
+  billing-service:
+    build:
+      context: ./services/billing
+      dockerfile: Dockerfile
+    image: logistics-erp/billing-service:latest
+    environment:
+      - ENV=production
+      - DATABASE_URL=${BILLING_DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
+      - PAYMENT_GATEWAY_API_KEY=${PAYMENT_GATEWAY_API_KEY}
+    depends_on:
+      - postgres-billing
+      - kafka
+      - redis
+    networks:
+      - logistics-network
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+
+  # PostgreSQL databases (external in production, included here for reference)
+  postgres-auth:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: auth_db
+    volumes:
+      - postgres_auth_data:/var/lib/postgresql/data
+    networks:
+      - logistics-network
+    restart: unless-stopped
+
+  postgres-orders:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: orders_db
+    volumes:
+      - postgres_orders_data:/var/lib/postgresql/data
+    networks:
+      - logistics-network
+    restart: unless-stopped
+
+  postgres-wms:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: wms_db
+    volumes:
+      - postgres_wms_data:/var/lib/postgresql/data
+    networks:
+      - logistics-network
+    restart: unless-stopped
+
+  postgres-tms:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: tms_db
+    volumes:
+      - postgres_tms_data:/var/lib/postgresql/data
+    networks:
+      - logistics-network
+    restart: unless-stopped
+
+  postgres-billing:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: billing_db
+    volumes:
+      - postgres_billing_data:/var/lib/postgresql/data
+    networks:
+      - logistics-network
+    restart: unless-stopped
+
+  # TimescaleDB for telemetry
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: telemetry_db
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+    networks:
+      - logistics-network
+    restart: unless-stopped
+
+  # Kafka cluster
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SYNC_LIMIT: 2
+    networks:
+      - logistics-network
+    restart: unless-stopped
+    deploy:
+      replicas: 1
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+    networks:
+      - logistics-network
+    restart: unless-stopped
+    deploy:
+      replicas: 3
+
+  # Elasticsearch
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
+    environment:
+      - cluster.name=logistics-cluster
+      - node.name=es-node-1
+      - discovery.seed_hosts=es-node-1
+      - cluster.initial_master_nodes=es-node-1
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=${ELASTICSEARCH_PASSWORD}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - logistics-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+
+  # Kibana
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.12.0
+    depends_on:
+      - elasticsearch
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      ELASTICSEARCH_USERNAME: kibana_system
+      ELASTICSEARCH_PASSWORD: ${KIBANA_PASSWORD}
+    ports:
+      - "5601:5601"
+    networks:
+      - logistics-network
+    restart: unless-stopped
+
+  # MinIO
+  minio:
+    image: minio/minio:latest
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - logistics-network
+    restart: unless-stopped
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    networks:
+      - logistics-network
+    restart: unless-stopped
+
+  # Observability
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    environment:
+      COLLECTOR_OTLP_ENABLED: true
+      COLLECTOR_ZIPKIN_HOST_PORT: 9411
+    networks:
+      - logistics-network
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus.prod.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=30d'
+    networks:
+      - logistics-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - logistics-network
+    restart: unless-stopped
+
+volumes:
+  postgres_auth_data:
+  postgres_orders_data:
+  postgres_wms_data:
+  postgres_tms_data:
+  postgres_billing_data:
+  timescaledb_data:
+  elasticsearch_data:
+  minio_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  logistics-network:
+    driver: bridge

@@ -1,0 +1,90 @@
+global:
+  smtp_smarthost: 'localhost:587'
+  smtp_from: 'alerts@logistics-erp.com'
+  smtp_auth_username: 'alerts@logistics-erp.com'
+  smtp_auth_password: 'your_password'
+
+# Route configuration for alerts
+route:
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+  receiver: 'web.hook'
+  routes:
+    # Critical alerts go to pager
+    - match:
+        severity: critical
+      receiver: 'pager'
+      group_wait: 5s
+      repeat_interval: 5m
+
+    # Warning alerts go to slack
+    - match:
+        severity: warning
+      receiver: 'slack'
+      group_wait: 30s
+      repeat_interval: 4h
+
+    # Database alerts go to DB team
+    - match:
+        service: database
+      receiver: 'database-team'
+
+    # Application errors go to dev team
+    - match:
+        service: application
+      receiver: 'dev-team'
+
+# Receiver configurations
+receivers:
+  - name: 'web.hook'
+    webhook_configs:
+      - url: 'http://localhost:5001/'
+        send_resolved: true
+
+  - name: 'pager'
+    pagerduty_configs:
+      - service_key: 'your_pagerduty_service_key'
+        description: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+
+  - name: 'slack'
+    slack_configs:
+      - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+        channel: '#alerts'
+        title: 'Logistic ERP Alert'
+        text: '{{ range .Alerts }}*Alert:* {{ .Annotations.summary }}\n*Description:* {{ .Annotations.description }}{{ end }}'
+        send_resolved: true
+
+  - name: 'database-team'
+    email_configs:
+      - to: 'dba-team@logistics-erp.com'
+        subject: '[Database Alert] {{ .GroupLabels.alertname }}'
+        body: |
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          {{ end }}
+
+  - name: 'dev-team'
+    email_configs:
+      - to: 'dev-team@logistics-erp.com'
+        subject: '[Application Alert] {{ .GroupLabels.alertname }}'
+        body: |
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          {{ end }}
+
+# Inhibition rules to prevent duplicate alerts
+inhibit_rules:
+  # Inhibit warning alerts if critical alert is firing
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'cluster', 'service']
+
+# Templates for custom alert formatting
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'

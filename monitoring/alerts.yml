@@ -1,0 +1,238 @@
+groups:
+  - name: system.rules
+    rules:
+      # System alerts
+      - alert: InstanceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: system
+        annotations:
+          summary: "Instance {{ $labels.instance }} is down"
+          description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 1 minute."
+
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is above 90% for more than 5 minutes on {{ $labels.instance }}"
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is above 90% for more than 5 minutes on {{ $labels.instance }}"
+
+      - alert: DiskSpaceLow
+        expr: (1 - (node_filesystem_avail_bytes / node_filesystem_size_bytes)) * 100 > 90
+        for: 5m
+        labels:
+          severity: critical
+          service: system
+        annotations:
+          summary: "Disk space low on {{ $labels.instance }}"
+          description: "Disk usage is above 90% on {{ $labels.device }} at {{ $labels.instance }}"
+
+  - name: application.rules
+    rules:
+      # Application service alerts
+      - alert: ServiceDown
+        expr: up{job=~".*-service"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: application
+        annotations:
+          summary: "{{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been down for more than 30 seconds"
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status_code=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: application
+        annotations:
+          summary: "High error rate on {{ $labels.job }}"
+          description: "Error rate is above 5% for more than 2 minutes on {{ $labels.job }}"
+
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: application
+        annotations:
+          summary: "High latency on {{ $labels.job }}"
+          description: "95th percentile latency is above 2 seconds for more than 5 minutes on {{ $labels.job }}"
+
+      - alert: ApplicationErrorSpike
+        expr: rate(errors_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: critical
+          service: application
+        annotations:
+          summary: "Error spike in {{ $labels.job }}"
+          description: "Error rate is {{ $value }} errors/sec in {{ $labels.job }}"
+
+  - name: database.rules
+    rules:
+      # Database alerts
+      - alert: PostgreSQLDown
+        expr: up{job="postgres-exporter"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: database
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL database has been down for more than 30 seconds"
+
+      - alert: TooManyPostgresConnections
+        expr: pg_stat_database_numbackends / pg_settings_max_connections * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: database
+        annotations:
+          summary: "Too many PostgreSQL connections"
+          description: "PostgreSQL has more than 80% connections used"
+
+      - alert: SlowPostgresQueries
+        expr: rate(pg_stat_statement_mean_time_seconds[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+          service: database
+        annotations:
+          summary: "Slow PostgreSQL queries"
+          description: "PostgreSQL queries are running slow (avg > 1s)"
+
+      - alert: RedisDown
+        expr: up{job="redis-exporter"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: database
+        annotations:
+          summary: "Redis is down"
+          description: "Redis cache has been down for more than 30 seconds"
+
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+          service: database
+        annotations:
+          summary: "Redis memory usage high"
+          description: "Redis memory usage is above 90%"
+
+  - name: kafka.rules
+    rules:
+      # Kafka alerts
+      - alert: KafkaDown
+        expr: up{job="kafka-exporter"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: kafka
+        annotations:
+          summary: "Kafka is down"
+          description: "Kafka broker has been down for more than 30 seconds"
+
+      - alert: KafkaUnderReplicatedPartitions
+        expr: kafka_server_kafkaserver_underreplicatedpartitions > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: kafka
+        annotations:
+          summary: "Kafka under-replicated partitions"
+          description: "Kafka has {{ $value }} under-replicated partitions"
+
+      - alert: KafkaConsumerLag
+        expr: kafka_consumer_lag_sum > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: kafka
+        annotations:
+          summary: "Kafka consumer lag"
+          description: "Kafka consumer lag is {{ $value }} messages"
+
+  - name: business.rules
+    rules:
+      # Business metrics alerts
+      - alert: OrderProcessingFailure
+        expr: rate(business_operations_total{operation="order_processing",status="error"}[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          service: business
+        annotations:
+          summary: "Order processing failure rate high"
+          description: "Order processing failure rate is above 5% for more than 2 minutes"
+
+      - alert: NoActiveUsers
+        expr: auth_service_active_users == 0
+        for: 10m
+        labels:
+          severity: warning
+          service: business
+        annotations:
+          summary: "No active users"
+          description: "No active users detected for more than 10 minutes"
+
+      - alert: PaymentProcessingFailure
+        expr: rate(business_operations_total{operation="payment_processing",status="error"}[5m]) > 0.02
+        for: 2m
+        labels:
+          severity: critical
+          service: business
+        annotations:
+          summary: "Payment processing failure rate high"
+          description: "Payment processing failure rate is above 2% for more than 2 minutes"
+
+  - name: elasticsearch.rules
+    rules:
+      # Elasticsearch alerts
+      - alert: ElasticsearchDown
+        expr: up{job="elasticsearch-exporter"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: elasticsearch
+        annotations:
+          summary: "Elasticsearch is down"
+          description: "Elasticsearch cluster has been down for more than 30 seconds"
+
+      - alert: ElasticsearchClusterRed
+        expr: elasticsearch_cluster_health_status{color="red"} == 1
+        for: 1m
+        labels:
+          severity: critical
+          service: elasticsearch
+        annotations:
+          summary: "Elasticsearch cluster status is red"
+          description: "Elasticsearch cluster health is red - some data may be unavailable"
+
+      - alert: ElasticsearchClusterYellow
+        expr: elasticsearch_cluster_health_status{color="yellow"} == 1
+        for: 5m
+        labels:
+          severity: warning
+          service: elasticsearch
+        annotations:
+          summary: "Elasticsearch cluster status is yellow"
+          description: "Elasticsearch cluster health is yellow - cluster is operational but with warnings"

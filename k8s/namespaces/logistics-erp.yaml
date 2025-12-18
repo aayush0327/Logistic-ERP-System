@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: logistics-erp
+  labels:
+    name: logistics-erp
+    environment: production
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: logistics-erp-monitoring
+  labels:
+    name: logistics-erp-monitoring
+    environment: production

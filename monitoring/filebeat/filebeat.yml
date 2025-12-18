@@ -1,0 +1,23 @@
+# Minimal Filebeat configuration for Windows
+filebeat.inputs:
+- type: log
+  enabled: true
+  paths:
+    - /var/log/containers/*.log
+  fields:
+    service: filebeat
+    source: containers
+  fields_under_root: true
+
+# Output to Elasticsearch
+output.elasticsearch:
+  hosts: ["elasticsearch:9200"]
+  index: "logistics-logs-%{+yyyy.MM.dd}"
+
+# Disable monitoring to avoid permission issues
+monitoring.enabled: false
+
+# Set logging level
+logging.level: info
+logging.to_files: false
+logging.to_stderr: true
