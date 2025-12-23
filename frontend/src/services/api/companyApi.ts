@@ -311,7 +311,7 @@ export const companyApi = createApi({
       providesTags: ['Vehicle'],
     }),
     getVehicle: builder.query<Vehicle, string>({
-      query: (id) => `vehicles/${id}`,
+      query: (id) => `company/vehicles/${id}`,
       providesTags: ['Vehicle'],
     }),
     createVehicle: builder.mutation<Vehicle, VehicleCreate>({
@@ -384,7 +384,7 @@ export const companyApi = createApi({
       providesTags: ['ProductCategory'],
     }),
     getProductCategory: builder.query<ProductCategory, string>({
-      query: (id) => `product-categories/${id}`,
+      query: (id) => `company/product-categories/${id}`,
       providesTags: ['ProductCategory'],
     }),
     createProductCategory: builder.mutation<ProductCategory, ProductCategoryCreate>({
@@ -428,7 +428,7 @@ export const companyApi = createApi({
       providesTags: ['Product'],
     }),
     getProduct: builder.query<Product, string>({
-      query: (id) => `products/${id}`,
+      query: (id) => `company/products/${id}`,
       providesTags: ['Product'],
     }),
     createProduct: builder.mutation<Product, ProductCreate>({

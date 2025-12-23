@@ -89,7 +89,7 @@ class TripOrder(Base):
     items = Column(Integer, nullable=False)
     priority = Column(
         String(20),
-        CheckConstraint("priority IN ('high', 'medium', 'low')", name="check_priority"),
+        CheckConstraint("priority IN ('high', 'medium', 'low', 'normal')", name="check_priority"),
         nullable=False
     )
     delivery_status = Column(
@@ -103,6 +103,14 @@ class TripOrder(Base):
     original_order_id = Column(String(50))  # For split orders
     original_items = Column(Integer)        # For split orders
     original_weight = Column(Integer)       # For split orders
+
+    # Additional order details
+    customer_contact = Column(String(200))
+    customer_phone = Column(String(50))
+    product_name = Column(String(200))
+    quantity = Column(Integer, default=1)
+    special_instructions = Column(Text)
+    delivery_instructions = Column(Text)
 
     # Relationships
     trip = relationship("Trip", back_populates="orders")
@@ -151,6 +159,16 @@ class TMSAuditLog(Base):
 
 
 # Dependency to get database session
+async def get_db():
+    """Dependency to get database session (matching company service pattern)"""
+    async with async_session_maker() as session:
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
+
+
 async def get_async_session() -> AsyncSession:
     """Get async database session"""
     async with async_session_maker() as session:

@@ -4,10 +4,9 @@ import { useRef, useState } from "react";
 import { ModalLayout } from "./ModalLayout";
 import { Badge } from "@/components/ui/Badge";
 import { useOutsideClick } from "@/components/Hooks/useOutsideClick";
-import { Order } from "@/types";
+import { Order, useGetOrderByIdQuery, useGetCustomersQuery } from "@/services/api/ordersApi";
 import {
   Package,
-  Calendar,
   DollarSign,
   User,
   MapPin,
@@ -25,105 +24,6 @@ interface OrderDetailsModalProps {
   order: Order | null;
 }
 
-// Mock additional order details for demonstration
-const mockOrderDetails = {
-  "ORD-001": {
-    customerDetails: {
-      phone: "+201000000001",
-      email: "john@johnsfarm.com",
-      address: "123 Farm Road, Rural Area, Cairo, Egypt",
-      businessType: "Agriculture",
-    },
-    items: [
-      {
-        id: 1,
-        name: "Animal Feed Premium",
-        quantity: 10,
-        unit: "kg",
-        price: 15.5,
-        total: 155,
-      },
-      {
-        id: 2,
-        name: "Vitamin Supplement",
-        quantity: 5,
-        unit: "bottle",
-        price: 120,
-        total: 600,
-      },
-      {
-        id: 3,
-        name: "Animal Feed Standard",
-        quantity: 5,
-        unit: "kg",
-        price: 12.5,
-        total: 62.5,
-      },
-    ],
-    delivery: {
-      driver: "Mike Johnson",
-      truck: "ABC-1234 (Ford Transit)",
-      estimatedDelivery: "2024-01-10 14:30",
-      actualDelivery: "2024-01-10 14:25",
-    },
-  },
-  "ORD-002": {
-    customerDetails: {
-      phone: "+201000000002",
-      email: "contact@greenvalley.com",
-      address: "456 Market St, City Center, Giza, Egypt",
-      businessType: "Retail",
-    },
-    items: [
-      {
-        id: 1,
-        name: "Animal Feed Premium",
-        quantity: 8,
-        unit: "kg",
-        price: 15.5,
-        total: 124,
-      },
-    ],
-    delivery: {
-      driver: "Sarah Ahmed",
-      truck: "XYZ-5678 (Mercedes Sprinter)",
-      estimatedDelivery: "2024-01-10 16:00",
-      actualDelivery: null,
-    },
-  },
-  "ORD-003": {
-    customerDetails: {
-      phone: "+201000000003",
-      email: "info@citymart.net",
-      address: "789 Commercial Ave, Alexandria, Egypt",
-      businessType: "Retail",
-    },
-    items: [
-      {
-        id: 1,
-        name: "Animal Feed Premium",
-        quantity: 15,
-        unit: "kg",
-        price: 15.5,
-        total: 232.5,
-      },
-      {
-        id: 2,
-        name: "Vitamin Supplement",
-        quantity: 7,
-        unit: "bottle",
-        price: 120,
-        total: 840,
-      },
-    ],
-    delivery: {
-      driver: "Ali Hassan",
-      truck: "DEF-9012 (Iveco Daily)",
-      estimatedDelivery: "2024-01-11 18:00",
-      actualDelivery: null,
-    },
-  },
-};
 
 type TabType = "details" | "customer" | "items" | "delivery" | "status";
 
@@ -136,10 +36,21 @@ export function OrderDetailsModal({
   const [activeTab, setActiveTab] = useState<TabType>("details");
   useOutsideClick(modalRef, onClose, isOpen);
 
+  // Fetch detailed order data
+  const { data: orderDetails } = useGetOrderByIdQuery(order?.id || '', {
+    skip: !order || !isOpen,
+  });
+
+  // Fetch all customers to find the matching customer
+  const { data: customers = [] } = useGetCustomersQuery({});
+
+  // Find the customer for this order
+  const customer = customers.find(c => c.id === order?.customer_id || orderDetails?.customer_id);
+
   if (!order) return null;
 
-  const orderDetails =
-    mockOrderDetails[order.id as keyof typeof mockOrderDetails];
+  // Use the detailed order data if available, otherwise use the basic order data
+  const fullOrderData = { ...order, ...orderDetails, customer };
 
   const getStatusVariant = (status: string) => {
     switch (status) {
@@ -192,17 +103,17 @@ export function OrderDetailsModal({
         <div className="flex items-center justify-between px-6 pt-2 pb-4 border-b">
           <div className="flex items-center gap-3">
             <Badge
-              variant={getStatusVariant(order.status)}
+              variant={getStatusVariant(fullOrderData.status)}
               className="flex items-center gap-2"
             >
-              {getStatusIcon(order.status)}
-              {order.status.charAt(0).toUpperCase() +
-                order.status.slice(1).replace("-", " ")}
+              {getStatusIcon(fullOrderData.status)}
+              {(fullOrderData.status || '').charAt(0).toUpperCase() +
+                (fullOrderData.status || '').slice(1).replace("-", " ")}
             </Badge>
-            <span className="text-sm text-gray-500">{order.date}</span>
+            <span className="text-sm text-gray-500">{new Date(fullOrderData.created_at || '').toLocaleDateString()}</span>
           </div>
           <div className="text-2xl font-bold text-gray-900">
-            ${order.total.toFixed(2)}
+            ${(fullOrderData.total_amount || 0).toFixed(2)}
           </div>
         </div>
 
@@ -220,10 +131,9 @@ export function OrderDetailsModal({
   hover:border-[#1ab052]
   hover:shadow-[0_0_0_1px_rgba(26,176,82,0.25)]
   transition-all duration-200 ease-in-out items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border transition-colors
-                  ${
-                    activeTab === tab.id
-                      ? "bg-[#1ab052] text-white border-[#1ab052] hover:bg-[#1ab052]"
-                      : "bg-white text-gray-600 border-gray-300 hover:border-gray-400 hover:text-gray-800"
+                  ${activeTab === tab.id
+                    ? "bg-[#1ab052] text-white border-[#1ab052] hover:bg-[#1ab052]"
+                    : "bg-white text-gray-600 border-gray-300 hover:border-gray-400 hover:text-gray-800"
                   }
                 `}
               >
@@ -253,9 +163,9 @@ export function OrderDetailsModal({
                   <span className="text-sm font-medium text-gray-700">
                     Status
                   </span>
-                  <Badge variant={getStatusVariant(order.status)}>
-                    {order.status.charAt(0).toUpperCase() +
-                      order.status.slice(1).replace("-", " ")}
+                  <Badge variant={getStatusVariant(fullOrderData.status)}>
+                    {fullOrderData.status.charAt(0).toUpperCase() +
+                      fullOrderData.status.slice(1).replace("-", " ")}
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between">
@@ -263,21 +173,21 @@ export function OrderDetailsModal({
                     Customer
                   </span>
                   <span className="text-sm text-gray-900">
-                    {order.customer}
+                    {fullOrderData.customer?.name || 'Unknown Customer'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-gray-700">
                     Date
                   </span>
-                  <span className="text-sm text-gray-900">{order.date}</span>
+                  <span className="text-sm text-gray-900">{new Date(fullOrderData.created_at || '').toLocaleDateString()}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-gray-700">
                     Total Items
                   </span>
                   <span className="text-sm text-gray-900">
-                    {order.items} items
+                    {fullOrderData.items?.length || 0} items
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -285,7 +195,7 @@ export function OrderDetailsModal({
                     Total Amount
                   </span>
                   <span className="text-sm font-bold text-gray-900">
-                    ${order.total.toFixed(2)}
+                    ${(fullOrderData.total_amount || 0).toFixed(2)}
                   </span>
                 </div>
               </div>
@@ -293,7 +203,7 @@ export function OrderDetailsModal({
           )}
 
           {/* Customer Info Tab */}
-          {activeTab === "customer" && orderDetails && (
+          {activeTab === "customer" && (
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-gray-900">
                 Customer Information
@@ -304,7 +214,7 @@ export function OrderDetailsModal({
                     Name
                   </span>
                   <span className="text-sm text-gray-900">
-                    {order.customer}
+                    {fullOrderData.customer?.name || 'Unknown Customer'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -313,7 +223,7 @@ export function OrderDetailsModal({
                     Phone
                   </span>
                   <span className="text-sm text-gray-900">
-                    {orderDetails.customerDetails.phone}
+                    {fullOrderData.customer?.phone || 'N/A'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -321,7 +231,7 @@ export function OrderDetailsModal({
                     Email
                   </span>
                   <span className="text-sm text-gray-900">
-                    {orderDetails.customerDetails.email}
+                    {fullOrderData.customer?.email || 'N/A'}
                   </span>
                 </div>
                 <div className="flex items-start justify-between">
@@ -330,7 +240,7 @@ export function OrderDetailsModal({
                     Address
                   </span>
                   <span className="text-sm text-gray-900 text-right max-w-xs">
-                    {orderDetails.customerDetails.address}
+                    {fullOrderData.customer?.address || 'N/A'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -338,7 +248,7 @@ export function OrderDetailsModal({
                     Business Type
                   </span>
                   <span className="text-sm text-gray-900">
-                    {orderDetails.customerDetails.businessType}
+                    {fullOrderData.customer?.business_type || 'N/A'}
                   </span>
                 </div>
               </div>
@@ -346,10 +256,10 @@ export function OrderDetailsModal({
           )}
 
           {/* Order Items Tab */}
-          {activeTab === "items" && orderDetails && (
+          {activeTab === "items" && (
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-gray-900">
-                Order Items ({order.items} items)
+                Order Items ({fullOrderData.items?.length || 0} items)
               </h3>
               <div className="border rounded-lg overflow-hidden">
                 <table className="w-full">
@@ -370,19 +280,19 @@ export function OrderDetailsModal({
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {orderDetails.items.map((item) => (
+                    {fullOrderData.items?.map((item) => (
                       <tr key={item.id} className="hover:bg-gray-50">
                         <td className="px-4 py-4 text-sm text-gray-900">
-                          {item.name}
+                          {item.product_name || 'Unknown Product'}
                         </td>
                         <td className="px-4 py-4 text-sm text-gray-900 text-center">
-                          {item.quantity} {item.unit}
+                          {item.quantity} {item.unit || ''}
                         </td>
                         <td className="px-4 py-4 text-sm text-gray-900 text-right">
-                          ${item.price.toFixed(2)}
+                          ${(item.unit_price || 0).toFixed(2)}
                         </td>
                         <td className="px-4 py-4 text-sm font-medium text-gray-900 text-right">
-                          ${item.total.toFixed(2)}
+                          ${(item.total_price || 0).toFixed(2)}
                         </td>
                       </tr>
                     ))}
@@ -396,7 +306,7 @@ export function OrderDetailsModal({
                         Total Amount
                       </td>
                       <td className="px-4 py-3 text-sm font-bold text-gray-900 text-right">
-                        ${order.total.toFixed(2)}
+                        ${(fullOrderData.total_amount || 0).toFixed(2)}
                       </td>
                     </tr>
                   </tfoot>
@@ -406,47 +316,15 @@ export function OrderDetailsModal({
           )}
 
           {/* Delivery Tab */}
-          {activeTab === "delivery" && orderDetails && (
+          {activeTab === "delivery" && (
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-gray-900">
                 Delivery Information
               </h3>
-              <div className="bg-blue-50 rounded-lg p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-700">
-                    Driver
-                  </span>
-                  <span className="text-sm text-gray-900">
-                    {orderDetails.delivery.driver}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-700">
-                    Truck
-                  </span>
-                  <span className="text-sm text-gray-900">
-                    {orderDetails.delivery.truck}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-700 flex items-center gap-1">
-                    <Calendar className="w-4 h-4" />
-                    Estimated Delivery
-                  </span>
-                  <span className="text-sm text-gray-900">
-                    {orderDetails.delivery.estimatedDelivery}
-                  </span>
-                </div>
-                {orderDetails.delivery.actualDelivery && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-700">
-                      Actual Delivery
-                    </span>
-                    <span className="text-sm text-green-600 font-medium">
-                      {orderDetails.delivery.actualDelivery}
-                    </span>
-                  </div>
-                )}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-sm text-gray-600">
+                  Delivery information will be available once the order is processed and assigned to a driver.
+                </p>
               </div>
             </div>
           )}
@@ -483,7 +361,7 @@ export function OrderDetailsModal({
                         finance approval.
                       </p>
                       <div className="text-xs text-gray-500">
-                        <span className="font-medium">Time:</span> {order.date}{" "}
+                        <span className="font-medium">Time:</span> {new Date(fullOrderData.created_at || '').toLocaleDateString()}{" "}
                         at 10:30 AM
                       </div>
                     </div>
@@ -492,26 +370,25 @@ export function OrderDetailsModal({
                   {/* Finance Status */}
                   <div className="flex items-start gap-4">
                     <div
-                      className={`relative z-10 w-12 h-12 ${
-                        order.status === "completed" ||
-                        order.status === "on-route"
+                      className={`relative z-10 w-12 h-12 ${fullOrderData.status === "delivered" ||
+                          fullOrderData.status === "in_transit"
                           ? "bg-green-500"
-                          : order.status === "loading"
-                          ? "bg-yellow-500"
-                          : "bg-gray-300"
-                      } rounded-full flex items-center justify-center`}
+                          : fullOrderData.status === "assigned"
+                            ? "bg-yellow-500"
+                            : "bg-gray-300"
+                        } rounded-full flex items-center justify-center`}
                     >
                       <DollarSign className="w-6 h-6 text-white" />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <h4 className="font-semibold text-gray-900">Finance</h4>
-                        {order.status === "completed" ||
-                        order.status === "on-route" ? (
+                        {fullOrderData.status === "delivered" ||
+                          fullOrderData.status === "in_transit" ? (
                           <Badge variant="success" className="text-xs">
                             Approved
                           </Badge>
-                        ) : order.status === "loading" ? (
+                        ) : fullOrderData.status === "assigned" ? (
                           <Badge variant="warning" className="text-xs">
                             In Review
                           </Badge>
@@ -522,23 +399,23 @@ export function OrderDetailsModal({
                         )}
                       </div>
                       <p className="text-sm text-gray-600 mb-2">
-                        {order.status === "completed" ||
-                        order.status === "on-route"
+                        {fullOrderData.status === "delivered" ||
+                          fullOrderData.status === "in_transit"
                           ? "Payment has been verified and approved."
-                          : order.status === "loading"
-                          ? "Payment is currently being reviewed and verified."
-                          : "Awaiting payment verification and approval."}
+                          : fullOrderData.status === "assigned"
+                            ? "Payment is currently being reviewed and verified."
+                            : "Awaiting payment verification and approval."}
                       </p>
                       <div className="text-xs text-gray-500">
-                        {order.status === "completed" ||
-                        order.status === "on-route" ? (
+                        {fullOrderData.status === "delivered" ||
+                          fullOrderData.status === "in_transit" ? (
                           <span>
                             <span className="font-medium">Approved by:</span>{" "}
                             Sarah Chen •{" "}
                             <span className="font-medium">Time:</span>{" "}
-                            {order.date} at 2:15 PM
+                            {new Date(fullOrderData.created_at || '').toLocaleDateString()} at 2:15 PM
                           </span>
-                        ) : order.status === "loading" ? (
+                        ) : fullOrderData.status === "assigned" ? (
                           <span>
                             <span className="font-medium">
                               Est. completion:
@@ -558,13 +435,12 @@ export function OrderDetailsModal({
                   {/* Logistics Status */}
                   <div className="flex items-start gap-4">
                     <div
-                      className={`relative z-10 w-12 h-12 ${
-                        order.status === "completed"
+                      className={`relative z-10 w-12 h-12 ${fullOrderData.status === "delivered"
                           ? "bg-green-500"
-                          : order.status === "on-route"
-                          ? "bg-blue-500"
-                          : "bg-gray-300"
-                      } rounded-full flex items-center justify-center`}
+                          : fullOrderData.status === "in_transit"
+                            ? "bg-blue-500"
+                            : "bg-gray-300"
+                        } rounded-full flex items-center justify-center`}
                     >
                       <Truck className="w-6 h-6 text-white" />
                     </div>
@@ -573,11 +449,11 @@ export function OrderDetailsModal({
                         <h4 className="font-semibold text-gray-900">
                           Logistics
                         </h4>
-                        {order.status === "completed" ? (
+                        {fullOrderData.status === "delivered" ? (
                           <Badge variant="success" className="text-xs">
                             Dispatched
                           </Badge>
-                        ) : order.status === "on-route" ? (
+                        ) : fullOrderData.status === "in_transit" ? (
                           <Badge variant="info" className="text-xs">
                             In Progress
                           </Badge>
@@ -588,21 +464,21 @@ export function OrderDetailsModal({
                         )}
                       </div>
                       <p className="text-sm text-gray-600 mb-2">
-                        {order.status === "completed"
+                        {fullOrderData.status === "delivered"
                           ? "Order has been dispatched and assigned to driver."
-                          : order.status === "on-route"
-                          ? "Order is in transit to delivery location."
-                          : "Awaiting logistics planning and driver assignment."}
+                          : fullOrderData.status === "in_transit"
+                            ? "Order is in transit to delivery location."
+                            : "Awaiting logistics planning and driver assignment."}
                       </p>
                       <div className="text-xs text-gray-500">
-                        {order.status === "completed" ? (
+                        {fullOrderData.status === "delivered" ? (
                           <span>
                             <span className="font-medium">Driver:</span>{" "}
-                            {orderDetails?.delivery.driver || "Assigned"} •{" "}
+                            Assigned •{" "}
                             <span className="font-medium">Truck:</span>{" "}
-                            {orderDetails?.delivery.truck || "Assigned"}
+                            Assigned
                           </span>
-                        ) : order.status === "on-route" ? (
+                        ) : fullOrderData.status === "in_transit" ? (
                           <span>
                             <span className="font-medium">
                               Current location:
@@ -623,24 +499,23 @@ export function OrderDetailsModal({
                   {/* Driver Status */}
                   <div className="flex items-start gap-4">
                     <div
-                      className={`relative z-10 w-12 h-12 ${
-                        order.status === "completed"
+                      className={`relative z-10 w-12 h-12 ${fullOrderData.status === "delivered"
                           ? "bg-green-500"
-                          : order.status === "on-route"
-                          ? "bg-blue-500 animate-pulse"
-                          : "bg-gray-300"
-                      } rounded-full flex items-center justify-center`}
+                          : fullOrderData.status === "in_transit"
+                            ? "bg-blue-500 animate-pulse"
+                            : "bg-gray-300"
+                        } rounded-full flex items-center justify-center`}
                     >
                       <User className="w-6 h-6 text-white" />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <h4 className="font-semibold text-gray-900">Driver</h4>
-                        {order.status === "completed" ? (
+                        {fullOrderData.status === "delivered" ? (
                           <Badge variant="success" className="text-xs">
                             Delivered
                           </Badge>
-                        ) : order.status === "on-route" ? (
+                        ) : fullOrderData.status === "in_transit" ? (
                           <Badge variant="info" className="text-xs">
                             On Route
                           </Badge>
@@ -651,26 +526,24 @@ export function OrderDetailsModal({
                         )}
                       </div>
                       <p className="text-sm text-gray-600 mb-2">
-                        {order.status === "completed"
+                        {fullOrderData.status === "delivered"
                           ? "Order has been successfully delivered to customer."
-                          : order.status === "on-route"
-                          ? "Driver is currently delivering the order to the customer."
-                          : "Waiting for driver assignment and route planning."}
+                          : fullOrderData.status === "in_transit"
+                            ? "Driver is currently delivering the order to the customer."
+                            : "Waiting for driver assignment and route planning."}
                       </p>
                       <div className="text-xs text-gray-500">
-                        {order.status === "completed" ? (
+                        {fullOrderData.status === "delivered" ? (
                           <span>
                             <span className="font-medium">Delivery time:</span>{" "}
-                            {orderDetails?.delivery.actualDelivery ||
-                              "Completed"}
+                            Completed
                           </span>
-                        ) : order.status === "on-route" ? (
+                        ) : fullOrderData.status === "in_transit" ? (
                           <span>
                             <span className="font-medium">
                               Estimated delivery:
                             </span>{" "}
-                            {orderDetails?.delivery.estimatedDelivery ||
-                              "Today"}
+                            Today
                           </span>
                         ) : (
                           <span>
@@ -697,25 +570,24 @@ export function OrderDetailsModal({
                     <div className="flex items-center gap-2">
                       <div className="flex-1 bg-gray-200 rounded-full h-2">
                         <div
-                          className={`h-2 rounded-full ${
-                            order.status === "completed"
+                          className={`h-2 rounded-full ${fullOrderData.status === "delivered"
                               ? "bg-green-500 w-full"
-                              : order.status === "on-route"
-                              ? "bg-blue-500 w-3/4"
-                              : order.status === "loading"
-                              ? "bg-yellow-500 w-1/2"
-                              : "bg-gray-400 w-1/4"
-                          }`}
+                              : fullOrderData.status === "in_transit"
+                                ? "bg-blue-500 w-3/4"
+                                : fullOrderData.status === "assigned"
+                                  ? "bg-yellow-500 w-1/2"
+                                  : "bg-gray-400 w-1/4"
+                            }`}
                         ></div>
                       </div>
                       <span className="text-xs font-medium text-gray-700">
-                        {order.status === "completed"
+                        {fullOrderData.status === "delivered"
                           ? "100%"
-                          : order.status === "on-route"
-                          ? "75%"
-                          : order.status === "loading"
-                          ? "50%"
-                          : "25%"}
+                          : fullOrderData.status === "in_transit"
+                            ? "75%"
+                            : fullOrderData.status === "assigned"
+                              ? "50%"
+                              : "25%"}
                       </span>
                     </div>
                   </div>
@@ -724,13 +596,13 @@ export function OrderDetailsModal({
                       Estimated Completion
                     </span>
                     <span className="text-sm font-medium text-gray-900">
-                      {order.status === "completed"
+                      {fullOrderData.status === "delivered"
                         ? "Delivered"
-                        : order.status === "on-route"
-                        ? "Today"
-                        : order.status === "loading"
-                        ? "Tomorrow"
-                        : "2-3 Business Days"}
+                        : fullOrderData.status === "in_transit"
+                          ? "Today"
+                          : fullOrderData.status === "assigned"
+                            ? "Tomorrow"
+                            : "2-3 Business Days"}
                     </span>
                   </div>
                 </div>
@@ -747,12 +619,12 @@ export function OrderDetailsModal({
           >
             Close
           </button> */}
-          {order.status === "pending" && (
+          {fullOrderData.status === "submitted" && (
             <button className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors cursor-pointer">
               Process Order
             </button>
           )}
-          {order.status === "completed" && (
+          {fullOrderData.status === "delivered" && (
             <button className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors cursor-pointer">
               Download Invoice
             </button>

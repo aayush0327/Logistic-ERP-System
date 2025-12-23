@@ -16,18 +16,15 @@ from src.schemas import (
     CustomerUpdate,
     PaginatedResponse
 )
+from src.security import (
+    TokenData,
+    get_current_tenant_id,
+    get_current_user_id,
+    require_permissions,
+    require_any_permission
+)
 
 router = APIRouter()
-
-
-# Helper function to get tenant_id from request (mock for now)
-async def get_current_tenant_id() -> str:
-    """
-    Get current tenant ID from authentication token
-    TODO: Implement proper authentication integration
-    """
-    # Mock implementation - in production, this will extract from JWT token
-    return "default-tenant"
 
 
 @router.get("/", response_model=PaginatedResponse)
@@ -38,13 +35,19 @@ async def list_customers(
     business_type: Optional[BusinessType] = Query(None),
     home_branch_id: Optional[UUID] = Query(None),
     is_active: Optional[bool] = Query(None),
+    token_data: TokenData = Depends(require_any_permission(["customers:read_all", "customers:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     List all customers for the current tenant
-    """
-    tenant_id = await get_current_tenant_id()
 
+    Requires:
+    - customers:read_all (to view all customers) OR
+    - customers:read (to view basic customer info)
+    """
+
+    
     # Build query
     query = select(Customer).where(Customer.tenant_id == tenant_id)
 
@@ -97,12 +100,17 @@ async def list_customers(
 @router.get("/{customer_id}", response_model=CustomerSchema)
 async def get_customer(
     customer_id: UUID,
+    token_data: TokenData = Depends(require_any_permission(["customers:read_all", "customers:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get a specific customer by ID
+
+    Requires:
+    - customers:read_all (to view any customer) OR
+    - customers:read (to view basic customer info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get customer with relationships
     query = select(Customer).where(
@@ -124,12 +132,17 @@ async def get_customer(
 @router.post("/", response_model=CustomerSchema, status_code=201)
 async def create_customer(
     customer_data: CustomerCreate,
+    token_data: TokenData = Depends(require_permissions(["customers:create"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Create a new customer
+
+    Requires:
+    - customers:create
     """
-    tenant_id = await get_current_tenant_id()
 
     # Check if customer code already exists
     existing_query = select(Customer).where(
@@ -176,12 +189,17 @@ async def create_customer(
 async def update_customer(
     customer_id: UUID,
     customer_data: CustomerUpdate,
+    token_data: TokenData = Depends(require_permissions(["customers:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Update a customer
+
+    Requires:
+    - customers:update_all (to update any customer) OR
+    - customers:update_own (to update own assigned customers)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing customer
     query = select(Customer).where(
@@ -224,12 +242,16 @@ async def update_customer(
 @router.delete("/{customer_id}", status_code=204)
 async def delete_customer(
     customer_id: UUID,
+    token_data: TokenData = Depends(require_permissions(["customers:delete"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Delete (deactivate) a customer
+
+    Requires:
+    - customers:delete
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing customer
     query = select(Customer).where(

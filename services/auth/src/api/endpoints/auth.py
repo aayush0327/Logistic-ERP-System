@@ -8,6 +8,7 @@ from ...database import get_db
 from ...schemas import LoginRequest, LoginResponse, TokenData, RefreshTokenRequest
 from ...services.user_service import UserService
 from ...services.refresh_token_service import RefreshTokenService
+from ...services.permission_service import PermissionService
 from ...dependencies import get_current_user_token
 from ...auth import create_access_token, create_refresh_token
 
@@ -100,13 +101,13 @@ async def refresh_token(
             detail="User not found or inactive"
         )
 
-    # Create new access token
+    # Create new minimal access token
     access_token = create_access_token({
         "sub": user.id,
         "tenant_id": user.tenant_id or "",  # Ensure tenant_id is not null
         "role_id": user.role_id,
-        "permissions": [],  # Will be populated in get_current_user
-        "email": user.email
+        "email": user.email,
+        "is_superuser": user.is_superuser
     })
 
     # Create new refresh token and invalidate old one
@@ -136,4 +137,48 @@ async def refresh_token(
         "token_type": "bearer",
         "expires_in": 86400,  # 24 hours in seconds
         "user": user_data
+    }
+
+
+@router.get("/users/{user_id}/permissions")
+async def get_user_permissions(
+    user_id: str,
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(get_current_user_token)
+):
+    """Get permissions for a user (internal API for other services)"""
+    # Verify the requesting user has permission to read user data
+    perm_service = PermissionService(db)
+
+    # Superuser can access any user's permissions
+    if not token_data.__dict__.get("is_superuser", False):
+        # Check if requesting user is accessing their own permissions
+        if token_data.user_id != user_id:
+            # Otherwise, check if they have permission to read user permissions
+            has_permission = await perm_service.check_permission(
+                token_data.user_id,
+                token_data.role_id,
+                "users:read_permissions"
+            )
+            if not has_permission:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Not authorized to access user permissions"
+                )
+
+    # Get the target user to find their role_id
+    user = await UserService.get_by_id(db, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # Get permissions for the target user
+    permissions = await perm_service.get_user_permissions(user_id, user.role_id)
+
+    return {
+        "user_id": user_id,
+        "permissions": permissions,
+        "count": len(permissions)
     }

@@ -48,10 +48,10 @@ class Order(Base):
     __tablename__ = "orders"
 
     # Primary key
-    id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(255),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Order details
@@ -61,20 +61,20 @@ class Order(Base):
         nullable=False,
         index=True
     )
-    tenant_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    tenant_id: Mapped[str] = mapped_column(
+        String(255),
         comment="Tenant ID - references tenant in auth database",
         nullable=False,
         index=True
     )
-    customer_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    customer_id: Mapped[str] = mapped_column(
+        String(255),
         nullable=False,
         index=True,
         comment="Customer ID from customer service"
     )
-    branch_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    branch_id: Mapped[str] = mapped_column(
+        String(255),
         nullable=False,
         index=True,
         comment="Branch ID from branch service"
@@ -142,34 +142,34 @@ class Order(Base):
     delivery_instructions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # System fields
-    created_by: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    created_by: Mapped[str] = mapped_column(
+        String(255),
         nullable=False,
         comment="User ID who created the order"
     )
-    updated_by: Mapped[Optional[UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    updated_by: Mapped[Optional[str]] = mapped_column(
+        String(255),
         nullable=True,
         comment="User ID who last updated the order"
     )
-    finance_approved_by: Mapped[Optional[UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    finance_approved_by: Mapped[Optional[str]] = mapped_column(
+        String(255),
         nullable=True,
         comment="User ID who approved in finance"
     )
-    logistics_approved_by: Mapped[Optional[UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    logistics_approved_by: Mapped[Optional[str]] = mapped_column(
+        String(255),
         nullable=True,
         comment="User ID who approved in logistics"
     )
-    driver_id: Mapped[Optional[UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    driver_id: Mapped[Optional[str]] = mapped_column(
+        String(255),
         nullable=True,
         index=True,
         comment="Driver ID assigned to this order"
     )
-    trip_id: Mapped[Optional[UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    trip_id: Mapped[Optional[str]] = mapped_column(
+        String(255),
         nullable=True,
         index=True,
         comment="Trip ID from TMS service"

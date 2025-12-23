@@ -39,6 +39,9 @@ CREATE TABLE IF NOT EXISTS trip_orders (
     order_id VARCHAR(50) NOT NULL,
     customer VARCHAR(200) NOT NULL,
     customer_address TEXT,
+    customer_contact VARCHAR(200),
+    customer_phone VARCHAR(50),
+    product_name VARCHAR(200),
     status VARCHAR(50) NOT NULL DEFAULT 'assigned' CHECK (
         status IN ('assigned', 'loading', 'on-route', 'completed')
     ),
@@ -49,11 +52,14 @@ CREATE TABLE IF NOT EXISTS trip_orders (
     weight INTEGER NOT NULL,
     volume INTEGER NOT NULL,
     items INTEGER NOT NULL,
+    quantity INTEGER DEFAULT 1,
     priority VARCHAR(20) NOT NULL CHECK (
-        priority IN ('high', 'medium', 'low')
+        priority IN ('high', 'medium', 'low', 'normal')
     ),
     sequence_number INTEGER NOT NULL DEFAULT 0, -- Delivery sequence for drag & drop ordering
     address TEXT,
+    special_instructions TEXT,
+    delivery_instructions TEXT,
     assigned_at TIMESTAMP DEFAULT NOW(),
     original_order_id VARCHAR(50), -- For split orders
     original_items INTEGER,        -- For split orders

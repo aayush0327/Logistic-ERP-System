@@ -5,16 +5,26 @@ import logging
 from contextlib import asynccontextmanager
 import time
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import Response, JSONResponse
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry
 from starlette.requests import Request
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from jose import JWTError
 
-from src.api.endpoints import orders, order_documents
+from src.api.endpoints import orders, order_documents, resources
 from src.config_local import OrdersSettings
 from src.database import engine, Base
+from src.middleware import (
+    SecurityHeadersMiddleware,
+    TenantIsolationMiddleware,
+    AuditLoggingMiddleware,
+    RateLimitMiddleware,
+)
+from src.middleware.tenant import TenantHeaderMiddleware
+from src.middleware.auth import AuthenticationMiddleware
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -78,12 +88,56 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add middleware
+# Add security middleware (order matters - add in reverse order of execution)
+# Security headers should be added first (outermost)
 app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=["localhost", "127.0.0.1", "*.logistics-erp.com"] if settings.ENV == "production" else ["*"]
+    SecurityHeadersMiddleware,
+    secure_cookies=settings.ENV == "production"
 )
 
+# Audit logging for all requests
+app.add_middleware(
+    AuditLoggingMiddleware,
+    log_requests=True,
+    log_responses=True,
+    log_headers=False,
+    log_body=False,
+    exclude_health_checks=True
+)
+
+# Rate limiting
+app.add_middleware(
+    RateLimitMiddleware,
+    default_limits={
+        "requests_per_minute": 60,
+        "requests_per_hour": 1000,
+        "requests_per_day": 10000
+    },
+    endpoint_limits={
+        "/api/v1/orders/": {"requests_per_minute": 120},
+        "/api/v1/orders/finance-approval": {"requests_per_minute": 20},
+        "/api/v1/orders/logistics-approval": {"requests_per_minute": 20},
+        "/api/v1/reports/": {"requests_per_minute": 30},
+    }
+)
+
+# Authentication middleware (optional - doesn't block requests)
+app.add_middleware(AuthenticationMiddleware)
+
+# Tenant isolation for multi-tenancy (after authentication so tenant context is available)
+app.add_middleware(TenantIsolationMiddleware)
+
+# Tenant Headers (adds tenant info to response)
+app.add_middleware(TenantHeaderMiddleware)
+
+# Add standard middleware
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["localhost", "127.0.0.1",
+                   "*.logistics-erp.com"] if settings.ENV == "production" else ["*"]
+)
+
+# CORS (standard middleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -93,6 +147,8 @@ app.add_middleware(
 )
 
 # Add metrics tracking middleware
+
+
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
     start_time = time.time()
@@ -171,13 +227,58 @@ app.include_router(
     tags=["Order Documents"]
 )
 
+app.include_router(
+    resources.router,
+    prefix="/api/v1/resources",
+    tags=["Resources"]
+)
 
-# Exception handlers
+
+# Security exception handlers
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Handle HTTP exceptions with security context"""
+    # Log security-related exceptions
+    if exc.status_code in [401, 403]:
+        logger.warning(
+            f"Security exception - path={request.url.path}, status={exc.status_code}, "
+            f"user={getattr(request.state, 'user_id', 'unknown')}, "
+            f"tenant={getattr(request.state, 'tenant_id', 'unknown')}"
+        )
+    else:
+        logger.error(
+            f"HTTP exception - path={request.url.path}, status={exc.status_code}, "
+            f"detail={exc.detail}"
+        )
+
+    return JSONResponse(
+        content={"detail": exc.detail},
+        status_code=exc.status_code,
+        headers=getattr(exc, 'headers', {})
+    )
+
+
+@app.exception_handler(JWTError)
+async def jwt_exception_handler(request: Request, exc: JWTError):
+    """Handle JWT errors"""
+    logger.warning(
+        f"JWT error - path={request.url.path}, error={str(exc)}"
+    )
+
+    return JSONResponse(
+        content={"detail": "Invalid authentication token"},
+        status_code=401,
+        headers={"WWW-Authenticate": "Bearer"}
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Global exception handler"""
+    """Global exception handler with security context"""
     logger.error(
-        f"Unhandled exception - path={request.url.path}, method={request.method}",
+        f"Unhandled exception - path={request.url.path}, method={request.method}, "
+        f"user={getattr(request.state, 'user_id', 'unknown')}, "
+        f"tenant={getattr(request.state, 'tenant_id', 'unknown')}",
         exc_info=exc
     )
 
@@ -193,7 +294,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8002,
+        port=8003,
         reload=True if settings.ENV == "development" else False,
         log_level=settings.LOG_LEVEL.lower(),
     )

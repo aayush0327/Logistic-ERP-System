@@ -3,7 +3,6 @@ Order Pydantic schemas for API requests and responses
 """
 from datetime import datetime
 from typing import Optional, List
-from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict
 
 from src.models.order import OrderStatus, OrderType, PaymentType
@@ -52,9 +51,9 @@ class OrderBase(BaseModel):
 class OrderCreate(OrderBase):
     """Schema for creating an order"""
     order_number: str = Field(..., max_length=50)
-    tenant_id: UUID
-    customer_id: UUID
-    branch_id: UUID
+    tenant_id: str
+    customer_id: str
+    branch_id: str
     items: List["OrderItemCreateRequest"] = []
 
 
@@ -100,8 +99,8 @@ class OrderUpdate(BaseModel):
 # Response schemas
 class OrderItemResponse(BaseModel):
     """Schema for order item response"""
-    id: UUID
-    product_id: UUID
+    id: str
+    product_id: str
     product_name: str
     product_code: Optional[str]
     description: Optional[str]
@@ -120,7 +119,7 @@ class OrderItemResponse(BaseModel):
 
 class OrderDocumentResponse(BaseModel):
     """Schema for order document response"""
-    id: UUID
+    id: str
     document_type: str
     title: str
     description: Optional[str]
@@ -149,20 +148,20 @@ class OrderResponse(OrderBase):
     """Schema for order response"""
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
+    id: str
     order_number: str
-    tenant_id: UUID
-    customer_id: UUID
-    branch_id: UUID
+    tenant_id: str
+    customer_id: str
+    branch_id: str
     status: OrderStatus
 
     # System fields
-    created_by: UUID
-    updated_by: Optional[UUID]
-    finance_approved_by: Optional[UUID]
-    logistics_approved_by: Optional[UUID]
-    driver_id: Optional[UUID]
-    trip_id: Optional[UUID]
+    created_by: str
+    updated_by: Optional[str]
+    finance_approved_by: Optional[str]
+    logistics_approved_by: Optional[str]
+    driver_id: Optional[str]
+    trip_id: Optional[str]
 
     # Approval dates
     finance_approved_at: Optional[datetime]
@@ -186,13 +185,13 @@ class OrderResponse(OrderBase):
 
 
 class OrderListResponse(BaseModel):
-    """Schema for order list response (without relationships)"""
+    """Schema for order list response (with basic relationships)"""
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
+    id: str
     order_number: str
-    customer_id: UUID
-    branch_id: UUID
+    customer_id: str
+    branch_id: str
     status: OrderStatus
     order_type: OrderType
     priority: str
@@ -202,6 +201,20 @@ class OrderListResponse(BaseModel):
     delivery_date: Optional[datetime]
     created_at: datetime
     updated_at: datetime
+
+    # Additional fields for UI
+    customer: Optional[dict] = None  # Customer details from company service
+    items: List[dict] = []  # Order items with product details
+    items_count: int = 0  # Number of items in the order (backward compatibility)
+
+
+class OrderListPaginatedResponse(BaseModel):
+    """Schema for paginated order list response"""
+    items: List[OrderListResponse]
+    total: int
+    page: int
+    per_page: int
+    pages: int
 
 
 # Status update schemas
@@ -225,16 +238,16 @@ class LogisticsApprovalRequest(BaseModel):
     approved: bool
     reason: Optional[str] = None
     notes: Optional[str]
-    driver_id: Optional[UUID] = None
-    trip_id: Optional[UUID] = None
+    driver_id: Optional[str] = None
+    trip_id: Optional[str] = None
 
 
 # Query parameters
 class OrderQueryParams(BaseModel):
     """Schema for order query parameters"""
     status: Optional[OrderStatus] = None
-    customer_id: Optional[UUID] = None
-    branch_id: Optional[UUID] = None
+    customer_id: Optional[str] = None
+    branch_id: Optional[str] = None
     order_type: Optional[OrderType] = None
     priority: Optional[str] = None
     payment_type: Optional[PaymentType] = None

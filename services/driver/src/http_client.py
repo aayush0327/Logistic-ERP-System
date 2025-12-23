@@ -11,9 +11,10 @@ logger = logging.getLogger(__name__)
 class TMSClient:
     """Client for communicating with TMS Service"""
 
-    def __init__(self):
+    def __init__(self, auth_token: Optional[str] = None):
         self.base_url = settings.TMS_API_URL
         self.timeout = settings.TMS_API_TIMEOUT
+        self.auth_token = auth_token
 
     async def _make_request(
         self,
@@ -25,11 +26,21 @@ class TMSClient:
         """Make HTTP request to TMS service"""
         url = f"{self.base_url}{endpoint}"
 
+        # Prepare headers
+        headers = {
+            "Content-Type": "application/json",
+        }
+
+        # Add Authorization header if token is available
+        if self.auth_token:
+            headers["Authorization"] = f"Bearer {self.auth_token}"
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 response = await client.request(
                     method=method,
                     url=url,
+                    headers=headers,
                     params=params,
                     json=json
                 )

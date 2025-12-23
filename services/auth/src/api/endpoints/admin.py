@@ -2,14 +2,15 @@
 Super Admin endpoints for managing the entire system
 """
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any
 
 from ...database import get_db
 from ...services.tenant_service import TenantService
 from ...services.user_service import UserService
-from ...dependencies import get_current_user_token, TokenData
+from ...services.permission_service import PermissionService
+from ...dependencies import get_current_user_token, TokenData, get_permission_service
 from ...schemas import UserCreate
 
 router = APIRouter()
@@ -19,11 +20,12 @@ router = APIRouter()
 async def create_company_with_admin(
     company_data: Dict[str, Any],
     token_data: TokenData = Depends(get_current_user_token),
+    perm_service: PermissionService = Depends(get_permission_service),
     db: AsyncSession = Depends(get_db)
 ):
     """Create a new company with admin user (Super Admin only)"""
     # Check if user is super admin
-    if not token_data.permissions or "superuser:access" not in token_data.permissions:
+    if not token_data.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only super admins can create companies"
@@ -81,11 +83,12 @@ async def create_company_with_admin(
 async def create_admin_user(
     user_data: Dict[str, Any],
     token_data: TokenData = Depends(get_current_user_token),
+    perm_service: PermissionService = Depends(get_permission_service),
     db: AsyncSession = Depends(get_db)
 ):
     """Create an admin user for any tenant (Super Admin only)"""
     # Check if user is super admin
-    if not token_data.permissions or "superuser:access" not in token_data.permissions:
+    if not token_data.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only super admins can create admin users"
@@ -147,11 +150,12 @@ async def create_admin_user(
 @router.get("/stats", response_model=Dict[str, Any])
 async def get_companies_stats(
     token_data: TokenData = Depends(get_current_user_token),
+    perm_service: PermissionService = Depends(get_permission_service),
     db: AsyncSession = Depends(get_db)
 ):
     """Get overall companies statistics (Super Admin only)"""
     # Check if user is super admin
-    if not token_data.permissions or "superuser:access" not in token_data.permissions:
+    if not token_data.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only super admins can view statistics"

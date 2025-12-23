@@ -9,7 +9,8 @@ from datetime import datetime, timezone
 from ...database import get_db, User
 from ...schemas import TenantCreate, TenantUpdate, Tenant as TenantSchema
 from ...services.tenant_service import TenantService
-from ...dependencies import get_current_user_token, TokenData
+from ...services.permission_service import PermissionService
+from ...dependencies import get_current_user_token, TokenData, get_permission_service
 from ...auth import get_password_hash
 
 router = APIRouter()
@@ -18,11 +19,12 @@ router = APIRouter()
 @router.get("/")
 async def list_tenants(
     token_data: TokenData = Depends(get_current_user_token),
+    perm_service: PermissionService = Depends(get_permission_service),
     db: AsyncSession = Depends(get_db)
 ):
     """List all tenants (Super Admin only)"""
     # Check if user is super admin
-    if not token_data.permissions or "superuser:access" not in token_data.permissions:
+    if not token_data.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only super admins can list all tenants"
@@ -38,11 +40,12 @@ async def list_tenants(
 async def create_tenant(
     tenant_data: dict,
     token_data: TokenData = Depends(get_current_user_token),
+    perm_service: PermissionService = Depends(get_permission_service),
     db: AsyncSession = Depends(get_db)
 ):
     """Create a new tenant with admin (Super Admin only)"""
     # Check if user is super admin
-    if not token_data.permissions or "superuser:access" not in token_data.permissions:
+    if not token_data.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only super admins can create tenants"
@@ -89,11 +92,12 @@ async def create_tenant(
 async def get_tenant(
     tenant_id: str,
     token_data: TokenData = Depends(get_current_user_token),
+    perm_service: PermissionService = Depends(get_permission_service),
     db: AsyncSession = Depends(get_db)
 ):
     """Get tenant details"""
     # Super admin can access any tenant
-    if token_data.permissions and "superuser:access" in token_data.permissions:
+    if token_data.is_superuser:
         tenant = await TenantService.get_tenant_by_id(db, tenant_id)
     else:
         # Regular users can only access their own tenant
@@ -118,11 +122,12 @@ async def update_tenant(
     tenant_id: str,
     update_data: TenantUpdate,
     token_data: TokenData = Depends(get_current_user_token),
+    perm_service: PermissionService = Depends(get_permission_service),
     db: AsyncSession = Depends(get_db)
 ):
     """Update tenant details"""
     # Only super admin can update tenants
-    if not token_data.permissions or "superuser:access" not in token_data.permissions:
+    if not token_data.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only super admins can update tenants"
@@ -143,11 +148,12 @@ async def update_tenant(
 async def delete_tenant(
     tenant_id: str,
     token_data: TokenData = Depends(get_current_user_token),
+    perm_service: PermissionService = Depends(get_permission_service),
     db: AsyncSession = Depends(get_db)
 ):
     """Delete/Deactivate a tenant"""
     # Only super admin can delete tenants
-    if not token_data.permissions or "superuser:access" not in token_data.permissions:
+    if not token_data.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only super admins can delete tenants"
@@ -168,11 +174,12 @@ async def delete_tenant(
 async def get_tenant_users(
     tenant_id: str,
     token_data: TokenData = Depends(get_current_user_token),
+    perm_service: PermissionService = Depends(get_permission_service),
     db: AsyncSession = Depends(get_db)
 ):
     """Get all users for a tenant"""
     # Super admin can access any tenant
-    if not (token_data.permissions and "superuser:access" in token_data.permissions) and token_data.tenant_id != tenant_id:
+    if not token_data.is_superuser and token_data.tenant_id != tenant_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied"
@@ -201,11 +208,12 @@ async def update_tenant_admin(
     tenant_id: str,
     admin_data: dict,
     token_data: TokenData = Depends(get_current_user_token),
+    perm_service: PermissionService = Depends(get_permission_service),
     db: AsyncSession = Depends(get_db)
 ):
     """Update tenant admin credentials"""
     # Only super admin can update tenant admin
-    if not token_data.permissions or "superuser:access" not in token_data.permissions:
+    if not token_data.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only super admins can update tenant admin"

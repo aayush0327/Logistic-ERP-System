@@ -20,13 +20,15 @@ import {
   ChevronLeft,
   ChevronRight,
   Tag,
-  Box
+  Box,
+  Building
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import {
   useGetProductsQuery,
   useDeleteProductMutation,
-  useGetProductCategoriesQuery
+  useGetProductCategoriesQuery,
+  useGetBranchesQuery
 } from '@/services/api/companyApi';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/Dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/DropdownMenu';
@@ -36,6 +38,7 @@ export default function ProductsPage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [branchFilter, setBranchFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'normal'>('all');
   const [priceFilter, setPriceFilter] = useState<{ min?: number; max?: number }>({});
   const [page, setPage] = useState(1);
@@ -44,6 +47,7 @@ export default function ProductsPage() {
 
   const { data: categoriesData } = useGetProductCategoriesQuery({ include_children: true });
   const categories = categoriesData?.items || [];
+  const { data: branches } = useGetBranchesQuery({});
 
   const {
     data: productsData,
@@ -54,6 +58,7 @@ export default function ProductsPage() {
     per_page: 20,
     search: searchQuery || undefined,
     category_id: categoryFilter !== 'all' ? categoryFilter : undefined,
+    branch_id: branchFilter !== 'all' ? branchFilter : undefined,
     min_price: priceFilter.min,
     max_price: priceFilter.max,
     low_stock: stockFilter === 'low'
@@ -229,6 +234,16 @@ export default function ProductsPage() {
                 ))}
               </select>
               <select
+                value={branchFilter}
+                onChange={(e) => setBranchFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Branches</option>
+                {branches?.items?.map((branch: any) => (
+                  <option key={branch.id} value={branch.id}>{branch.name}</option>
+                ))}
+              </select>
+              <select
                 value={stockFilter}
                 onChange={(e) => setStockFilter(e.target.value as 'all' | 'low' | 'normal')}
                 className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -276,12 +291,12 @@ export default function ProductsPage() {
                 <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No products found</h3>
                 <p className="text-gray-500 mb-4">
-                  {searchQuery || categoryFilter !== 'all' || stockFilter !== 'all' || priceFilter.min || priceFilter.max
+                  {searchQuery || categoryFilter !== 'all' || branchFilter !== 'all' || stockFilter !== 'all' || priceFilter.min || priceFilter.max
                     ? 'Try adjusting your filters'
                     : 'Get started by adding your first product'
                   }
                 </p>
-                {!searchQuery && categoryFilter === 'all' && stockFilter === 'all' && !priceFilter.min && !priceFilter.max && (
+                {!searchQuery && categoryFilter === 'all' && branchFilter === 'all' && stockFilter === 'all' && !priceFilter.min && !priceFilter.max && (
                   <Button onClick={() => router.push('/masters/products/new')}>
                     <Plus className="w-4 h-4 mr-2" />
                     Add Product
@@ -296,6 +311,7 @@ export default function ProductsPage() {
                       <TableHead>Product Code</TableHead>
                       <TableHead>Name</TableHead>
                       <TableHead>Category</TableHead>
+                      <TableHead>Branch</TableHead>
                       <TableHead>Unit Price</TableHead>
                       <TableHead>Stock Level</TableHead>
                       <TableHead>Status</TableHead>
@@ -322,6 +338,17 @@ export default function ProductsPage() {
                             <span className="text-sm text-gray-900">
                               {product.category?.name || 'Uncategorized'}
                             </span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center text-sm text-gray-900">
+                              <Building className="w-3 h-3 mr-1" />
+                              {product.available_for_all_branches
+                                ? 'All Branches'
+                                : product.branches && product.branches.length > 0
+                                  ? product.branches.map((pb: any) => pb.branch?.name).join(', ')
+                                  : 'Not assigned'
+                              }
+                            </div>
                           </TableCell>
                           <TableCell>
                             <div>

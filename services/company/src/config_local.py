@@ -56,6 +56,65 @@ class CompanySettings(BaseSettings):
     # Auth Service
     AUTH_SERVICE_URL: str = os.getenv("AUTH_SERVICE_URL", "http://localhost:8001")
 
+    # JWT Authentication
+    GLOBAL_JWT_SECRET: str = os.getenv(
+        "JWT_SECRET",
+        "eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck"
+    )
+    GLOBAL_JWT_ALGORITHM: str = os.getenv("GLOBAL_JWT_ALGORITHM", "HS256")
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
+        os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "1440")  # 24 hours
+    )
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = int(
+        os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "7")
+    )
+
+    # Security Settings
+    ALLOW_ORIGINS: Union[List[str], str] = os.getenv(
+        "ALLOW_ORIGINS",
+        "http://localhost:3000,http://localhost:8000"
+    )
+    ALLOW_METHODS: List[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    ALLOW_HEADERS: List[str] = ["*"]
+    ALLOW_CREDENTIALS: bool = True
+
+    @field_validator('ALLOW_ORIGINS', mode='before')
+    @classmethod
+    def parse_allow_origins(cls, v):
+        if isinstance(v, str):
+            return [origin.strip() for origin in v.split(",")]
+        return v
+
+    # Rate Limiting
+    RATE_LIMIT_ENABLED: bool = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
+    RATE_LIMIT_REQUESTS_PER_MINUTE: int = int(
+        os.getenv("RATE_LIMIT_REQUESTS_PER_MINUTE", "60")
+    )
+    RATE_LIMIT_REQUESTS_PER_HOUR: int = int(
+        os.getenv("RATE_LIMIT_REQUESTS_PER_HOUR", "1000")
+    )
+
+    # Security Headers
+    SECURITY_ENABLE_CORS: bool = os.getenv("SECURITY_ENABLE_CORS", "true").lower() == "true"
+    SECURITY_ENABLE_TRUSTED_HOST: bool = os.getenv(
+        "SECURITY_ENABLE_TRUSTED_HOST", "false"
+    ).lower() == "true"
+    TRUSTED_HOSTS: Union[List[str], str] = os.getenv(
+        "TRUSTED_HOSTS",
+        "localhost,127.0.0.1"
+    )
+
+    @field_validator('TRUSTED_HOSTS', mode='before')
+    @classmethod
+    def parse_trusted_hosts(cls, v):
+        if isinstance(v, str):
+            return [host.strip() for host in v.split(",")]
+        return v
+
+    # Audit Logging
+    AUDIT_LOG_ENABLED: bool = os.getenv("AUDIT_LOG_ENABLED", "true").lower() == "true"
+    AUDIT_LOG_LEVEL: str = os.getenv("AUDIT_LOG_LEVEL", "INFO")
+
     # Service port
     PORT: int = int(os.getenv("PORT", "8002"))
 

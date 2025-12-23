@@ -10,6 +10,7 @@ import uvicorn
 
 from src.config import settings
 from src.api.endpoints import driver as driver_router
+from src.middleware.auth import AuthenticationMiddleware
 
 # Configure structured logging
 structlog.configure(
@@ -63,6 +64,11 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Add authentication middleware
+app.add_middleware(
+    AuthenticationMiddleware
 )
 
 

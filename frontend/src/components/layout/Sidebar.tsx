@@ -13,7 +13,8 @@ import {
   User,
   UserCircle,
   LogOut,
-  UserCheck
+  UserCheck,
+  DollarSign
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -34,6 +35,7 @@ const navItems: NavItem[] = [
   { label: 'Orders', href: '/orders', icon: Package, access: 'user' },
   { label: 'Trips', href: '/trips', icon: Truck, access: 'user' },
   { label: 'Driver', href: '/driver', icon: UserCheck, access: 'user' },
+  { label: 'Finance', href: '/finance', icon: DollarSign, access: 'admin' },
   { label: 'Deliveries', href: '/deliveries', icon: CheckCircle, access: 'user' },
   { label: 'History', href: '/history', icon: Clock, access: 'user' },
   { label: 'Manage Masters', href: '/masters', icon: Settings, access: 'admin' },

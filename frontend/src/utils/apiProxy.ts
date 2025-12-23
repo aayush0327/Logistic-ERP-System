@@ -24,14 +24,18 @@ export async function proxyRequest(
     }
 
     // Prepare headers
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    }
+    const headers: Record<string, string> = {}
 
-    // Forward authorization header if present
+    // Forward authorization header if present (critical for authentication)
     const authHeader = request.headers.get('authorization')
     if (authHeader) {
       headers['Authorization'] = authHeader
+    }
+
+    // Forward content-type if present
+    const contentType = request.headers.get('content-type')
+    if (contentType) {
+      headers['Content-Type'] = contentType
     }
 
     // Forward other important headers
@@ -50,8 +54,35 @@ export async function proxyRequest(
       body,
     })
 
-    // Get response data
-    const data = await response.json()
+    // Handle non-JSON responses
+    const responseContentType = response.headers.get('content-type')
+    if (!responseContentType || !responseContentType.includes('application/json')) {
+      // For non-JSON responses, return as text
+      const text = await response.text()
+      return new NextResponse(text, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: {
+          'content-type': responseContentType || 'text/plain',
+        }
+      })
+    }
+
+    // Parse JSON response
+    let data
+    try {
+      data = await response.json()
+    } catch (e) {
+      // If JSON parsing fails, return the raw response
+      const text = await response.text()
+      return new NextResponse(text, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: {
+          'content-type': 'text/plain',
+        }
+      })
+    }
 
     // Return response with same status and data
     return NextResponse.json(data, {
@@ -59,21 +90,57 @@ export async function proxyRequest(
       statusText: response.statusText,
       headers: {
         // Forward important response headers
-        'content-type': response.headers.get('content-type') || 'application/json',
+        'content-type': responseContentType || 'application/json',
+        // Forward any custom headers from the backend
+        ...getResponseHeaders(response, ['x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset'])
       }
     })
   } catch (error) {
     console.error(`API proxy error for ${path}:`, error)
 
-    // Return appropriate error response
+    // Check if it's a network/connectivity error
+    if (error instanceof Error) {
+      if (error.name === 'FetchError' || error.message.includes('ECONNREFUSED')) {
+        return NextResponse.json(
+          {
+            error: {
+              code: 'SERVICE_UNAVAILABLE',
+              message: 'Backend service is currently unavailable',
+              details: process.env.NODE_ENV === 'development' ? error.message : undefined
+            }
+          },
+          { status: 503 }
+        )
+      }
+    }
+
+    // Return generic error response
     return NextResponse.json(
       {
-        error: 'Internal server error',
-        message: error instanceof Error ? error.message : 'Unknown error'
+        error: {
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'An internal server error occurred',
+          details: process.env.NODE_ENV === 'development' ?
+            (error instanceof Error ? error.message : 'Unknown error') : undefined
+        }
       },
       { status: 500 }
     )
   }
+}
+
+/**
+ * Helper to extract specific response headers
+ */
+function getResponseHeaders(response: Response, headerNames: string[]): Record<string, string> {
+  const headers: Record<string, string> = {}
+  headerNames.forEach(name => {
+    const value = response.headers.get(name)
+    if (value) {
+      headers[name] = value
+    }
+  })
+  return headers
 }
 
 /**
@@ -93,5 +160,21 @@ export function createApiRoute(
     }
 
     return proxyRequest(request, serviceUrl, finalPath)
+  }
+}
+
+/**
+ * Create a dynamic API route handler for resources with IDs
+ */
+export function createDynamicApiRoute(
+  serviceUrl: string,
+  basePath: string
+) {
+  return async (request: NextRequest, { params }: { params: Record<string, string> }) => {
+    // Construct path with dynamic ID
+    const { id } = params
+    const path = `${basePath}${id ? `${id}/` : ''}`
+
+    return proxyRequest(request, serviceUrl, path)
   }
 }

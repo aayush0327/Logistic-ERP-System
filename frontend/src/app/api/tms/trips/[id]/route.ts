@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const NEXT_PUBLIC_TMS_API_URL = process.env.NEXT_PUBLIC_TMS_API_URL || 'http://localhost:8004';
+const TMS_SERVICE_URL = process.env.NEXT_PUBLIC_TMS_API_URL || 'http://localhost:8004';
+
+// Helper function to get auth token from request
+function getAuthToken(request: NextRequest): string | null {
+  // Try to get token from Authorization header
+  const authHeader = request.headers.get('authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7);
+  }
+
+  // Try to get token from cookies (if using httpOnly cookies)
+  const tokenCookie = request.cookies.get('access_token');
+  return tokenCookie?.value || null;
+}
 
 export async function GET(
   request: NextRequest,
@@ -9,18 +22,14 @@ export async function GET(
   try {
     const { id } = await params; // Unwrap the params Promise
 
-    // Hardcoded user and company values (in production, get from authentication)
-    const HARDCODED_USER_ID = "user-001";
-    const HARDCODED_COMPANY_ID = "company-001";
+    // Get auth token
+    const token = getAuthToken(request);
 
-    const queryParams = new URLSearchParams();
-    queryParams.append('user_id', HARDCODED_USER_ID);
-    queryParams.append('company_id', HARDCODED_COMPANY_ID);
-
-    const response = await fetch(`${NEXT_PUBLIC_TMS_API_URL}/api/v1/trips/${id}?${queryParams.toString()}`, {
+    const response = await fetch(`${TMS_SERVICE_URL}/api/v1/trips/${id}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` }),
       },
     });
 
@@ -31,7 +40,8 @@ export async function GET(
           { status: 404 }
         );
       }
-      throw new Error(`Failed to fetch trip: ${response.statusText}`);
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error?.message || `Failed to fetch trip: ${response.statusText}`);
     }
 
     const data = await response.json();
@@ -40,7 +50,7 @@ export async function GET(
   } catch (error) {
     console.error('Error fetching trip:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch trip' },
+      { error: error instanceof Error ? error.message : 'Failed to fetch trip' },
       { status: 500 }
     );
   }
@@ -54,25 +64,21 @@ export async function PUT(
     const body = await request.json();
     const { id } = await params; // Unwrap the params Promise
 
-    // Hardcoded user and company values (in production, get from authentication)
-    const HARDCODED_USER_ID = "user-001";
-    const HARDCODED_COMPANY_ID = "company-001";
+    // Get auth token
+    const token = getAuthToken(request);
 
-    const queryParams = new URLSearchParams();
-    queryParams.append('user_id', HARDCODED_USER_ID);
-    queryParams.append('company_id', HARDCODED_COMPANY_ID);
-
-    const response = await fetch(`${NEXT_PUBLIC_TMS_API_URL}/api/v1/trips/${id}?${queryParams.toString()}`, {
+    const response = await fetch(`${TMS_SERVICE_URL}/api/v1/trips/${id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` }),
       },
       body: JSON.stringify(body),
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || `Failed to update trip: ${response.statusText}`);
+      throw new Error(errorData.error?.message || `Failed to update trip: ${response.statusText}`);
     }
 
     const data = await response.json();
@@ -94,27 +100,24 @@ export async function DELETE(
   try {
     const { id } = await params; // Unwrap the params Promise
 
-    // Hardcoded user and company values (in production, get from authentication)
-    const HARDCODED_USER_ID = "user-001";
-    const HARDCODED_COMPANY_ID = "company-001";
+    // Get auth token
+    const token = getAuthToken(request);
 
-    const queryParams = new URLSearchParams();
-    queryParams.append('user_id', HARDCODED_USER_ID);
-    queryParams.append('company_id', HARDCODED_COMPANY_ID);
-
-    const response = await fetch(`${NEXT_PUBLIC_TMS_API_URL}/api/v1/trips/${id}?${queryParams.toString()}`, {
+    const response = await fetch(`${TMS_SERVICE_URL}/api/v1/trips/${id}`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` }),
       },
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || `Failed to delete trip: ${response.statusText}`);
+      throw new Error(errorData.error?.message || `Failed to delete trip: ${response.statusText}`);
     }
 
-    return NextResponse.json({ success: true });
+    const data = await response.json();
+    return NextResponse.json(data);
 
   } catch (error) {
     console.error('Error deleting trip:', error);

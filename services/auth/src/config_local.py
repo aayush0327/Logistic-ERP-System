@@ -16,7 +16,9 @@ GLOBAL_JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
 GLOBAL_JWT_EXPIRE_MINUTES: int = int(
     os.getenv("JWT_EXPIRE_MINUTES", "1440"))  # 24 hours
 GLOBAL_REFRESH_TOKEN_EXPIRE_MINUTES: int = int(
-    os.getenv("REFRESH_TOKEN_EXPIRE_MINUTES", "10080"))  # 7 days
+    os.getenv("REFRESH_TOKEN_EXPIRE_MINUTES", "10080"))
+GLOBAL_REFRESH_TOKEN_EXPIRE_DAYS: int = int(
+    os.getenv("GLOBAL_REFRESH_TOKEN_EXPIRE_DAYS", "7"))  # 7 days
 
 # Print JWT config on import for debugging
 # print(f"[CONFIG] Global JWT Secret (first 20 chars): {GLOBAL_JWT_SECRET[:20]}...")

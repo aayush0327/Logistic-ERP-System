@@ -380,12 +380,6 @@ export default function SuperAdmin() {
               <CardHeader>
                 <div className="flex justify-between items-center">
                   <CardTitle>All Companies</CardTitle>
-                  <div className="flex gap-2">
-                    <Button variant="outline" className="flex items-center gap-2">
-                      <Plus className="w-4 h-4" />
-                      Create Company
-                    </Button>
-                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -473,7 +467,7 @@ export default function SuperAdmin() {
                               )}
                             </TableCell>
                             <TableCell className="text-center">
-                              <span className="text-lg font-medium text-gray-900">{company.total_users || 0}</span>
+                              <span className="text-sm font-medium text-gray-900">{company.total_users || 0}</span>
                             </TableCell>
                             <TableCell className="text-center text-gray-500">-</TableCell>
                             <TableCell className="text-sm text-gray-900">{formatDateTime(company.created_at)}</TableCell>
@@ -706,10 +700,10 @@ export default function SuperAdmin() {
         {showEditAdminModal && editingCompany && (
           <>
             <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
-                 onClick={() => {
-                   setShowEditAdminModal(false);
-                   setEditingCompany(null);
-                 }} />
+              onClick={() => {
+                setShowEditAdminModal(false);
+                setEditingCompany(null);
+              }} />
             <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 w-[450px]">
               <Card className="bg-white/95 backdrop-blur-md shadow-lg">
                 <CardHeader className="border-b border-gray-100 px-4 pb-3">
@@ -841,10 +835,10 @@ export default function SuperAdmin() {
         {showDeleteModal && deletingCompany && (
           <>
             <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
-                 onClick={() => {
-                   setShowDeleteModal(false);
-                   setDeletingCompany(null);
-                 }} />
+              onClick={() => {
+                setShowDeleteModal(false);
+                setDeletingCompany(null);
+              }} />
             <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 w-[400px]">
               <Card className="bg-white/95 backdrop-blur-md shadow-lg">
                 <CardContent className="p-4">

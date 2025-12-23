@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     PORT: int = 8005
     HOST: str = "0.0.0.0"
 
+    # Auth Service Configuration
+    AUTH_SERVICE_URL: str = os.getenv(
+        "AUTH_SERVICE_URL", "http://auth-service:8001")
+
     # TMS Service Configuration
     TMS_API_URL: str = os.getenv("TMS_API_URL", "http://tms-service:8004")
     TMS_API_TIMEOUT: int = int(os.getenv("TMS_API_TIMEOUT", "30"))
@@ -28,7 +32,8 @@ class Settings(BaseSettings):
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379")
 
     # Driver Configuration
-    DRIVER_ID: str = os.getenv("DRIVER_ID", "DRV-002")  # Hardcoded driver ID as per requirements
+    # Hardcoded driver ID as per requirements
+    DRIVER_ID: str = os.getenv("DRIVER_ID", "DRV-002")
 
     # CORS Configuration
     @property
@@ -45,18 +50,25 @@ class Settings(BaseSettings):
             "http://frontend:3000",
         ]
 
-    # JWT Configuration
-    JWT_SECRET: str = os.getenv(
+    # Global JWT Configuration (shared across services)
+    GLOBAL_JWT_SECRET: str = os.getenv(
         "JWT_SECRET",
         "eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck"
     )
-    JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    GLOBAL_JWT_ALGORITHM: str = os.getenv("GLOBAL_JWT_ALGORITHM", "HS256")
+
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
+        os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "1440")  # 24 hours
+    )
+
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = int(
+        os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "7")
+    )
 
     # Kafka Configuration
-    KAFKA_BOOTSTRAP_SERVERS: str = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
+    KAFKA_BOOTSTRAP_SERVERS: str = os.getenv(
+        "KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
 
-  
     class Config:
         """Pydantic configuration."""
         env_file = ".env"

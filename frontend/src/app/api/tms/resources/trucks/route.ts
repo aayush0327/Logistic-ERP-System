@@ -1,53 +1,62 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
-// Dummy trucks data - will come from other service in future
-const dummyTrucks = [
-  {
-    id: 'TRK-001',
-    plate: 'ABC-1234',
-    model: 'Ford Transit',
-    capacity: 2000,
-    status: 'available',
-  },
-  {
-    id: 'TRK-002',
-    plate: 'XYZ-5678',
-    model: 'Mercedes Sprinter',
-    capacity: 3000,
-    status: 'available',
-  },
-  {
-    id: 'TRK-003',
-    plate: 'DEF-9012',
-    model: 'Iveco Daily',
-    capacity: 5000,
-    status: 'available',
-  },
-  {
-    id: 'TRK-004',
-    plate: 'GHI-3456',
-    model: 'Isuzu NPR',
-    capacity: 2500,
-    status: 'available',
-  },
-  {
-    id: 'TRK-005',
-    plate: 'JKL-7890',
-    model: 'Ford Transit',
-    capacity: 2000,
-    status: 'available',
-  },
-];
+// TMS service URL
+const TMS_SERVICE_URL = process.env.NEXT_PUBLIC_TMS_API_URL || 'http://localhost:8004';
 
-export async function GET() {
+// Helper function to get auth token from request
+function getAuthToken(request: NextRequest): string | null {
+  // Try to get token from Authorization header
+  const authHeader = request.headers.get('authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7);
+  }
+
+  // Try to get token from cookies (if using httpOnly cookies)
+  const tokenCookie = request.cookies.get('access_token');
+  return tokenCookie?.value || null;
+}
+
+export async function GET(request: NextRequest) {
   try {
-    // Filter only available trucks
-    const availableTrucks = dummyTrucks.filter(truck => truck.status === 'available');
-    return NextResponse.json(availableTrucks);
+    // Get query parameters
+    const { searchParams } = new URL(request.url);
+    const tenant_id = searchParams.get('tenant_id') || 'default-tenant';
+    const branch_id = searchParams.get('branch_id');
+
+    // Get auth token
+    const token = getAuthToken(request);
+
+    // Determine which endpoint to call based on parameters
+    let url = `${TMS_SERVICE_URL}/api/v1/resources/trucks?tenant_id=${tenant_id}`;
+
+    // If branch_id is provided, get trucks for that specific branch
+    if (branch_id) {
+      url = `${TMS_SERVICE_URL}/api/v1/resources/branches/${branch_id}/trucks?tenant_id=${tenant_id}`;
+    }
+
+    // Call TMS service trucks endpoint
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` }),
+      },
+    });
+
+    if (!response.ok) {
+      console.error('TMS service error:', response.status, response.statusText);
+      return NextResponse.json(
+        { error: `Failed to fetch trucks from TMS service: ${response.statusText}` },
+        { status: response.status }
+      );
+    }
+
+    const trucks = await response.json();
+    return NextResponse.json(trucks);
   } catch (error) {
     console.error('Error fetching trucks:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch trucks' },
+      { error: error instanceof Error ? error.message : 'Failed to fetch trucks' },
       { status: 500 }
     );
   }

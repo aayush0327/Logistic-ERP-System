@@ -38,14 +38,14 @@ class OrderDocument(Base):
     )
 
     # Foreign keys
-    order_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    order_id: Mapped[str] = mapped_column(
+        String(255),
         ForeignKey("orders.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
-    uploaded_by: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    uploaded_by: Mapped[str] = mapped_column(
+        String(255),
         nullable=False,
         comment="User ID who uploaded the document"
     )

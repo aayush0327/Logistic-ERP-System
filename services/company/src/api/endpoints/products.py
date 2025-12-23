@@ -9,25 +9,22 @@ from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.database import get_db, Product, ProductCategory
+from src.database import get_db, Product, ProductCategory, Branch, ProductBranch
 from src.schemas import (
     Product as ProductSchema,
     ProductCreate,
     ProductUpdate,
     PaginatedResponse
 )
+from src.security import (
+    TokenData,
+    get_current_tenant_id,
+    get_current_user_id,
+    require_permissions,
+    require_any_permission
+)
 
 router = APIRouter()
-
-
-# Helper function to get tenant_id from request (mock for now)
-async def get_current_tenant_id() -> str:
-    """
-    Get current tenant ID from authentication token
-    TODO: Implement proper authentication integration
-    """
-    # Mock implementation - in production, this will extract from JWT token
-    return "default-tenant"
 
 
 @router.get("/", response_model=PaginatedResponse)
@@ -36,16 +33,22 @@ async def list_products(
     per_page: int = Query(20, ge=1, le=100),
     search: Optional[str] = Query(None),
     category_id: Optional[UUID] = Query(None),
+    branch_id: Optional[UUID] = Query(None),
     min_price: Optional[float] = Query(None, ge=0),
     max_price: Optional[float] = Query(None, ge=0),
     is_active: Optional[bool] = Query(None),
     low_stock: bool = Query(False),
+    token_data: TokenData = Depends(require_any_permission(["products:read_all", "products:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     List all products for the current tenant
+
+    Requires:
+    - products:read_all (to view all products) OR
+    - products:read (to view basic product info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Build query
     query = select(Product).where(Product.tenant_id == tenant_id)
@@ -62,6 +65,21 @@ async def list_products(
 
     if category_id:
         query = query.where(Product.category_id == category_id)
+
+    if branch_id:
+        # Filter products available for all branches OR specific branch
+        from sqlalchemy import or_
+        query = query.where(
+            or_(
+                Product.available_for_all_branches == True,
+                Product.id.in_(
+                    select(ProductBranch.product_id).where(
+                        ProductBranch.branch_id == branch_id,
+                        ProductBranch.tenant_id == tenant_id
+                    )
+                )
+            )
+        )
 
     if min_price is not None:
         query = query.where(Product.unit_price >= min_price)
@@ -88,7 +106,10 @@ async def list_products(
     query = query.offset(offset).limit(per_page).order_by(Product.name)
 
     # Include category relationship with children
-    query = query.options(selectinload(Product.category).selectinload(ProductCategory.children))
+    query = query.options(
+        selectinload(Product.branches).selectinload(ProductBranch.branch),
+        selectinload(Product.category).selectinload(ProductCategory.children)
+    )
 
     # Execute query
     result = await db.execute(query)
@@ -109,19 +130,24 @@ async def list_products(
 @router.get("/{product_id}", response_model=ProductSchema)
 async def get_product(
     product_id: UUID,
+    token_data: TokenData = Depends(require_any_permission(["products:read_all", "products:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get a specific product by ID
+
+    Requires:
+    - products:read_all (to view any product) OR
+    - products:read (to view basic product info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get product with relationships
     query = select(Product).where(
         Product.id == product_id,
         Product.tenant_id == tenant_id
     ).options(
-        selectinload(Product.category).selectinload(ProductCategory.children)
+        selectinload(Product.branches).selectinload(ProductBranch.branch), selectinload(Product.category).selectinload(ProductCategory.children)
     )
 
     result = await db.execute(query)
@@ -136,12 +162,17 @@ async def get_product(
 @router.post("/", response_model=ProductSchema, status_code=201)
 async def create_product(
     product_data: ProductCreate,
+    token_data: TokenData = Depends(require_permissions(["products:create"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Create a new product
+
+    Requires:
+    - products:create
     """
-    tenant_id = await get_current_tenant_id()
 
     # Check if product code already exists
     existing_query = select(Product).where(
@@ -168,8 +199,33 @@ async def create_product(
                 detail="Invalid product category"
             )
 
+    # Validate branches if product is not available for all branches
+    branch_ids = []
+    if not product_data.available_for_all_branches:
+        if hasattr(product_data, 'branch_ids') and product_data.branch_ids:
+            branch_ids = product_data.branch_ids
+            # Validate all branches exist and belong to tenant
+            for branch_id in branch_ids:
+                branch_query = select(Branch).where(
+                    Branch.id == branch_id,
+                    Branch.tenant_id == tenant_id
+                )
+                branch_result = await db.execute(branch_query)
+                if not branch_result.scalar_one_or_none():
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid branch: {branch_id}"
+                    )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Branch IDs must be provided when product is not available for all branches"
+            )
+
     # Create new product
     product_data_dict = product_data.model_dump(exclude_unset=True)
+    # Remove branch_ids from product data as it's stored in junction table
+    product_data_dict.pop('branch_ids', None)
 
     # Calculate volume if dimensions are provided but volume is not
     if 'volume' not in product_data_dict and all([
@@ -190,10 +246,25 @@ async def create_product(
     await db.commit()
     await db.refresh(product)
 
+    # Create branch relationships if not available for all branches
+    if not product_data.available_for_all_branches and branch_ids:
+        for branch_id in branch_ids:
+            product_branch = ProductBranch(
+                product_id=product.id,
+                branch_id=branch_id,
+                tenant_id=tenant_id
+            )
+            db.add(product_branch)
+
+        await db.commit()
+
     # Load the category relationship for response with children
     result = await db.execute(
         select(Product)
-        .options(selectinload(Product.category).selectinload(ProductCategory.children))
+        .options(
+        selectinload(Product.branches).selectinload(ProductBranch.branch),
+        selectinload(Product.category).selectinload(ProductCategory.children)
+    )
         .where(Product.id == product.id)
     )
     product = result.scalar_one()
@@ -205,12 +276,16 @@ async def create_product(
 async def update_product(
     product_id: UUID,
     product_data: ProductUpdate,
+    token_data: TokenData = Depends(require_permissions(["products:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Update a product
+
+    Requires:
+    - products:update
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing product
     query = select(Product).where(
@@ -236,6 +311,19 @@ async def update_product(
                 detail="Invalid product category"
             )
 
+    # Validate branch if provided
+    if product_data.branch_id:
+        branch_query = select(Branch).where(
+            Branch.id == product_data.branch_id,
+            Branch.tenant_id == tenant_id
+        )
+        branch_result = await db.execute(branch_query)
+        if not branch_result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid branch"
+            )
+
     # Update product
     update_data = product_data.model_dump(exclude_unset=True)
 
@@ -258,7 +346,10 @@ async def update_product(
     # Load the category relationship for response with children
     result = await db.execute(
         select(Product)
-        .options(selectinload(Product.category).selectinload(ProductCategory.children))
+        .options(
+        selectinload(Product.branches).selectinload(ProductBranch.branch),
+        selectinload(Product.category).selectinload(ProductCategory.children)
+    )
         .where(Product.id == product.id)
     )
     product = result.scalar_one()
@@ -269,12 +360,16 @@ async def update_product(
 @router.delete("/{product_id}", status_code=204)
 async def delete_product(
     product_id: UUID,
+    token_data: TokenData = Depends(require_permissions(["products:delete"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Delete (deactivate) a product
+
+    Requires:
+    - products:delete
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing product
     query = select(Product).where(
@@ -296,12 +391,17 @@ async def delete_product(
 async def get_low_stock_products(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
+    token_data: TokenData = Depends(require_any_permission(["products:read_all", "products:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get products with low stock levels
+
+    Requires:
+    - products:read_all (to view all low stock products) OR
+    - products:read (to view basic low stock product info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Build query for low stock products
     query = select(Product).where(
@@ -320,7 +420,10 @@ async def get_low_stock_products(
     query = query.offset(offset).limit(per_page).order_by(Product.name)
 
     # Include category relationship with children
-    query = query.options(selectinload(Product.category).selectinload(ProductCategory.children))
+    query = query.options(
+        selectinload(Product.branches).selectinload(ProductBranch.branch),
+        selectinload(Product.category).selectinload(ProductCategory.children)
+    )
 
     # Execute query
     result = await db.execute(query)
@@ -341,12 +444,16 @@ async def get_low_stock_products(
 @router.post("/bulk-update", response_model=List[ProductSchema])
 async def bulk_update_products(
     updates: List[Dict[str, Any]],
+    token_data: TokenData = Depends(require_permissions(["products:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Bulk update products
+
+    Requires:
+    - products:update
     """
-    tenant_id = await get_current_tenant_id()
     updated_products = []
 
     for update in updates:
@@ -385,7 +492,10 @@ async def bulk_update_products(
     # Load all updated products with relationships
     result = await db.execute(
         select(Product)
-        .options(selectinload(Product.category).selectinload(ProductCategory.children))
+        .options(
+        selectinload(Product.branches).selectinload(ProductBranch.branch),
+        selectinload(Product.category).selectinload(ProductCategory.children)
+    )
         .where(Product.id.in_(product_ids))
     )
     loaded_products = {p.id: p for p in result.scalars().all()}
@@ -397,13 +507,18 @@ async def bulk_update_products(
 @router.get("/{product_id}/stock-history")
 async def get_stock_history(
     product_id: UUID,
+    token_data: TokenData = Depends(require_any_permission(["products:read_all", "products:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get stock movement history for a product
     TODO: Implement stock movement tracking
+
+    Requires:
+    - products:read_all (to view any product stock history) OR
+    - products:read (to view basic product stock history)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get product
     query = select(Product).where(

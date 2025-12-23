@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const NEXT_PUBLIC_TMS_API_URL = process.env.NEXT_PUBLIC_TMS_API_URL || 'http://localhost:8004';
+const TMS_SERVICE_URL = process.env.NEXT_PUBLIC_TMS_API_URL || 'http://localhost:8004';
+
+// Helper function to get auth token from request
+function getAuthToken(request: NextRequest): string | null {
+  // Try to get token from Authorization header
+  const authHeader = request.headers.get('authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7);
+  }
+
+  // Try to get token from cookies (if using httpOnly cookies)
+  const tokenCookie = request.cookies.get('access_token');
+  return tokenCookie?.value || null;
+}
 
 export async function PUT(
   request: NextRequest,
@@ -10,21 +23,17 @@ export async function PUT(
     const body = await request.json();
     const { id } = await params; // Unwrap the params Promise
 
-    // Hardcoded user and company values (in production, get from authentication)
-    const HARDCODED_USER_ID = "user-001";
-    const HARDCODED_COMPANY_ID = "company-001";
-
-    const queryParams = new URLSearchParams();
-    queryParams.append('user_id', HARDCODED_USER_ID);
-    queryParams.append('company_id', HARDCODED_COMPANY_ID);
+    // Get auth token
+    const token = getAuthToken(request);
 
     // Forward the reorder request to TMS service
-    const reorderUrl = `${NEXT_PUBLIC_TMS_API_URL}/api/v1/trips/${id}/orders/reorder?${queryParams.toString()}`;
+    const reorderUrl = `${TMS_SERVICE_URL}/api/v1/trips/${id}/orders/reorder`;
 
     const response = await fetch(reorderUrl, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` }),
       },
       body: JSON.stringify(body),
     });

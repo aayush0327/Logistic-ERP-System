@@ -17,7 +17,8 @@ export function middleware(request: NextRequest) {
     (pathname !== '/' && pathname !== '/login' && pathname !== '/register' && !pathname.startsWith('/api/'));
 
   // Get token from cookies or authorization header
-  const token = request.cookies.get('access_token')?.value ||
+  const cookieToken = request.cookies.get('access_token')?.value;
+  const token = cookieToken ||
     request.headers.get('authorization')?.replace('Bearer ', '');
 
   // If accessing protected routes without token, redirect to login

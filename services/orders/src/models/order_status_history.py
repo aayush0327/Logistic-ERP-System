@@ -25,14 +25,14 @@ class OrderStatusHistory(Base):
     )
 
     # Foreign keys
-    order_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    order_id: Mapped[str] = mapped_column(
+        String(255),
         ForeignKey("orders.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
-    changed_by: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    changed_by: Mapped[str] = mapped_column(
+        String(255),
         nullable=False,
         comment="User ID who changed the status"
     )

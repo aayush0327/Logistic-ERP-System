@@ -9,6 +9,7 @@ from fastapi import HTTPException, status
 
 from ..database import RefreshToken
 from ..auth import get_password_hash
+from ..config_local import GLOBAL_REFRESH_TOKEN_EXPIRE_DAYS
 
 
 class RefreshTokenService:
@@ -19,7 +20,7 @@ class RefreshTokenService:
         db: AsyncSession,
         user_id: str,
         token: str,
-        expires_days: int = 30
+        expires_days: int = GLOBAL_REFRESH_TOKEN_EXPIRE_DAYS
     ) -> RefreshToken:
         """Create and store a refresh token"""
 

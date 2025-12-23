@@ -219,7 +219,22 @@ class UserService:
     async def create_tokens_for_user(db: AsyncSession, user: User) -> Tuple[str, str, dict]:
         """Create access and refresh tokens for user"""
 
-        # Get permissions from user's role
+        # Create minimal access token without permissions
+        access_token = create_access_token({
+            "sub": user.id,
+            "tenant_id": user.tenant_id or "",  # Ensure tenant_id is not null
+            "role_id": user.role_id,
+            "email": user.email,
+            "is_superuser": user.is_superuser
+        })
+
+        # Create refresh token
+        refresh_token = create_refresh_token(user.id, user.tenant_id or "")
+
+        # Store refresh token in database
+        await RefreshTokenService.create_refresh_token(db, user.id, refresh_token)
+
+        # Get permissions for user data response (not for token)
         permissions = []
         if user.role and user.role.permissions:
             permissions = [
@@ -230,21 +245,6 @@ class UserService:
         # Add superuser permissions if applicable
         if user.is_superuser:
             permissions.append("superuser:access")
-
-        # Create access token
-        access_token = create_access_token({
-            "sub": user.id,
-            "tenant_id": user.tenant_id or "",  # Ensure tenant_id is not null
-            "role_id": user.role_id,
-            "permissions": permissions,
-            "email": user.email
-        })
-
-        # Create refresh token
-        refresh_token = create_refresh_token(user.id, user.tenant_id or "")
-
-        # Store refresh token in database
-        await RefreshTokenService.create_refresh_token(db, user.id, refresh_token)
 
         # Prepare user data for response
         user_data = {

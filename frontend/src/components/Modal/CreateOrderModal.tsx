@@ -7,7 +7,13 @@ import * as z from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { ModalLayout } from "./ModalLayout";
 import { Button } from "@/components/ui/Button";
-import { mockCustomers, mockBranches } from "@/data/mockData";
+import { toast } from "react-hot-toast";
+import {
+  useCreateOrderMutation,
+  useGetBranchesQuery,
+  useGetCustomersQuery,
+  useGetProductsQuery
+} from "@/services/api/ordersApi";
 import {
   Calendar,
   Package,
@@ -18,15 +24,6 @@ import {
   Weight,
   Clock,
 } from "lucide-react";
-
-// Mock products for dropdown
-const mockProducts = [
-  { id: "1", name: "Animal Feed Premium" },
-  { id: "2", name: "Animal Feed Standard" },
-  { id: "3", name: "Vitamin Supplement" },
-  { id: "4", name: "Mineral Mix" },
-  { id: "5", name: "Specialized Feed" },
-];
 
 // Form validation schema
 const orderFormSchema = z.object({
@@ -52,25 +49,15 @@ type OrderFormData = z.infer<typeof orderFormSchema>;
 interface CreateOrderModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreateOrder: (data: OrderFormData) => void;
+  onSuccess?: (order: any) => void;
 }
 
 export function CreateOrderModal({
   isOpen,
   onClose,
-  onCreateOrder,
+  onSuccess,
 }: CreateOrderModalProps) {
   const [showBranchNote, setShowBranchNote] = useState(false);
-
-  // Generate order number on mount
-  useEffect(() => {
-    if (isOpen) {
-      const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-      const uniqueNumber = uuidv4().slice(0, 8).toUpperCase();
-      const orderNumber = `ORD-${today}-${uniqueNumber}`;
-      setValue("orderNumber", orderNumber);
-    }
-  }, [isOpen]);
 
   const {
     control,
@@ -101,6 +88,31 @@ export function CreateOrderModal({
   const selectedBranch = watch("branch");
   const orderItems = watch("orderItems");
 
+  // Fetch real data from APIs
+  const { data: branchesData, isLoading: branchesLoading } = useGetBranchesQuery();
+  const { data: customersData, isLoading: customersLoading } = useGetCustomersQuery(
+    selectedBranch ? { branch_id: selectedBranch } : {}
+  );
+
+    const { data: productsData, isLoading: productsLoading } = useGetProductsQuery(
+    selectedBranch ? { branch_id: selectedBranch } : undefined
+  );
+  const [createOrder, { isLoading: isCreating }] = useCreateOrderMutation();
+
+  const branches = branchesData || [];
+  const customers = customersData || [];
+  const products = productsData || [];
+
+  // Generate order number on mount
+  useEffect(() => {
+    if (isOpen) {
+      const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      const uniqueNumber = uuidv4().slice(0, 8).toUpperCase();
+      const orderNumber = `ORD-${today}-${uniqueNumber}`;
+      setValue("orderNumber", orderNumber);
+    }
+  }, [isOpen]);
+
   // Calculate total weight for an item
   const calculateItemTotalWeight = (weight: number, quantity: number) => {
     return weight * quantity;
@@ -121,8 +133,19 @@ export function CreateOrderModal({
   };
 
   const handleBranchSelect = (branchId: string) => {
+    // Reset customer selection when branch changes
+    if (selectedBranch && selectedBranch !== branchId) {
+      setValue("customer", "");
+      // Reset all order items
+      setValue("orderItems", [{
+        id: "1",
+        productName: "",
+        weight: 0,
+        quantity: 1,
+      }]);
+    }
     setShowBranchNote(true);
-    setTimeout(() => setShowBranchNote(false), 5000); // Hide note after 5 seconds
+    setTimeout(() => setShowBranchNote(false), 3000); // Hide note after 3 seconds
   };
 
   const addOrderItem = () => {
@@ -145,16 +168,76 @@ export function CreateOrderModal({
   };
 
   const updateOrderItem = (id: string, field: string, value: any) => {
-    const updatedItems = orderItems.map((item) =>
-      item.id === id ? { ...item, [field]: value } : item
-    );
+    const updatedItems = orderItems.map((item) => {
+      if (item.id === id) {
+        const updatedItem = { ...item, [field]: value };
+
+        // Auto-fill weight when product is selected
+        if (field === 'productName' && value) {
+          const product = products.find(p => p.name === value);
+          if (product && (product.weight || product.current_stock)) {
+            updatedItem.weight = product.weight || 1; // Default to 1kg if no weight
+          }
+        }
+
+        return updatedItem;
+      }
+      return item;
+    });
     setValue("orderItems", updatedItems);
   };
 
-  const onSubmit = (data: OrderFormData) => {
-    onCreateOrder(data);
-    reset();
-    onClose();
+  const onSubmit = async (data: OrderFormData) => {
+    try {
+      // Calculate totals
+      const totalWeight = data.orderItems.reduce((sum, item) => sum + (item.weight * item.quantity), 0);
+      const packageCount = data.orderItems.reduce((sum, item) => sum + item.quantity, 0);
+
+      // Prepare order items with product IDs
+      const items = data.orderItems.map(item => {
+        const product = products.find(p => p.name === item.productName || p.code === item.productName);
+        return {
+          product_id: product?.id || item.productName,
+          quantity: item.quantity,
+          unit_price: product?.unit_price || 0,
+          weight: item.weight || product?.weight || 0,
+        };
+      });
+
+      // Create order data
+      const orderData = {
+        order_number: data.orderNumber,
+        tenant_id: 'default-tenant',
+        customer_id: data.customer,
+        branch_id: data.branch,
+        order_type: 'delivery' as const,
+        priority: 'normal' as const,
+        total_weight: totalWeight,
+        total_volume: totalWeight / 1000, // rough estimate
+        package_count: packageCount,
+        total_amount: 0, // Will be calculated based on items
+        payment_type: 'cod' as const,
+        pickup_date: new Date().toISOString(),
+        delivery_date: new Date(Date.now() + (data.dueDays * 24 * 60 * 60 * 1000)).toISOString(),
+        items: items,
+        special_instructions: data.notes,
+      };
+
+      const createdOrder = await createOrder(orderData).unwrap();
+      toast.success('Order created successfully');
+
+      // Reset form and close modal
+      reset();
+      onClose();
+
+      // Call success callback with the created order
+      if (onSuccess) {
+        onSuccess(createdOrder);
+      }
+    } catch (error: any) {
+      console.error('Failed to create order:', error);
+      toast.error(error.message || 'Failed to create order');
+    }
   };
 
   const handleCancel = () => {
@@ -170,17 +253,17 @@ export function CreateOrderModal({
       onClose={handleCancel}
       title="Create New Order"
       size="xl"
-      className="max-h-[90vh] overflow-y-auto m-4 w-[800px] max-w-[90vw]"
+      className="max-h-[85vh] overflow-y-auto m-2 sm:m-4 w-full max-w-4xl min-h-[600px]"
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         {/* Order Information */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <Package className="w-5 h-5" />
+        <div className="space-y-4 bg-white rounded-lg border border-gray-200 p-4">
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2 pb-2 border-b">
+            <Package className="w-5 h-5 text-blue-600" />
             Order Information
           </h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
             {/* Order Number */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -248,9 +331,9 @@ export function CreateOrderModal({
                     }}
                   >
                     <option value="">Select Branch</option>
-                    {mockBranches.map((branch) => (
+                    {branches.map((branch) => (
                       <option key={branch.id} value={branch.id}>
-                        {branch.name}
+                        {branch.name} ({branch.code})
                       </option>
                     ))}
                   </select>
@@ -279,11 +362,17 @@ export function CreateOrderModal({
                       disabled={!selectedBranch}
                     >
                       <option value="">Select Customer</option>
-                      {mockCustomers.map((customer) => (
-                        <option key={customer.id} value={customer.name}>
+                      {customersLoading ? (
+                      <option disabled>Loading customers...</option>
+                    ) : customers.length === 0 ? (
+                      <option disabled>No customers available for this branch</option>
+                    ) : (
+                      customers.map((customer) => (
+                        <option key={customer.id} value={customer.id}>
                           {customer.name}
                         </option>
-                      ))}
+                      ))
+                    )}
                     </select>
                     <User className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                   </div>
@@ -292,6 +381,11 @@ export function CreateOrderModal({
               {errors.customer && (
                 <p className="text-red-500 text-xs mt-1">
                   {errors.customer.message}
+                </p>
+              )}
+              {selectedBranch && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Showing customers for {branches.find(b => b.id === selectedBranch)?.name}
                 </p>
               )}
             </div>
@@ -331,10 +425,10 @@ export function CreateOrderModal({
         )}
 
         {/* Order Items */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="space-y-4 bg-white rounded-lg border border-gray-200 p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <Package className="w-5 h-5" />
+              <Package className="w-5 h-5 text-blue-600" />
               Order Items
             </h3>
             {selectedBranch && (
@@ -343,7 +437,7 @@ export function CreateOrderModal({
                 variant="outline"
                 size="sm"
                 onClick={addOrderItem}
-                className="cursor-pointer"
+                className="cursor-pointer w-full sm:w-auto"
               >
                 <Plus className="w-4 h-4 mr-1" />
                 Add Item
@@ -392,9 +486,9 @@ export function CreateOrderModal({
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
                 {/* Product Name */}
-                <div>
+                <div className="sm:col-span-2 lg:col-span-2">
                   <label
                     className={`mb-1 flex items-center gap-1 text-sm font-medium ${
                       selectedBranch ? "text-gray-700" : "text-gray-400"
@@ -420,11 +514,17 @@ export function CreateOrderModal({
                         ? "Select Product"
                         : "Select branch first"}
                     </option>
-                    {mockProducts.map((product) => (
-                      <option key={product.id} value={product.name}>
-                        {product.name}
-                      </option>
-                    ))}
+                    {productsLoading ? (
+                      <option disabled>Loading products...</option>
+                    ) : products.length === 0 ? (
+                      <option disabled>No products available for this branch</option>
+                    ) : (
+                      products.map((product) => (
+                        <option key={product.id} value={product.name}>
+                          {product.name} ({product.code})
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
 
@@ -514,22 +614,29 @@ export function CreateOrderModal({
 
           {/* Summary Section */}
           {selectedBranch && (
-            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-              <h4 className="text-sm font-semibold text-gray-700 mb-3">
+            <div className="border border-gray-200 rounded-lg p-4 bg-gradient-to-r from-blue-50 to-indigo-50">
+              <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                <Info className="w-4 h-4 text-blue-600" />
                 Order Summary
               </h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Total Units:</span>
-                  <span className="text-sm font-semibold text-gray-900">
-                    {calculateTotalUnits()} units
-                  </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="bg-white rounded-lg p-3 border border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Total Units:</span>
+                    <span className="text-lg font-bold text-blue-600">
+                      {calculateTotalUnits()}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">Packages</div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Total Weight:</span>
-                  <span className="text-sm font-semibold text-gray-900">
-                    {calculateTotalWeight().toFixed(1)} kg
-                  </span>
+                <div className="bg-white rounded-lg p-3 border border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Total Weight:</span>
+                    <span className="text-lg font-bold text-green-600">
+                      {calculateTotalWeight().toFixed(1)}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">Kilograms</div>
                 </div>
               </div>
             </div>
@@ -537,21 +644,21 @@ export function CreateOrderModal({
         </div>
 
         {/* Actions */}
-        <div className="flex justify-end gap-3 pt-4 border-t">
+        <div className="flex flex-col sm:flex-row sm:justify-end gap-3 pt-4 border-t bg-gray-50 rounded-lg p-4">
           <Button
             type="button"
             variant="outline"
             onClick={handleCancel}
-            className="cursor-pointer"
+            className="cursor-pointer w-full sm:w-auto order-2 sm:order-1"
           >
             Cancel
           </Button>
           <Button
             type="submit"
-            disabled={!isValid || !selectedBranch}
-            className="cursor-pointer bg-[#1ab052] hover:bg-[#158842]"
+            disabled={!isValid || !selectedBranch || isCreating || productsLoading || customersLoading}
+            className="cursor-pointer w-full sm:w-auto order-1 sm:order-2 bg-[#1ab052] hover:bg-[#158842] disabled:opacity-50"
           >
-            Create Order
+            {isCreating ? 'Creating...' : (productsLoading || customersLoading) ? 'Loading...' : 'Create Order'}
           </Button>
         </div>
       </form>

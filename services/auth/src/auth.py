@@ -35,8 +35,20 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
-    """Create JWT access token using global configuration"""
-    to_encode = data.copy()
+    """Create minimal JWT access token with essential data only"""
+    to_encode = {}
+
+    # Include only essential fields in JWT
+    if "sub" in data:
+        to_encode["sub"] = data["sub"]
+    if "tenant_id" in data:
+        to_encode["tenant_id"] = data["tenant_id"]
+    if "role_id" in data:
+        to_encode["role_id"] = data["role_id"]
+    if "email" in data:
+        to_encode["email"] = data["email"]
+    if "is_superuser" in data:
+        to_encode["is_superuser"] = data["is_superuser"]
 
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
@@ -49,7 +61,6 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
         GLOBAL_JWT_SECRET,
         algorithm=GLOBAL_JWT_ALGORITHM
     )
-    # print(f"[AUTH] Created access token with secret {GLOBAL_JWT_SECRET[:20]}...")
     return encoded_jwt
 
 
@@ -75,19 +86,21 @@ def verify_token(token: str) -> TokenData:
         )
         user_id: str = payload.get("sub")
         tenant_id: str = payload.get("tenant_id")
-        role_id: str = payload.get("role_id")
-        permissions: list = payload.get("permissions", [])
+        role_id: int = payload.get("role_id")
+        email: str = payload.get("email")
+        is_superuser: bool = payload.get("is_superuser", False)
         exp: Optional[datetime] = payload.get("exp")
 
-        if user_id is None or tenant_id is None or role_id is None:
+        if user_id is None or role_id is None:
             raise credentials_exception
 
         token_data = TokenData(
             user_id=user_id,
             tenant_id=tenant_id,
             role_id=role_id,
-            permissions=permissions,
-            exp=exp
+            permissions=[],  # Permissions will be fetched from database
+            exp=exp,
+            is_superuser=is_superuser
         )
         return token_data
     except JWTError:

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { headers } from 'next/headers';
 
 const API_URL = process.env.NEXT_PUBLIC_AUTH_API_URL || 'http://localhost:8001';
 

@@ -96,11 +96,14 @@ export default function Trips() {
   // Fetch all resources
   const fetchResources = async () => {
     try {
+      // Use default tenant for now - in production, this would come from auth context
+      const tenantId = "default-tenant";
+
       const [trucksData, driversData, ordersData, branchesData] = await Promise.all([
-        tmsResourcesAPI.getTrucks(),
+        tmsResourcesAPI.getTrucks(tenantId),
         tmsResourcesAPI.getDrivers(),
         tmsResourcesAPI.getOrders(),
-        tmsResourcesAPI.getBranches(),
+        tmsResourcesAPI.getBranches(tenantId),
       ]);
 
       setAvailableTrucks(trucksData);
@@ -171,6 +174,18 @@ export default function Trips() {
 
   const handleStatusChange = async (tripId: string, newStatus: string) => {
     try {
+      // Check if trying to change to loading status and validate order statuses
+      if (newStatus === 'loading') {
+        const trip = allTrips.find(t => t.id === tripId);
+        if (trip && trip.orders) {
+          const hasPendingOrders = trip.orders.some(order => order.status === 'submitted');
+          if (hasPendingOrders) {
+            alert('Cannot change trip status to loading while there are orders submitted for approval.');
+            return;
+          }
+        }
+      }
+
       await tmsAPI.updateTrip(tripId, { status: newStatus });
 
       // Refresh trips to show updated status
@@ -248,16 +263,47 @@ export default function Trips() {
     }
   };
 
-  const handleBranchSelect = (branch: string) => {
-    setSelectedBranch(branch);
+  const handleBranchSelect = async (branchName: string) => {
+    setSelectedBranch(branchName);
     setSelectedTruck('');
     setSelectedDriver(null);
     setBranchSearchTerm('');
     setTruckSearchTerm('');
     setDriverSearchTerm('');
+
+    // Find the branch object to get its ID
+    const selectedBranchObj = branches.find(b => b.name === branchName);
+
+    if (selectedBranchObj) {
+      try {
+        // Check if this is a fallback branch (from company service being down)
+        if (selectedBranchObj.id === 'default-branch') {
+          // If it's a fallback branch, just use the general trucks list
+          const tenantId = "default-tenant";
+          const allTrucks = await tmsResourcesAPI.getTrucks(tenantId);
+          setAvailableTrucks(allTrucks);
+        } else {
+          // Fetch trucks for the selected branch
+          const tenantId = "default-tenant";
+          const branchTrucks = await tmsResourcesAPI.getTrucksByBranch(selectedBranchObj.id, tenantId);
+          setAvailableTrucks(branchTrucks);
+        }
+      } catch (err) {
+        console.error('Failed to fetch trucks for branch:', err);
+        // Fallback to general trucks list if branch-specific fetch fails
+        try {
+          const tenantId = "default-tenant";
+          const allTrucks = await tmsResourcesAPI.getTrucks(tenantId);
+          setAvailableTrucks(allTrucks);
+        } catch (fallbackErr) {
+          console.error('Failed to fetch fallback trucks:', fallbackErr);
+          // Keep existing trucks if all fetches fail
+        }
+      }
+    }
   };
 
-  const handleCloseModal = () => {
+  const handleCloseModal = async () => {
     setSelectedBranch('');
     setSelectedTruck('');
     setSelectedDriver(null);
@@ -266,6 +312,9 @@ export default function Trips() {
     setBranchSearchTerm('');
     setTruckSearchTerm('');
     setDriverSearchTerm('');
+
+    // Reset to fetch all trucks again
+    await fetchResources();
   };
 
   const getPriorityVariant = (priority: string) => {
@@ -298,9 +347,41 @@ export default function Trips() {
     }
   };
 
-  const getApprovedOrders = () => availableOrders.filter(order => order.status === 'approved');
+  const getOrderStatusVariant = (status: string) => {
+    switch (status) {
+      case 'submitted':
+        return 'default';
+      case 'finance_approved':
+        return 'success';
+      default:
+        return 'default';
+    }
+  };
+
+  const getOrderStatusDisplay = (status: string) => {
+    switch (status) {
+      case 'submitted':
+        return 'Submitted';
+      case 'finance_approved':
+        return 'Finance Approved';
+      default:
+        return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
+    }
+  };
+
+  const getApprovedOrders = () => availableOrders.filter(order =>
+    order.status === 'submitted' ||
+    order.status === 'finance_approved'
+  );
   const getTrucksAvailable = () => availableTrucks.filter(truck => truck.status === 'available');
   const getDriversAvailable = () => availableDrivers.filter(driver => driver.status === 'active' && !driver.currentTruck);
+
+  // Check if order is already assigned to any trip
+  const isOrderAssigned = (orderId: string) => {
+    return allTrips.some(trip =>
+      trip.orders.some(order => order.id === orderId)
+    );
+  };
 
   // Filter functions for trip creation
   const getFilteredBranches = () => {
@@ -331,21 +412,15 @@ export default function Trips() {
   // Order assignment helper functions
   const getAvailableOrders = () => {
     return availableOrders.filter(order => {
-      const isApproved = order.status === 'approved';
+      const isApprovedStatus = order.status === 'submitted' ||
+        order.status === 'finance_approved';
       const isNotAssigned = !isOrderAssigned(order.id);
       const matchesSearch = order.customer.toLowerCase().includes(orderSearchTerm.toLowerCase()) ||
-                           order.id.toLowerCase().includes(orderSearchTerm.toLowerCase());
+        order.id.toLowerCase().includes(orderSearchTerm.toLowerCase());
       const matchesPriority = orderPriorityFilter === 'all' || order.priority === orderPriorityFilter;
 
-      return isApproved && isNotAssigned && matchesSearch && matchesPriority;
+      return isApprovedStatus && isNotAssigned && matchesSearch && matchesPriority;
     });
-  };
-
-  // Check if order is already assigned to any trip
-  const isOrderAssigned = (orderId: string) => {
-    return allTrips.some(trip =>
-      trip.orders.some(order => order.id === orderId)
-    );
   };
 
   // Toggle trip expansion
@@ -431,12 +506,12 @@ export default function Trips() {
 
         // If order is from another trip, we need to handle reassignment
         if (draggedOrder.sourceTripId) {
-          await tmsAPI.removeOrderFromTrip(draggedOrder.sourceTripId, draggedOrder.id);
+          await tmsAPI.removeOrderFromTrip(draggedOrder.sourceTripId, draggedOrder.order_id || draggedOrder.id);
         }
 
         // Assign order to new trip
         const orderData = {
-          order_id: draggedOrder.id,
+          order_id: draggedOrder.order_id || draggedOrder.id,
           customer: draggedOrder.customer,
           customerAddress: draggedOrder.customerAddress,
           total: draggedOrder.total,
@@ -568,6 +643,7 @@ export default function Trips() {
     }, 0);
   };
 
+
   const getCapacityPercentage = (used: number, total: number) => {
     if (total === 0) return 0;
     return Math.round((used / total) * 100);
@@ -696,144 +772,128 @@ export default function Trips() {
           </Button>
         </div>
 
-        {/* Status Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <Card
-            className={`cursor-pointer transition-all hover:shadow-md ${
-              statusFilter === 'planning' ? 'ring-2 ring-blue-500 bg-blue-50' : ''
-            }`}
-            onClick={() => setStatusFilter(statusFilter === 'planning' ? null : 'planning')}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${
-                  statusFilter === 'planning' ? 'bg-blue-100' : 'bg-gray-100'
-                }`}>
-                  <Package className={`w-5 h-5 ${
-                    statusFilter === 'planning' ? 'text-blue-600' : 'text-gray-600'
-                  }`} />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-black">{tripStats.planning}</p>
-                  <p className={`text-sm ${
-                    statusFilter === 'planning' ? 'text-blue-600 font-medium' : 'text-gray-500'
-                  }`}>
-                    Planning
-                    {statusFilter === 'planning' && <span className="ml-1">✓</span>}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card
-            className={`cursor-pointer transition-all hover:shadow-md ${
-              statusFilter === 'loading' ? 'ring-2 ring-blue-500 bg-blue-50' : ''
-            }`}
-            onClick={() => setStatusFilter(statusFilter === 'loading' ? null : 'loading')}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${
-                  statusFilter === 'loading' ? 'bg-yellow-100' : 'bg-yellow-50'
-                }`}>
-                  <Truck className="w-5 h-5 text-yellow-600" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-black">{tripStats.loading}</p>
-                  <p className={`text-sm ${
-                    statusFilter === 'loading' ? 'text-blue-600 font-medium' : 'text-gray-500'
-                  }`}>
-                    Loading
-                    {statusFilter === 'loading' && <span className="ml-1">✓</span>}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card
-            className={`cursor-pointer transition-all hover:shadow-md ${
-              statusFilter === 'on-route' ? 'ring-2 ring-blue-500 bg-blue-50' : ''
-            }`}
-            onClick={() => setStatusFilter(statusFilter === 'on-route' ? null : 'on-route')}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${
-                  statusFilter === 'on-route' ? 'bg-blue-100' : 'bg-blue-50'
-                }`}>
-                  <MapPin className="w-5 h-5 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-black">{tripStats.onRoute}</p>
-                  <p className={`text-sm ${
-                    statusFilter === 'on-route' ? 'text-blue-600 font-medium' : 'text-gray-500'
-                  }`}>
-                    On Route
-                    {statusFilter === 'on-route' && <span className="ml-1">✓</span>}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card
-            className={`cursor-pointer transition-all hover:shadow-md ${
-              statusFilter === 'completed' ? 'ring-2 ring-blue-500 bg-blue-50' : ''
-            }`}
-            onClick={() => setStatusFilter(statusFilter === 'completed' ? null : 'completed')}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${
-                  statusFilter === 'completed' ? 'bg-green-100' : 'bg-green-50'
-                }`}>
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-black">{tripStats.completed}</p>
-                  <p className={`text-sm ${
-                    statusFilter === 'completed' ? 'text-blue-600 font-medium' : 'text-gray-500'
-                  }`}>
-                    Completed
-                    {statusFilter === 'completed' && <span className="ml-1">✓</span>}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card
-            className={`cursor-pointer transition-all hover:shadow-md ${
-              statusFilter === 'cancelled' ? 'ring-2 ring-blue-500 bg-blue-50' : ''
-            }`}
-            onClick={() => setStatusFilter(statusFilter === 'cancelled' ? null : 'cancelled')}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${
-                  statusFilter === 'cancelled' ? 'bg-red-100' : 'bg-red-50'
-                }`}>
-                  <XCircle className="w-5 h-5 text-red-600" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-black">{tripStats.cancelled}</p>
-                  <p className={`text-sm ${
-                    statusFilter === 'cancelled' ? 'text-blue-600 font-medium' : 'text-gray-500'
-                  }`}>
-                    Cancelled
-                    {statusFilter === 'cancelled' && <span className="ml-1">✓</span>}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+            {/* Status Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <Card
+                className={`cursor-pointer transition-all hover:shadow-md ${statusFilter === 'planning' ? 'ring-2 ring-blue-500 bg-blue-50' : ''
+                  }`}
+                onClick={() => setStatusFilter(statusFilter === 'planning' ? null : 'planning')}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${statusFilter === 'planning' ? 'bg-blue-100' : 'bg-gray-100'
+                      }`}>
+                      <Package className={`w-5 h-5 ${statusFilter === 'planning' ? 'text-blue-600' : 'text-gray-600'
+                        }`} />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-black">{tripStats.planning}</p>
+                      <p className={`text-sm ${statusFilter === 'planning' ? 'text-blue-600 font-medium' : 'text-gray-500'
+                        }`}>
+                        Planning
+                        {statusFilter === 'planning' && <span className="ml-1">✓</span>}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card
+                className={`cursor-pointer transition-all hover:shadow-md ${statusFilter === 'loading' ? 'ring-2 ring-blue-500 bg-blue-50' : ''
+                  }`}
+                onClick={() => setStatusFilter(statusFilter === 'loading' ? null : 'loading')}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${statusFilter === 'loading' ? 'bg-yellow-100' : 'bg-yellow-50'
+                      }`}>
+                      <Truck className="w-5 h-5 text-yellow-600" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-black">{tripStats.loading}</p>
+                      <p className={`text-sm ${statusFilter === 'loading' ? 'text-blue-600 font-medium' : 'text-gray-500'
+                        }`}>
+                        Loading
+                        {statusFilter === 'loading' && <span className="ml-1">✓</span>}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card
+                className={`cursor-pointer transition-all hover:shadow-md ${statusFilter === 'on-route' ? 'ring-2 ring-blue-500 bg-blue-50' : ''
+                  }`}
+                onClick={() => setStatusFilter(statusFilter === 'on-route' ? null : 'on-route')}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${statusFilter === 'on-route' ? 'bg-blue-100' : 'bg-blue-50'
+                      }`}>
+                      <MapPin className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-black">{tripStats.onRoute}</p>
+                      <p className={`text-sm ${statusFilter === 'on-route' ? 'text-blue-600 font-medium' : 'text-gray-500'
+                        }`}>
+                        On Route
+                        {statusFilter === 'on-route' && <span className="ml-1">✓</span>}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card
+                className={`cursor-pointer transition-all hover:shadow-md ${statusFilter === 'completed' ? 'ring-2 ring-blue-500 bg-blue-50' : ''
+                  }`}
+                onClick={() => setStatusFilter(statusFilter === 'completed' ? null : 'completed')}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${statusFilter === 'completed' ? 'bg-green-100' : 'bg-green-50'
+                      }`}>
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-black">{tripStats.completed}</p>
+                      <p className={`text-sm ${statusFilter === 'completed' ? 'text-blue-600 font-medium' : 'text-gray-500'
+                        }`}>
+                        Completed
+                        {statusFilter === 'completed' && <span className="ml-1">✓</span>}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card
+                className={`cursor-pointer transition-all hover:shadow-md ${statusFilter === 'cancelled' ? 'ring-2 ring-blue-500 bg-blue-50' : ''
+                  }`}
+                onClick={() => setStatusFilter(statusFilter === 'cancelled' ? null : 'cancelled')}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${statusFilter === 'cancelled' ? 'bg-red-100' : 'bg-red-50'
+                      }`}>
+                      <XCircle className="w-5 h-5 text-red-600" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-black">{tripStats.cancelled}</p>
+                      <p className={`text-sm ${statusFilter === 'cancelled' ? 'text-blue-600 font-medium' : 'text-gray-500'
+                        }`}>
+                        Cancelled
+                        {statusFilter === 'cancelled' && <span className="ml-1">✓</span>}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
 
-        {/* Main Content Tabs */}
-        <Tabs defaultValue="trips" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="trips" className="text-black">Trips ({activeTrips.length})</TabsTrigger>
-            <TabsTrigger value="orders" className="text-black">Approved Orders ({getApprovedOrders().length})</TabsTrigger>
-            <TabsTrigger value="resources" className="text-black">Resources</TabsTrigger>
-          </TabsList>
+            {/* Main Content Tabs */}
+            <Tabs defaultValue="trips" className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="trips" className="text-black">Trips ({activeTrips.length})</TabsTrigger>
+                <TabsTrigger value="orders" className="text-black">Orders ({getApprovedOrders().length})</TabsTrigger>
+                <TabsTrigger value="resources" className="text-black">Resources</TabsTrigger>
+              </TabsList>
 
           {/* Trips Tab */}
           <TabsContent value="trips">
@@ -940,88 +1000,87 @@ export default function Trips() {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
-                          <div>
-                            <p className="text-gray-600 mb-1">Route</p>
-                            <p className="font-medium text-gray-900">
-                              {trip.origin} → {trip.destination}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600 mb-1">Truck</p>
-                            <p className="font-medium text-gray-900">
-                              {trip.truck ? `${trip.truck.plate} (${trip.truck.model})` : 'Not assigned'}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600 mb-1">Driver</p>
-                            <p className="font-medium text-gray-900">
-                              {trip.driver ? trip.driver.name : 'Not assigned'}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600 mb-1">Capacity</p>
-                            <div className="space-y-1">
-                              <p className="font-medium text-gray-900">
-                                {trip.capacityUsed}/{trip.capacityTotal} kg
-                              </p>
-                              {trip.capacityTotal && trip.capacityTotal > 0 && (
-                                <div className="relative">
-                                  <div className="w-full bg-gray-200 rounded-full h-2">
-                                    <div
-                                      className={`h-2 rounded-full transition-all ${getCapacityColor(getCapacityPercentage(trip.capacityUsed || 0, trip.capacityTotal))}`}
-                                      style={{ width: `${Math.min(getCapacityPercentage(trip.capacityUsed || 0, trip.capacityTotal), 100)}%` }}
-                                    />
+                              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                                <div>
+                                  <p className="text-gray-600 mb-1">Route</p>
+                                  <p className="font-medium text-gray-900">
+                                    {trip.origin} → {trip.destination}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600 mb-1">Truck</p>
+                                  <p className="font-medium text-gray-900">
+                                    {trip.truck ? `${trip.truck.plate} (${trip.truck.model})` : 'Not assigned'}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600 mb-1">Driver</p>
+                                  <p className="font-medium text-gray-900">
+                                    {trip.driver ? trip.driver.name : 'Not assigned'}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600 mb-1">Capacity</p>
+                                  <div className="space-y-1">
+                                    <p className="font-medium text-gray-900">
+                                      {trip.capacityUsed}/{trip.capacityTotal} kg
+                                    </p>
+                                    {trip.capacityTotal && trip.capacityTotal > 0 && (
+                                      <div className="relative">
+                                        <div className="w-full bg-gray-200 rounded-full h-2">
+                                          <div
+                                            className={`h-2 rounded-full transition-all ${getCapacityColor(getCapacityPercentage(trip.capacityUsed || 0, trip.capacityTotal))}`}
+                                            style={{ width: `${Math.min(getCapacityPercentage(trip.capacityUsed || 0, trip.capacityTotal), 100)}%` }}
+                                          />
+                                        </div>
+                                        <span className={`text-xs font-medium ${getCapacityPercentage(trip.capacityUsed || 0, trip.capacityTotal) >= 100
+                                          ? 'text-red-600'
+                                          : getCapacityPercentage(trip.capacityUsed || 0, trip.capacityTotal) >= 80
+                                            ? 'text-yellow-600'
+                                            : 'text-green-600'
+                                          }`}>
+                                          {getCapacityPercentage(trip.capacityUsed || 0, trip.capacityTotal)}%
+                                        </span>
+                                        {getCapacityPercentage(trip.capacityUsed || 0, trip.capacityTotal) > 100 && (
+                                          <span className="text-xs text-red-600 ml-1">⚠️ Overloaded</span>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
-                                  <span className={`text-xs font-medium ${
-                                    getCapacityPercentage(trip.capacityUsed || 0, trip.capacityTotal) >= 100
-                                      ? 'text-red-600'
-                                      : getCapacityPercentage(trip.capacityUsed || 0, trip.capacityTotal) >= 80
-                                      ? 'text-yellow-600'
-                                      : 'text-green-600'
-                                  }`}>
-                                    {getCapacityPercentage(trip.capacityUsed || 0, trip.capacityTotal)}%
-                                  </span>
-                                  {getCapacityPercentage(trip.capacityUsed || 0, trip.capacityTotal) > 100 && (
-                                    <span className="text-xs text-red-600 ml-1">⚠️ Overloaded</span>
-                                  )}
                                 </div>
-                              )}
+                              </div>
                             </div>
-                          </div>
-                        </div>
-                      </div>
 
-                      {/* Trip Details */}
-                      <div className="p-4 bg-white">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Trip Details */}
+                            <div className="p-4 bg-white">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-                          {/* Assignment Details */}
-                          <div>
-                            <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                              <User className="w-4 h-4" />
-                              Assignment Details
-                            </h4>
-                            <div className="space-y-2 text-sm">
-                              <div className="flex justify-between">
-                                <span className="text-gray-600">Total Orders:</span>
-                                <span className="font-medium text-gray-900">{trip.orders.length}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-600">Total Weight:</span>
-                                <span className="font-medium text-gray-900">
-                                  {trip.orders.reduce((sum, order) => sum + order.weight, 0)} kg
-                                </span>
-                              </div>
-                              {trip.driver && (
-                                <div className="flex justify-between">
-                                  <span className="text-gray-600">Driver Phone:</span>
-                                  <span className="font-medium text-gray-900">{trip.driver.phone}</span>
+                                {/* Assignment Details */}
+                                <div>
+                                  <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                    <User className="w-4 h-4" />
+                                    Assignment Details
+                                  </h4>
+                                  <div className="space-y-2 text-sm">
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-600">Total Orders:</span>
+                                      <span className="font-medium text-gray-900">{trip.orders.length}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-600">Total Weight:</span>
+                                      <span className="font-medium text-gray-900">
+                                        {trip.orders.reduce((sum, order) => sum + order.weight, 0)} kg
+                                      </span>
+                                    </div>
+                                    {trip.driver && (
+                                      <div className="flex justify-between">
+                                        <span className="text-gray-600">Driver Phone:</span>
+                                        <span className="font-medium text-gray-900">{trip.driver.phone}</span>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
+                              </div>
 
                         {/* Orders Section */}
                         <div className="mt-6 pt-4 border-t border-gray-200">
@@ -1111,7 +1170,7 @@ export default function Trips() {
                                     <span className="text-xs font-medium text-gray-500 bg-gray-200 px-2 py-1 rounded">
                                       #{order.sequence_number !== undefined ? order.sequence_number + 1 : index + 1}
                                     </span>
-                                    <span className="font-medium text-gray-900">{order.id}</span>
+                                    <span className="font-medium text-gray-900">{order.order_id || order.id}</span>
                                     <span className="text-gray-900">{order.customer}</span>
                                     <Badge variant={getPriorityVariant(order.priority)} className="text-xs">
                                       {order.priority.toUpperCase()}
@@ -1137,9 +1196,9 @@ export default function Trips() {
                                           onClick={async (e) => {
                                             e.stopPropagation();
                                             // Handle remove from trip
-                                            if (confirm(`Remove order ${order.id} from this trip?`)) {
+                                            if (confirm(`Remove order ${order.order_id || order.id} from this trip?`)) {
                                               try {
-                                                await tmsAPI.removeOrderFromTrip(trip.id, order.id);
+                                                await tmsAPI.removeOrderFromTrip(trip.id, order.order_id || order.id);
                                                 fetchTrips();
                                               } catch (err) {
                                                 alert(err instanceof Error ? err.message : 'Failed to remove order');
@@ -1180,28 +1239,28 @@ export default function Trips() {
                           </div>
                         )}
 
-                        {/* Lock Status Message */}
-                        {isTripLocked(trip.status) && (
-                          <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                            <p className="text-sm text-yellow-800">
-                              <strong>Trip is locked:</strong> Order details cannot be modified when trip is {trip.status.replace('-', ' ')}.
-                            </p>
+                              {/* Lock Status Message */}
+                              {isTripLocked(trip.status) && (
+                                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                  <p className="text-sm text-yellow-800">
+                                    <strong>Trip is locked:</strong> Order details cannot be modified when trip is {trip.status.replace('-', ' ')}.
+                                  </p>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        )}
-                      </div>
+                        )))}
                     </div>
-                  )))}
-                </div>
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
 
-          </TabsContent>
+              </TabsContent>
 
           {/* Approved Orders Tab */}
           <TabsContent value="orders">
             <Card>
               <CardHeader>
-                <CardTitle className="text-black">Approved Orders ({getApprovedOrders().length})</CardTitle>
+                <CardTitle className="text-black">Orders ({getApprovedOrders().length})</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -1218,8 +1277,8 @@ export default function Trips() {
                           <Badge variant={getPriorityVariant(order.priority)} className="mt-1">
                             {order.priority}
                           </Badge>
-                          <Badge variant="success">
-                            {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                          <Badge variant={getOrderStatusVariant(order.status)}>
+                            {getOrderStatusDisplay(order.status)}
                           </Badge>
                         </div>
                         <div className="text-right">
@@ -1228,91 +1287,91 @@ export default function Trips() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div>
-                          <p className="text-sm text-gray-600">Customer</p>
-                          <p className="font-medium text-gray-900">{order.customer}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-600">Items</p>
-                          <p className="font-medium text-gray-900">{order.items}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-600">Weight</p>
-                          <p className="font-medium text-gray-900 flex items-center gap-1">
-                            <Weight className="w-4 h-4" />
-                            {order.weight} kg
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-600">Volume</p>
-                          <p className="font-medium text-gray-900">{order.volume} L</p>
-                        </div>
-                      </div>
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div>
+                              <p className="text-sm text-gray-600">Customer</p>
+                              <p className="font-medium text-gray-900">{order.customer}</p>
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-600">Items</p>
+                              <p className="font-medium text-gray-900">{order.items}</p>
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-600">Weight</p>
+                              <p className="font-medium text-gray-900 flex items-center gap-1">
+                                <Weight className="w-4 h-4" />
+                                {order.weight} kg
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-600">Volume</p>
+                              <p className="font-medium text-gray-900">{order.volume} L</p>
+                            </div>
+                          </div>
 
-                      <div className="mt-3 pt-3 border-t border-gray-200">
-                        <p className="text-sm text-gray-900">
-                          <MapPin className="w-4 h-4 inline mr-1 text-gray-400" />
-                          {order.address}
-                        </p>
-                      </div>
+                          <div className="mt-3 pt-3 border-t border-gray-200">
+                            <p className="text-sm text-gray-900">
+                              <MapPin className="w-4 h-4 inline mr-1 text-gray-400" />
+                              {order.address}
+                            </p>
+                          </div>
 
-                      <div className="mt-3 flex gap-2">
-                        <Button size="sm">Assign to Trip</Button>
-                        <Button size="sm" variant="outline">View Details</Button>
-                      </div>
+                          <div className="mt-3 flex gap-2">
+                            <Button size="sm">Assign to Trip</Button>
+                            <Button size="sm" variant="outline">View Details</Button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Resources Tab */}
+              <TabsContent value="resources">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Available Trucks */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-black">Available Trucks ({getTrucksAvailable().length})</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {getTrucksAvailable().map((truck) => (
+                          <div key={truck.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                            <div>
+                              <p className="font-medium text-gray-900">{truck.plate}</p>
+                              <p className="text-sm text-gray-600">{truck.model} • {truck.capacity}kg</p>
+                            </div>
+                            <Badge variant="success">Available</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Available Drivers */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-black">Available Drivers ({availableDrivers.length})</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {availableDrivers.map((driver) => (
+                          <div key={driver.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                            <div>
+                              <p className="font-medium text-gray-900">{driver.name}</p>
+                              <p className="text-sm text-gray-600">{driver.phone} • {driver.experience}</p>
+                            </div>
+                            <Badge variant="success">Available</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Resources Tab */}
-          <TabsContent value="resources">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Available Trucks */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-black">Available Trucks ({getTrucksAvailable().length})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {getTrucksAvailable().map((truck) => (
-                      <div key={truck.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
-                        <div>
-                          <p className="font-medium text-gray-900">{truck.plate}</p>
-                          <p className="text-sm text-gray-600">{truck.model} • {truck.capacity}kg</p>
-                        </div>
-                        <Badge variant="success">Available</Badge>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Available Drivers */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-black">Available Drivers ({availableDrivers.length})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {availableDrivers.map((driver) => (
-                      <div key={driver.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
-                        <div>
-                          <p className="font-medium text-gray-900">{driver.name}</p>
-                          <p className="text-sm text-gray-600">{driver.phone} • {driver.experience}</p>
-                        </div>
-                        <Badge variant="success">Available</Badge>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-        </Tabs>
+              </TabsContent>
+            </Tabs>
 
         {/* Create Trip Modal - Same as original */}
         {showCreateTrip && (
@@ -1332,43 +1391,40 @@ export default function Trips() {
                 </div>
               </div>
 
-              {/* Progress Steps */}
-              <div className="px-6 py-4 border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                      currentStep >= 1 ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'
-                    }`}>
-                      1
+                  {/* Progress Steps */}
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${currentStep >= 1 ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'
+                          }`}>
+                          1
+                        </div>
+                        <span className={`ml-2 text-sm font-medium ${currentStep >= 1 ? 'text-green-600' : 'text-gray-500'}`}>
+                          Select Branch
+                        </span>
+                      </div>
+                      <div className={`flex-1 h-1 mx-4 ${currentStep >= 2 ? 'bg-green-600' : 'bg-gray-200'}`}></div>
+                      <div className="flex items-center">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${currentStep >= 2 ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'
+                          }`}>
+                          2
+                        </div>
+                        <span className={`ml-2 text-sm font-medium ${currentStep >= 2 ? 'text-green-600' : 'text-gray-500'}`}>
+                          Select Truck
+                        </span>
+                      </div>
+                      <div className={`flex-1 h-1 mx-4 ${currentStep >= 3 ? 'bg-green-600' : 'bg-gray-200'}`}></div>
+                      <div className="flex items-center">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${currentStep >= 3 ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'
+                          }`}>
+                          3
+                        </div>
+                        <span className={`ml-2 text-sm font-medium ${currentStep >= 3 ? 'text-green-600' : 'text-gray-500'}`}>
+                          Select Driver
+                        </span>
+                      </div>
                     </div>
-                    <span className={`ml-2 text-sm font-medium ${currentStep >= 1 ? 'text-green-600' : 'text-gray-500'}`}>
-                      Select Branch
-                    </span>
                   </div>
-                  <div className={`flex-1 h-1 mx-4 ${currentStep >= 2 ? 'bg-green-600' : 'bg-gray-200'}`}></div>
-                  <div className="flex items-center">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                      currentStep >= 2 ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'
-                    }`}>
-                      2
-                    </div>
-                    <span className={`ml-2 text-sm font-medium ${currentStep >= 2 ? 'text-green-600' : 'text-gray-500'}`}>
-                      Select Truck
-                    </span>
-                  </div>
-                  <div className={`flex-1 h-1 mx-4 ${currentStep >= 3 ? 'bg-green-600' : 'bg-gray-200'}`}></div>
-                  <div className="flex items-center">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                      currentStep >= 3 ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'
-                    }`}>
-                      3
-                    </div>
-                    <span className={`ml-2 text-sm font-medium ${currentStep >= 3 ? 'text-green-600' : 'text-gray-500'}`}>
-                      Select Driver
-                    </span>
-                  </div>
-                </div>
-              </div>
 
               {/* Step Content - Same as original */}
               <div className="px-6 py-6">
@@ -1490,13 +1546,13 @@ export default function Trips() {
                   </div>
                 )}
 
-                {/* Step 3: Select Driver */}
-                {currentStep === 3 && (
-                  <div className="space-y-6">
-                    <div>
-                      <h3 className="text-lg font-semibold text-black mb-2">Select Driver</h3>
-                      <p className="text-sm text-gray-600 mb-4">Choose a driver for the trip</p>
-                    </div>
+                    {/* Step 3: Select Driver */}
+                    {currentStep === 3 && (
+                      <div className="space-y-6">
+                        <div>
+                          <h3 className="text-lg font-semibold text-black mb-2">Select Driver</h3>
+                          <p className="text-sm text-gray-600 mb-4">Choose a driver for the trip</p>
+                        </div>
 
                     {/* Previous Selections Summary */}
                     <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
@@ -1579,39 +1635,39 @@ export default function Trips() {
                 )}
               </div>
 
-              {/* Action Buttons */}
-              <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4">
-                <div className="flex justify-between">
-                  <Button
-                    onClick={handlePrevStep}
-                    variant="outline"
-                    disabled={currentStep === 1}
-                    className="text-gray-700 border-gray-300 hover:bg-gray-50"
-                  >
-                    Previous
-                  </Button>
-                  {currentStep < 3 ? (
-                    <Button
-                      onClick={handleNextStep}
-                      disabled={currentStep === 1 && !selectedBranch || currentStep === 2 && !selectedTruck}
-                      className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
-                    >
-                      Next
-                    </Button>
-                  ) : (
-                    <Button
-                      onClick={handleCreateTrip}
-                      disabled={!selectedDriver}
-                      className="bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
-                    >
-                      Create Trip
-                    </Button>
-                  )}
+                  {/* Action Buttons */}
+                  <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4">
+                    <div className="flex justify-between">
+                      <Button
+                        onClick={handlePrevStep}
+                        variant="outline"
+                        disabled={currentStep === 1}
+                        className="text-gray-700 border-gray-300 hover:bg-gray-50"
+                      >
+                        Previous
+                      </Button>
+                      {currentStep < 3 ? (
+                        <Button
+                          onClick={handleNextStep}
+                          disabled={currentStep === 1 && !selectedBranch || currentStep === 2 && !selectedTruck}
+                          className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
+                        >
+                          Next
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={handleCreateTrip}
+                          disabled={!selectedDriver}
+                          className="bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
+                        >
+                          Create Trip
+                        </Button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
+            )}
 
         {/* Order Assignment Modal - Same as original */}
         {showOrderModal && selectedTripForOrders && (
@@ -1638,176 +1694,174 @@ export default function Trips() {
                 </div>
               </div>
 
-              <div className="px-6 py-6">
-                {/* Capacity Summary */}
-                <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <p className="text-sm text-gray-600">Current Capacity Used</p>
-                      <p className="text-lg font-semibold text-black">{selectedTripForOrders.capacityUsed || 0}kg</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Selected Orders Weight</p>
-                      <p className="text-lg font-semibold text-blue-600">{calculateTotalWeight(selectedOrders)}kg</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Total After Assignment</p>
-                      <p className={`text-lg font-semibold ${
-                        (selectedTripForOrders.capacityUsed || 0) + calculateTotalWeight(selectedOrders) > (selectedTripForOrders.capacityTotal || 0)
-                          ? 'text-red-600'
-                          : 'text-green-600'
-                      }`}>
-                        {(selectedTripForOrders.capacityUsed || 0) + calculateTotalWeight(selectedOrders)}kg
-                      </p>
-                    </div>
-                  </div>
-                  {(selectedTripForOrders.capacityTotal || 0) > 0 && (
-                    <div className="mt-4">
-                      <div className="w-full bg-gray-200 rounded-full h-3">
-                        <div
-                          className={`h-3 rounded-full transition-all ${getCapacityColor(
-                            getCapacityPercentage(
+                  <div className="px-6 py-6">
+                    {/* Capacity Summary */}
+                    <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <p className="text-sm text-gray-600">Current Capacity Used</p>
+                          <p className="text-lg font-semibold text-black">{selectedTripForOrders.capacityUsed || 0}kg</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">Selected Orders Weight</p>
+                          <p className="text-lg font-semibold text-blue-600">{calculateTotalWeight(selectedOrders)}kg</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">Total After Assignment</p>
+                          <p className={`text-lg font-semibold ${(selectedTripForOrders.capacityUsed || 0) + calculateTotalWeight(selectedOrders) > (selectedTripForOrders.capacityTotal || 0)
+                            ? 'text-red-600'
+                            : 'text-green-600'
+                            }`}>
+                            {(selectedTripForOrders.capacityUsed || 0) + calculateTotalWeight(selectedOrders)}kg
+                          </p>
+                        </div>
+                      </div>
+                      {(selectedTripForOrders.capacityTotal || 0) > 0 && (
+                        <div className="mt-4">
+                          <div className="w-full bg-gray-200 rounded-full h-3">
+                            <div
+                              className={`h-3 rounded-full transition-all ${getCapacityColor(
+                                getCapacityPercentage(
+                                  (selectedTripForOrders.capacityUsed || 0) + calculateTotalWeight(selectedOrders),
+                                  selectedTripForOrders.capacityTotal || 0
+                                )
+                              )}`}
+                              style={{
+                                width: `${Math.min(
+                                  getCapacityPercentage(
+                                    (selectedTripForOrders.capacityUsed || 0) + calculateTotalWeight(selectedOrders),
+                                    selectedTripForOrders.capacityTotal || 0
+                                  ),
+                                  100
+                                )}%`
+                              }}
+                            />
+                          </div>
+                          <p className="text-sm text-gray-600 mt-1">
+                            {getCapacityPercentage(
                               (selectedTripForOrders.capacityUsed || 0) + calculateTotalWeight(selectedOrders),
                               selectedTripForOrders.capacityTotal || 0
-                            )
-                          )}`}
-                          style={{
-                            width: `${Math.min(
-                              getCapacityPercentage(
-                                (selectedTripForOrders.capacityUsed || 0) + calculateTotalWeight(selectedOrders),
-                                selectedTripForOrders.capacityTotal || 0
-                              ),
-                              100
-                            )}%`
-                          }}
-                        />
-                      </div>
-                      <p className="text-sm text-gray-600 mt-1">
-                        {getCapacityPercentage(
-                          (selectedTripForOrders.capacityUsed || 0) + calculateTotalWeight(selectedOrders),
-                          selectedTripForOrders.capacityTotal || 0
-                        )}% capacity used
-                      </p>
+                            )}% capacity used
+                          </p>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
 
-                {/* Available Orders List */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold text-black">Available Orders</h3>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="text"
-                        placeholder="Search orders..."
-                        value={orderSearchTerm}
-                        onChange={(e) => setOrderSearchTerm(e.target.value)}
-                        className="px-3 py-2 border border-gray-300 rounded-md text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-500"
-                      />
-                      <select
-                        value={orderPriorityFilter}
-                        onChange={(e) => setOrderPriorityFilter(e.target.value)}
-                        className="px-3 py-2 border border-gray-300 rounded-md text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="all">All Priority</option>
-                        <option value="high">High Priority</option>
-                        <option value="medium">Medium Priority</option>
-                        <option value="low">Low Priority</option>
-                      </select>
+                    {/* Available Orders List */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-semibold text-black">Available Orders</h3>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="text"
+                            placeholder="Search orders..."
+                            value={orderSearchTerm}
+                            onChange={(e) => setOrderSearchTerm(e.target.value)}
+                            className="px-3 py-2 border border-gray-300 rounded-md text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-500"
+                          />
+                          <select
+                            value={orderPriorityFilter}
+                            onChange={(e) => setOrderPriorityFilter(e.target.value)}
+                            className="px-3 py-2 border border-gray-300 rounded-md text-sm text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="all">All Priority</option>
+                            <option value="high">High Priority</option>
+                            <option value="medium">Medium Priority</option>
+                            <option value="low">Low Priority</option>
+                          </select>
+                        </div>
+                      </div>
+                      {getAvailableOrders().length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                          <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                          <p>No available orders to assign</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                          {getAvailableOrders().map((order) => {
+                            const wouldExceedCapacity = (selectedTripForOrders.capacityUsed || 0) + calculateTotalWeight([...selectedOrders, order.id]) > (selectedTripForOrders.capacityTotal || 0);
+                            return (
+                              <div
+                                key={order.id}
+                                className={`p-4 border rounded-lg transition-all ${selectedOrders.includes(order.id)
+                                  ? 'border-blue-500 bg-blue-50'
+                                  : 'border-gray-200 hover:border-gray-300'
+                                  } ${wouldExceedCapacity ? 'border-orange-400' : ''}`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-4">
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedOrders.includes(order.id)}
+                                      onChange={() => {
+                                        if (!wouldExceedCapacity) {
+                                          handleOrderToggle(order.id);
+                                        }
+                                      }}
+                                      disabled={wouldExceedCapacity}
+                                      className="w-4 h-4 text-blue-600 rounded"
+                                    />
+                                    <div>
+                                      <p className="font-medium text-black">{order.id}</p>
+                                      <p className="text-sm text-gray-600">{order.customer}</p>
+                                      <p className="text-xs text-gray-500">{order.address}</p>
+                                      {wouldExceedCapacity && (
+                                        <span className="text-xs text-orange-600 font-medium">
+                                          ⚠️ Exceeds capacity!
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-4">
+                                    <Badge variant={getPriorityVariant(order.priority)} className="text-xs">
+                                      {order.priority.toUpperCase()}
+                                    </Badge>
+                                    <div className="text-right text-sm">
+                                      <p className="font-medium text-black">{order.weight}kg</p>
+                                      <p className="text-gray-600">{order.items} items</p>
+                                    </div>
+                                    {wouldExceedCapacity && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleSplitOrder(order)}
+                                        className="text-xs"
+                                      >
+                                        Split
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   </div>
-                  {getAvailableOrders().length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                      <p>No available orders to assign</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-h-64 overflow-y-auto">
-                      {getAvailableOrders().map((order) => {
-                        const wouldExceedCapacity = (selectedTripForOrders.capacityUsed || 0) + calculateTotalWeight([...selectedOrders, order.id]) > (selectedTripForOrders.capacityTotal || 0);
-                        return (
-                          <div
-                            key={order.id}
-                            className={`p-4 border rounded-lg transition-all ${
-                              selectedOrders.includes(order.id)
-                                ? 'border-blue-500 bg-blue-50'
-                                : 'border-gray-200 hover:border-gray-300'
-                            } ${wouldExceedCapacity ? 'border-orange-400' : ''}`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-4">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedOrders.includes(order.id)}
-                                  onChange={() => {
-                                    if (!wouldExceedCapacity) {
-                                      handleOrderToggle(order.id);
-                                    }
-                                  }}
-                                  disabled={wouldExceedCapacity}
-                                  className="w-4 h-4 text-blue-600 rounded"
-                                />
-                                <div>
-                                  <p className="font-medium text-black">{order.id}</p>
-                                  <p className="text-sm text-gray-600">{order.customer}</p>
-                                  <p className="text-xs text-gray-500">{order.address}</p>
-                                  {wouldExceedCapacity && (
-                                    <span className="text-xs text-orange-600 font-medium">
-                                      ⚠️ Exceeds capacity!
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-4">
-                                <Badge variant={getPriorityVariant(order.priority)} className="text-xs">
-                                  {order.priority.toUpperCase()}
-                                </Badge>
-                                <div className="text-right text-sm">
-                                  <p className="font-medium text-black">{order.weight}kg</p>
-                                  <p className="text-gray-600">{order.items} items</p>
-                                </div>
-                                {wouldExceedCapacity && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleSplitOrder(order)}
-                                    className="text-xs"
-                                  >
-                                    Split
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
 
-              {/* Modal Actions */}
-              <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4">
-                <div className="flex justify-between">
-                  <Button
-                    onClick={() => setShowOrderModal(false)}
-                    variant="outline"
-                    className="text-gray-700 border-gray-300 hover:bg-gray-50"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleAssignOrders}
-                    disabled={selectedOrders.length === 0}
-                    className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
-                  >
-                    Assign {selectedOrders.length} Order{selectedOrders.length !== 1 ? 's' : ''}
-                  </Button>
+                  {/* Modal Actions */}
+                  <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4">
+                    <div className="flex justify-between">
+                      <Button
+                        onClick={() => setShowOrderModal(false)}
+                        variant="outline"
+                        className="text-gray-700 border-gray-300 hover:bg-gray-50"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleAssignOrders}
+                        disabled={selectedOrders.length === 0}
+                        className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
+                      >
+                        Assign {selectedOrders.length} Order{selectedOrders.length !== 1 ? 's' : ''}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
+            )}
 
         {/* Split Order Confirmation Modal - Same as original */}
         {showSplitOptions && splitOrder && (
@@ -1832,175 +1886,174 @@ export default function Trips() {
                 </div>
               </div>
 
-              <div className="px-6 py-6">
-                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
-                  <h3 className="font-semibold text-orange-800 mb-2">Order Too Large for Trip</h3>
-                  <p className="text-sm text-orange-700">
-                    This order exceeds the remaining capacity of the trip. Select how many items to assign to this trip.
-                  </p>
-                </div>
-
-                {/* Original Order Details */}
-                <div className="mb-6">
-                  <h4 className="font-semibold text-black mb-3">Original Order Details</h4>
-                  <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Order ID:</span>
-                      <span className="font-medium text-black">{splitOrder.id}</span>
+                  <div className="px-6 py-6">
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
+                      <h3 className="font-semibold text-orange-800 mb-2">Order Too Large for Trip</h3>
+                      <p className="text-sm text-orange-700">
+                        This order exceeds the remaining capacity of the trip. Select how many items to assign to this trip.
+                      </p>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Customer:</span>
-                      <span className="font-medium text-black">{splitOrder.customer}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Total Items:</span>
-                      <span className="font-medium text-black">{splitOrder.items} items</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Total Weight:</span>
-                      <span className="font-medium text-black">{splitOrder.weight} kg</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Total Value:</span>
-                      <span className="font-medium text-black">
-                        EGP {splitOrder.total.toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-                </div>
 
-                {/* Split Selection */}
-                <div className="mb-6">
-                  <h4 className="font-semibold text-black mb-3">Select Split Amount</h4>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    {(() => {
-                      const availableCapacity = (selectedTripForOrders?.capacityTotal || 0) - (selectedTripForOrders?.capacityUsed || 0);
-                      const maxItemsThatFit = Math.floor(availableCapacity / (splitOrder.weight / splitOrder.items));
-                      const maxPossibleItems = Math.min(maxItemsThatFit, splitOrder.items);
-                      const itemsPerKg = splitOrder.weight / splitOrder.items;
-                      const remainingItems = splitOrder.items - splitItemsCount;
-                      const remainingWeight = splitOrder.weight - splitWeight;
-                      const splitValue = Math.round((splitOrder.total / splitOrder.items) * splitItemsCount);
-
-                      return (
-                        <div className="space-y-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Items to Assign (Max: {maxPossibleItems})
-                            </label>
-                            <input
-                              type="number"
-                              min="1"
-                              max={maxPossibleItems}
-                              value={splitItemsCount}
-                              onChange={(e) => {
-                                const items = Math.min(Math.max(1, parseInt(e.target.value) || 1), maxPossibleItems);
-                                setSplitItemsCount(items);
-                                setSplitWeight(Math.round(items * itemsPerKg));
-                              }}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div className="bg-white p-3 rounded border">
-                              <p className="text-gray-600 mb-1">This Trip</p>
-                              <p className="font-medium text-black">{splitItemsCount} items</p>
-                              <p className="font-medium text-black">{splitWeight} kg</p>
-                              <p className="font-medium text-black">EGP {splitValue.toLocaleString()}</p>
-                            </div>
-                            <div className="bg-orange-50 p-3 rounded border border-orange-200">
-                              <p className="text-gray-600 mb-1">Remaining</p>
-                              <p className="font-medium text-orange-600">{remainingItems} items</p>
-                              <p className="font-medium text-orange-600">{remainingWeight} kg</p>
-                              <p className="font-medium text-orange-600">EGP {(splitOrder.total - splitValue).toLocaleString()}</p>
-                            </div>
-                          </div>
-
-                          {maxPossibleItems >= splitOrder.items && (
-                            <div className="text-sm text-green-600 font-medium">
-                              ✓ Full order can fit in this trip
-                            </div>
-                          )}
+                    {/* Original Order Details */}
+                    <div className="mb-6">
+                      <h4 className="font-semibold text-black mb-3">Original Order Details</h4>
+                      <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Order ID:</span>
+                          <span className="font-medium text-black">{splitOrder.id}</span>
                         </div>
-                      );
-                    })()}
-                  </div>
-                </div>
-
-                {/* Trip Capacity After Assignment */}
-                <div className="mb-6">
-                  <h4 className="font-semibold text-black mb-3">Trip Capacity After Assignment</h4>
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                    {(() => {
-                      const newCapacityUsed = (selectedTripForOrders?.capacityUsed || 0) + splitWeight;
-                      const capacityPercentage = selectedTripForOrders?.capacityTotal
-                        ? Math.round((newCapacityUsed / selectedTripForOrders.capacityTotal) * 100)
-                        : 0;
-
-                      return (
-                        <div className="space-y-2">
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">New Capacity Used:</span>
-                            <span className="font-medium text-green-600">{newCapacityUsed} kg</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Utilization:</span>
-                            <span className="font-medium text-green-600">{capacityPercentage}%</span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2 mt-3">
-                            <div
-                              className={`h-2 rounded-full ${
-                                capacityPercentage >= 100 ? 'bg-red-500' :
-                                capacityPercentage >= 80 ? 'bg-yellow-500' : 'bg-green-500'
-                              }`}
-                              style={{ width: `${Math.min(capacityPercentage, 100)}%` }}
-                            />
-                          </div>
-                          {capacityPercentage > 100 && (
-                            <p className="text-xs text-red-600 mt-1">⚠️ Over capacity!</p>
-                          )}
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Customer:</span>
+                          <span className="font-medium text-black">{splitOrder.customer}</span>
                         </div>
-                      );
-                    })()}
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Total Items:</span>
+                          <span className="font-medium text-black">{splitOrder.items} items</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Total Weight:</span>
+                          <span className="font-medium text-black">{splitOrder.weight} kg</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Total Value:</span>
+                          <span className="font-medium text-black">
+                            EGP {splitOrder.total.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Split Selection */}
+                    <div className="mb-6">
+                      <h4 className="font-semibold text-black mb-3">Select Split Amount</h4>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        {(() => {
+                          const availableCapacity = (selectedTripForOrders?.capacityTotal || 0) - (selectedTripForOrders?.capacityUsed || 0);
+                          const maxItemsThatFit = Math.floor(availableCapacity / (splitOrder.weight / splitOrder.items));
+                          const maxPossibleItems = Math.min(maxItemsThatFit, splitOrder.items);
+                          const itemsPerKg = splitOrder.weight / splitOrder.items;
+                          const remainingItems = splitOrder.items - splitItemsCount;
+                          const remainingWeight = splitOrder.weight - splitWeight;
+                          const splitValue = Math.round((splitOrder.total / splitOrder.items) * splitItemsCount);
+
+                          return (
+                            <div className="space-y-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                  Items to Assign (Max: {maxPossibleItems})
+                                </label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max={maxPossibleItems}
+                                  value={splitItemsCount}
+                                  onChange={(e) => {
+                                    const items = Math.min(Math.max(1, parseInt(e.target.value) || 1), maxPossibleItems);
+                                    setSplitItemsCount(items);
+                                    setSplitWeight(Math.round(items * itemsPerKg));
+                                  }}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div className="bg-white p-3 rounded border">
+                                  <p className="text-gray-600 mb-1">This Trip</p>
+                                  <p className="font-medium text-black">{splitItemsCount} items</p>
+                                  <p className="font-medium text-black">{splitWeight} kg</p>
+                                  <p className="font-medium text-black">EGP {splitValue.toLocaleString()}</p>
+                                </div>
+                                <div className="bg-orange-50 p-3 rounded border border-orange-200">
+                                  <p className="text-gray-600 mb-1">Remaining</p>
+                                  <p className="font-medium text-orange-600">{remainingItems} items</p>
+                                  <p className="font-medium text-orange-600">{remainingWeight} kg</p>
+                                  <p className="font-medium text-orange-600">EGP {(splitOrder.total - splitValue).toLocaleString()}</p>
+                                </div>
+                              </div>
+
+                              {maxPossibleItems >= splitOrder.items && (
+                                <div className="text-sm text-green-600 font-medium">
+                                  ✓ Full order can fit in this trip
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* Trip Capacity After Assignment */}
+                    <div className="mb-6">
+                      <h4 className="font-semibold text-black mb-3">Trip Capacity After Assignment</h4>
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                        {(() => {
+                          const newCapacityUsed = (selectedTripForOrders?.capacityUsed || 0) + splitWeight;
+                          const capacityPercentage = selectedTripForOrders?.capacityTotal
+                            ? Math.round((newCapacityUsed / selectedTripForOrders.capacityTotal) * 100)
+                            : 0;
+
+                          return (
+                            <div className="space-y-2">
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">New Capacity Used:</span>
+                                <span className="font-medium text-green-600">{newCapacityUsed} kg</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Utilization:</span>
+                                <span className="font-medium text-green-600">{capacityPercentage}%</span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-2 mt-3">
+                                <div
+                                  className={`h-2 rounded-full ${capacityPercentage >= 100 ? 'bg-red-500' :
+                                    capacityPercentage >= 80 ? 'bg-yellow-500' : 'bg-green-500'
+                                    }`}
+                                  style={{ width: `${Math.min(capacityPercentage, 100)}%` }}
+                                />
+                              </div>
+                              {capacityPercentage > 100 && (
+                                <p className="text-xs text-red-600 mt-1">⚠️ Over capacity!</p>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                    {splitItemsCount < splitOrder.items && (
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                        <p className="text-sm text-yellow-800">
+                          <strong>Note:</strong> {splitOrder.items - splitItemsCount} items will remain for assignment to another trip.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Modal Actions */}
+                  <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 rounded-b-xl">
+                    <div className="flex justify-between">
+                      <Button
+                        onClick={() => {
+                          setShowSplitOptions(false);
+                          setSplitOrder(null);
+                          setSplitItemsCount(0);
+                          setSplitWeight(0);
+                        }}
+                        variant="outline"
+                        className="text-gray-700 border-gray-300 hover:bg-gray-50"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleConfirmSplit}
+                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                      >
+                        Split and Assign {splitItemsCount} Items
+                      </Button>
+                    </div>
                   </div>
                 </div>
-
-                {splitItemsCount < splitOrder.items && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                    <p className="text-sm text-yellow-800">
-                      <strong>Note:</strong> {splitOrder.items - splitItemsCount} items will remain for assignment to another trip.
-                    </p>
-                  </div>
-                )}
               </div>
-
-              {/* Modal Actions */}
-              <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 rounded-b-xl">
-                <div className="flex justify-between">
-                  <Button
-                    onClick={() => {
-                      setShowSplitOptions(false);
-                      setSplitOrder(null);
-                      setSplitItemsCount(0);
-                      setSplitWeight(0);
-                    }}
-                    variant="outline"
-                    className="text-gray-700 border-gray-300 hover:bg-gray-50"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleConfirmSplit}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    Split and Assign {splitItemsCount} Items
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+            )}
           </>
         )}
       </div>

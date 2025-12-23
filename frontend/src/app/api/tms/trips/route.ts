@@ -1,38 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // TMS Service URL from environment
-const NEXT_PUBLIC_TMS_API_URL = process.env.NEXT_PUBLIC_TMS_API_URL || 'http://localhost:8004';
+const TMS_SERVICE_URL = process.env.NEXT_PUBLIC_TMS_API_URL || 'http://localhost:8004';
+
+// Helper function to get auth token from request
+function getAuthToken(request: NextRequest): string | null {
+  // Try to get token from Authorization header
+  const authHeader = request.headers.get('authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7);
+  }
+
+  // Try to get token from cookies (if using httpOnly cookies)
+  const tokenCookie = request.cookies.get('access_token');
+  return tokenCookie?.value || null;
+}
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const branch = searchParams.get('branch');
-    const date = searchParams.get('date');
+    const trip_date = searchParams.get('trip_date');
+    const user_id = searchParams.get('user_id');
+    const company_id = searchParams.get('company_id');
 
-    // Hardcoded user and company values (in production, get from authentication)
-    const HARDCODED_USER_ID = "user-001";
-    const HARDCODED_COMPANY_ID = "company-001";
+    // Get auth token
+    const token = getAuthToken(request);
 
     // Build query string for TMS service
     const queryParams = new URLSearchParams();
     if (status) queryParams.append('status', status);
     if (branch) queryParams.append('branch', branch);
-    if (date) queryParams.append('date', date);
-    queryParams.append('user_id', HARDCODED_USER_ID);
-    queryParams.append('company_id', HARDCODED_COMPANY_ID);
+    if (trip_date) queryParams.append('trip_date', trip_date);
+    if (user_id) queryParams.append('user_id', user_id);
+    if (company_id) queryParams.append('company_id', company_id);
 
-    const url = `${NEXT_PUBLIC_TMS_API_URL}/api/v1/trips${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    const url = `${TMS_SERVICE_URL}/api/v1/trips${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
 
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` }),
       },
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch trips: ${response.statusText}`);
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error?.message || `Failed to fetch trips: ${response.statusText}`);
     }
 
     const data = await response.json();
@@ -41,7 +57,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching trips:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch trips' },
+      { error: error instanceof Error ? error.message : 'Failed to fetch trips' },
       { status: 500 }
     );
   }
@@ -51,28 +67,27 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    // Hardcoded user and company values (in production, get from authentication)
-    const HARDCODED_USER_ID = "user-001";
-    const HARDCODED_COMPANY_ID = "company-001";
+    // Get auth token
+    const token = getAuthToken(request);
 
-    // Add user_id and company_id to the request body
+    // The backend will handle user_id and company_id from JWT token
+    // So we don't need to add them here
     const tripData = {
       ...body,
-      user_id: HARDCODED_USER_ID,
-      company_id: HARDCODED_COMPANY_ID,
     };
 
-    const response = await fetch(`${NEXT_PUBLIC_TMS_API_URL}/api/v1/trips`, {
+    const response = await fetch(`${TMS_SERVICE_URL}/api/v1/trips`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` }),
       },
       body: JSON.stringify(tripData),
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || `Failed to create trip: ${response.statusText}`);
+      throw new Error(errorData.error?.message || `Failed to create trip: ${response.statusText}`);
     }
 
     const data = await response.json();

@@ -18,19 +18,16 @@ from src.schemas import (
     VehicleUpdate,
     PaginatedResponse
 )
+from src.security import (
+    TokenData,
+    get_current_tenant_id,
+    get_current_user_id,
+    require_permissions,
+    require_any_permission
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-
-# Helper function to get tenant_id from request (mock for now)
-async def get_current_tenant_id() -> str:
-    """
-    Get current tenant ID from authentication token
-    TODO: Implement proper authentication integration
-    """
-    # Mock implementation - in production, this will extract from JWT token
-    return "default-tenant"
 
 
 @router.get("/", response_model=PaginatedResponse)
@@ -42,12 +39,17 @@ async def list_vehicles(
     status: Optional[VehicleStatus] = Query(None),
     branch_id: Optional[UUID] = Query(None),
     is_active: Optional[bool] = Query(None),
+    token_data: TokenData = Depends(require_any_permission(["vehicles:read_all", "vehicles:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     List all vehicles for the current tenant
+
+    Requires:
+    - vehicles:read_all (to view all vehicles) OR
+    - vehicles:read (to view basic vehicle info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Build query
     query = select(Vehicle).where(Vehicle.tenant_id == tenant_id)
@@ -135,12 +137,17 @@ async def get_vehicle_status_options():
 @router.get("/{vehicle_id}", response_model=VehicleSchema)
 async def get_vehicle(
     vehicle_id: UUID,
+    token_data: TokenData = Depends(require_any_permission(["vehicles:read_all", "vehicles:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get a specific vehicle by ID
+
+    Requires:
+    - vehicles:read_all (to view any vehicle) OR
+    - vehicles:read (to view basic vehicle info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get vehicle with relationships
     query = select(Vehicle).where(
@@ -162,12 +169,17 @@ async def get_vehicle(
 @router.post("/", response_model=VehicleSchema, status_code=201)
 async def create_vehicle(
     vehicle_data: VehicleCreate,
+    token_data: TokenData = Depends(require_permissions(["vehicles:create"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Create a new vehicle
+
+    Requires:
+    - vehicles:create
     """
-    tenant_id = await get_current_tenant_id()
 
     # Check if plate number already exists
     existing_query = select(Vehicle).where(
@@ -214,12 +226,16 @@ async def create_vehicle(
 async def update_vehicle(
     vehicle_id: UUID,
     vehicle_data: VehicleUpdate,
+    token_data: TokenData = Depends(require_permissions(["vehicles:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Update a vehicle
+
+    Requires:
+    - vehicles:update
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing vehicle
     query = select(Vehicle).where(
@@ -262,12 +278,16 @@ async def update_vehicle(
 @router.delete("/{vehicle_id}", status_code=204)
 async def delete_vehicle(
     vehicle_id: UUID,
+    token_data: TokenData = Depends(require_permissions(["vehicles:delete"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Delete (deactivate) a vehicle
+
+    Requires:
+    - vehicles:delete
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing vehicle
     query = select(Vehicle).where(
@@ -289,12 +309,16 @@ async def delete_vehicle(
 async def update_vehicle_status(
     vehicle_id: UUID,
     status: VehicleStatus,
+    token_data: TokenData = Depends(require_permissions(["vehicles:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Update vehicle status
+
+    Requires:
+    - vehicles:update
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing vehicle
     query = select(Vehicle).where(
@@ -335,12 +359,17 @@ async def get_available_vehicles(
     per_page: int = Query(20, ge=1, le=100),
     vehicle_type: Optional[VehicleType] = Query(None),
     branch_id: Optional[UUID] = Query(None),
+    token_data: TokenData = Depends(require_any_permission(["vehicles:read_all", "vehicles:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get list of available vehicles
+
+    Requires:
+    - vehicles:read_all (to view all available vehicles) OR
+    - vehicles:read (to view basic available vehicle info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Build query for available vehicles
     query = select(Vehicle).where(

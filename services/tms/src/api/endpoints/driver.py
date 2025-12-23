@@ -13,6 +13,13 @@ from src.schemas import (
     DeliveryUpdate, DriverTripListResponse, DriverTripDetailResponse,
     MessageResponse
 )
+from src.security import (
+    TokenData,
+    require_permissions,
+    require_any_permission,
+    get_current_tenant_id,
+    get_current_user_id
+)
 
 router = APIRouter()
 
@@ -23,6 +30,10 @@ async def get_driver_trips(
     status: Optional[str] = Query(None, description="Filter by trip status"),
     trip_date: Optional[date] = Query(None, description="Filter by trip date"),
     company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    token_data: TokenData = Depends(
+        require_any_permission(["driver:read", "trips:read", "trips:read_all"])
+    ),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_async_session)
 ):
     """Get all trips for a specific driver with statistics"""
@@ -98,6 +109,10 @@ async def get_driver_trips(
 async def get_driver_current_trip(
     driver_id: str = Query(..., description="Driver ID"),
     company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    token_data: TokenData = Depends(
+        require_any_permission(["driver:read", "trips:read", "trips:read_all"])
+    ),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_async_session)
 ):
     """Get the currently active trip for a driver"""
@@ -153,6 +168,10 @@ async def get_driver_trip_detail(
     trip_id: str,
     driver_id: str = Query(..., description="Driver ID for authorization"),
     company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    token_data: TokenData = Depends(
+        require_any_permission(["driver:read", "trips:read", "trips:read_all"])
+    ),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_async_session)
 ):
     """Get detailed trip information for a driver"""
@@ -226,6 +245,10 @@ async def get_order_status(
     order_id: str,
     driver_id: str = Query(..., description="Driver ID for authorization"),
     company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    token_data: TokenData = Depends(
+        require_any_permission(["driver:read", "trips:read", "orders:read"])
+    ),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_async_session)
 ):
     """Get current status of a specific order"""
@@ -276,6 +299,8 @@ async def update_order_delivery_status(
     delivery_update: DeliveryUpdate,
     driver_id: str = Query(..., description="Driver ID for authorization"),
     company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    token_data: TokenData = Depends(require_permissions(["driver:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_async_session)
 ):
     """Update delivery status of an order"""
@@ -425,6 +450,8 @@ async def mark_order_delivered(
     order_id: str,
     driver_id: str = Query(..., description="Driver ID for authorization"),
     company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    token_data: TokenData = Depends(require_permissions(["driver:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_async_session)
 ):
     """Quick endpoint to mark an order as delivered"""
@@ -467,6 +494,8 @@ async def report_maintenance(
     trip_id: str,
     driver_id: str = Query(..., description="Driver ID for authorization"),
     company_id: Optional[str] = Query(None, description="Filter by company ID"),
+    token_data: TokenData = Depends(require_permissions(["driver:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_async_session)
 ):
     """Report truck maintenance issues"""

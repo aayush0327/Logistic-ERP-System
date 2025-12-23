@@ -18,21 +18,21 @@ class OrderItem(Base):
     __tablename__ = "order_items"
 
     # Primary key
-    id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(255),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Foreign keys
-    order_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    order_id: Mapped[str] = mapped_column(
+        String(255),
         ForeignKey("orders.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
-    product_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    product_id: Mapped[str] = mapped_column(
+        String(255),
         nullable=False,
         comment="Product ID from product service"
     )

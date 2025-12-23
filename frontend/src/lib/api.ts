@@ -78,7 +78,6 @@ class ApiHelper {
 
         // If token doesn't exist in cookie or doesn't match, logout
         if (!cookieToken || cookieToken !== token) {
-          console.warn('Token validation failed: mismatch or missing cookie');
           this.logout();
           return null;
         }
@@ -114,7 +113,7 @@ class ApiHelper {
   }
 
   // Make authenticated requests with automatic token refresh
-  private async authenticatedFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  public async authenticatedFetch(url: string, options: RequestInit = {}): Promise<Response> {
     const token = this.getToken();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -133,12 +132,9 @@ class ApiHelper {
 
     // If we get a 401 Unauthorized, try to refresh the token
     if (response.status === 401 && !url.includes('/api/auth/me') && !url.includes('/api/auth/refresh')) {
-      console.warn('[API] Received 401 response, attempting to refresh token...');
-
       try {
         // Check if already refreshing
         if (this.isRefreshing) {
-          console.log('[API] Another request is refreshing token, waiting...');
           // Wait for the refresh to complete
           const newToken = await new Promise<string | null>((resolve) => {
             this.addRefreshSubscriber(resolve);
@@ -147,14 +143,12 @@ class ApiHelper {
           if (newToken) {
             // Update the latest token and retry
             headers['Authorization'] = `Bearer ${newToken}`;
-            console.log('[API] Token refreshed by another request, retrying original request...');
             response = await fetch(url, {
               ...options,
               headers,
             });
           } else {
             // Refresh failed, logout user
-            console.error('[API] Token refresh failed, logging out...');
             this.logout();
             window.location.href = '/login';
             return response;
@@ -162,7 +156,6 @@ class ApiHelper {
         } else {
           // This is the first request encountering 401, handle the refresh
           this.isRefreshing = true;
-          console.log('[API] This is the first 401, handling refresh...');
 
           // Try to refresh the token
           const refreshed = await this.refreshToken();
@@ -181,21 +174,18 @@ class ApiHelper {
           if (refreshed && newToken) {
             // Retry the original request with the new token
             headers['Authorization'] = `Bearer ${newToken}`;
-            console.log('[API] Token refreshed successfully, retrying original request...');
             response = await fetch(url, {
               ...options,
               headers,
             });
           } else {
             // Refresh failed, logout user
-            console.error('[API] Token refresh failed, logging out...');
             this.logout();
             window.location.href = '/login';
             return response;
           }
         }
       } catch (error) {
-        console.error('[API] Failed to refresh token:', error);
         this.notifyRefreshSubscribers(null);
         this.isRefreshing = false;
         this.latestAccessToken = null;
@@ -214,11 +204,8 @@ class ApiHelper {
     const refreshToken = this.getRefreshToken();
 
     if (!refreshToken) {
-      console.error('[API] No refresh token available');
       return false;
     }
-
-    console.log('[API] Attempting to refresh token...');
 
     try {
       const response = await fetch('/api/auth/refresh', {
@@ -230,13 +217,10 @@ class ApiHelper {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        console.error('[API] Token refresh failed:', response.status, error);
         throw new Error('Token refresh failed');
       }
 
       const data: LoginResponse = await response.json();
-      console.log('[API] Token refreshed successfully');
 
       // Store the new tokens
       this.setTokens(data.access_token, data.refresh_token);
@@ -246,13 +230,8 @@ class ApiHelper {
       this.latestAccessToken = data.access_token;
       this.latestRefreshToken = data.refresh_token;
 
-      // Verify tokens are stored
-      console.log('[API] New access token length:', data.access_token.length);
-      console.log('[API] New refresh token length:', data.refresh_token.length);
-
       return true;
     } catch (error) {
-      console.error('[API] Error refreshing token:', error);
       return false;
     }
   }
@@ -281,6 +260,11 @@ class ApiHelper {
 
     if (!response.ok) {
       const error = await response.json();
+      // If we get authentication errors, clear tokens and force logout
+      if (response.status === 401 || response.status === 500) {
+        this.logout();
+        window.location.href = '/login';
+      }
       throw new Error(error.detail || 'Failed to get user info');
     }
 
@@ -449,7 +433,6 @@ class ApiHelper {
 
   // Set token in both localStorage and cookies (for backward compatibility)
   setToken(token: string): void {
-    console.warn('setToken is deprecated, use setTokens instead');
     if (typeof window !== 'undefined') {
       const refreshToken = localStorage.getItem('refresh_token');
       if (refreshToken) {
@@ -488,9 +471,9 @@ async function fetchWithError(url: string, options?: RequestInit) {
 }
 
 // Types for TMS API
-interface TripCreateData {
-  user_id: string;
-  company_id: string;
+export interface TripCreateData {
+  user_id?: string;  // Optional since backend will extract from JWT
+  company_id?: string;  // Optional since backend will extract from JWT
   branch: string;
   truck_plate: string;
   truck_model: string;
@@ -512,9 +495,9 @@ interface TripUpdateData {
   estimated_duration?: number;
 }
 
-interface OrderAssignData {
-  user_id: string;
-  company_id: string;
+export interface OrderAssignData {
+  user_id?: string;  // Optional since backend will extract from JWT
+  company_id?: string;  // Optional since backend will extract from JWT
   order_id: string;
   customer: string;
   customerAddress?: string;
@@ -537,16 +520,11 @@ export const tmsAPI = {
     branch?: string;
     date?: string;
   }) {
-    // Hardcoded user and company values (in production, get from authentication)
-    const HARDCODED_USER_ID = "user-001";
-    const HARDCODED_COMPANY_ID = "company-001";
-
     const params = new URLSearchParams();
     if (filters?.status) params.append('status', filters.status);
     if (filters?.branch) params.append('branch', filters.branch);
     if (filters?.date) params.append('trip_date', filters.date);
-    params.append('user_id', HARDCODED_USER_ID);
-    params.append('company_id', HARDCODED_COMPANY_ID);
+    // Note: user_id and company_id will be extracted from JWT token by the backend
 
     const url = `${TMS_BASE}/trips${params.toString() ? `?${params.toString()}` : ''}`;
     const data = await fetchWithError(url);
@@ -581,47 +559,24 @@ export const tmsAPI = {
 
   // Get single trip by ID
   async getTripById(id: string) {
-    // Hardcoded user and company values (in production, get from authentication)
-    const HARDCODED_USER_ID = "user-001";
-    const HARDCODED_COMPANY_ID = "company-001";
-
-    const params = new URLSearchParams();
-    params.append('user_id', HARDCODED_USER_ID);
-    params.append('company_id', HARDCODED_COMPANY_ID);
-
-    return fetchWithError(`${TMS_BASE}/trips/${id}?${params.toString()}`);
+    // Note: user_id and company_id will be extracted from JWT token by the backend
+    return fetchWithError(`${TMS_BASE}/trips/${id}`);
   },
 
   // Create new trip
   async createTrip(tripData: TripCreateData) {
-    // Hardcoded user and company values (in production, get from authentication)
-    const HARDCODED_USER_ID = "user-001";
-    const HARDCODED_COMPANY_ID = "company-001";
-
-    const tripDataWithIds = {
-      ...tripData,
-      user_id: HARDCODED_USER_ID,
-      company_id: HARDCODED_COMPANY_ID,
-    };
-
+    // Note: user_id and company_id will be extracted from JWT token by the backend
     return fetchWithError(`${TMS_BASE}/trips`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(tripDataWithIds),
+      body: JSON.stringify(tripData),
     });
   },
 
   // Update trip
   async updateTrip(id: string, tripData: Partial<TripUpdateData>) {
-    // Hardcoded user and company values (in production, get from authentication)
-    const HARDCODED_USER_ID = "user-001";
-    const HARDCODED_COMPANY_ID = "company-001";
-
-    const params = new URLSearchParams();
-    params.append('user_id', HARDCODED_USER_ID);
-    params.append('company_id', HARDCODED_COMPANY_ID);
-
-    return fetchWithError(`${TMS_BASE}/trips/${id}?${params.toString()}`, {
+    // Note: user_id and company_id will be extracted from JWT token by the backend
+    return fetchWithError(`${TMS_BASE}/trips/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(tripData),
@@ -630,42 +585,22 @@ export const tmsAPI = {
 
   // Get trip orders
   async getTripOrders(tripId: string) {
-    // Hardcoded user and company values (in production, get from authentication)
-    const HARDCODED_USER_ID = "user-001";
-    const HARDCODED_COMPANY_ID = "company-001";
-
-    const params = new URLSearchParams();
-    params.append('user_id', HARDCODED_USER_ID);
-    params.append('company_id', HARDCODED_COMPANY_ID);
-
-    return fetchWithError(`${TMS_BASE}/trips/${tripId}/orders?${params.toString()}`);
+    // Note: user_id and company_id will be extracted from JWT token by the backend
+    return fetchWithError(`${TMS_BASE}/trips/${tripId}/orders`);
   },
 
   // Assign orders to trip
   async assignOrdersToTrip(tripId: string, orders: OrderAssignData[]) {
-    // Hardcoded user and company values (in production, get from authentication)
-    const HARDCODED_USER_ID = "user-001";
-    const HARDCODED_COMPANY_ID = "company-001";
-
-    const ordersWithIds = orders.map(order => ({
-      ...order,
-      user_id: HARDCODED_USER_ID,
-      company_id: HARDCODED_COMPANY_ID,
-    }));
-
-    const params = new URLSearchParams();
-    params.append('user_id', HARDCODED_USER_ID);
-    params.append('company_id', HARDCODED_COMPANY_ID);
-
-    return fetchWithError(`${TMS_BASE}/trips/${tripId}/orders?${params.toString()}`, {
+    // Note: user_id and company_id will be extracted from JWT token by the backend
+    return fetchWithError(`${TMS_BASE}/trips/${tripId}/orders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orders: ordersWithIds }),
+      body: JSON.stringify({ orders }),
     });
   },
 
   // Reorder orders within a trip
-  async reorderTripOrders(tripId: string, orderSequences: { order_sequences: { order_id: number; sequence_number: number }[] }) {
+  async reorderTripOrders(tripId: string, orderSequences: { order_sequences: { order_id: string; sequence_number: number }[] }) {
     // Use Next.js API route instead of direct TMS service
     const response = await fetch(`/api/tms/trips/${tripId}/orders/reorder`, {
       method: 'PUT',
@@ -683,16 +618,8 @@ export const tmsAPI = {
 
   // Remove order from trip
   async removeOrderFromTrip(tripId: string, orderId: string) {
-    // Hardcoded user and company values (in production, get from authentication)
-    const HARDCODED_USER_ID = "user-001";
-    const HARDCODED_COMPANY_ID = "company-001";
-
-    const params = new URLSearchParams();
-    params.append('user_id', HARDCODED_USER_ID);
-    params.append('company_id', HARDCODED_COMPANY_ID);
-    params.append('order_id', orderId);
-
-    return fetchWithError(`${TMS_BASE}/trips/${tripId}/orders/remove?${params.toString()}`, {
+    // Use Next.js API route instead of direct TMS service
+    return fetchWithError(`${TMS_BASE}/trips/${tripId}/orders/remove?order_id=${orderId}`, {
       method: 'DELETE',
     });
   },
@@ -700,8 +627,8 @@ export const tmsAPI = {
 
 // Resources API functions
 export const tmsResourcesAPI = {
-  async getTrucks() {
-    return fetchWithError(`${TMS_BASE}/resources/trucks`);
+  async getTrucks(tenantId: string = "default-tenant") {
+    return fetchWithError(`${TMS_BASE}/resources/trucks?tenant_id=${tenantId}`);
   },
 
   async getDrivers() {
@@ -712,8 +639,12 @@ export const tmsResourcesAPI = {
     return fetchWithError(`${TMS_BASE}/resources/orders`);
   },
 
-  async getBranches() {
-    return fetchWithError(`${TMS_BASE}/resources/branches`);
+  async getBranches(tenantId: string = "default-tenant") {
+    return fetchWithError(`${TMS_BASE}/resources/branches?tenant_id=${tenantId}`);
+  },
+
+  async getTrucksByBranch(branchId: string, tenantId: string = "default-tenant") {
+    return fetchWithError(`${TMS_BASE}/resources/branches/${branchId}/trucks?tenant_id=${tenantId}`);
   },
 };
 

@@ -17,18 +17,22 @@ from src.schemas import (
     BranchInDB,
     PaginatedResponse
 )
+from src.security import (
+    TokenData,
+    get_current_tenant_id,
+    get_current_user_id,
+    require_permissions,
+    require_any_permission,
+    BRANCH_READ_ALL,
+    BRANCH_READ,
+    BRANCH_CREATE,
+    BRANCH_UPDATE,
+    BRANCH_DELETE,
+    BRANCH_MANAGE_ALL,
+    BRANCH_MANAGE_OWN,
+)
 
 router = APIRouter()
-
-
-# Helper function to get tenant_id from request (mock for now)
-async def get_current_tenant_id() -> str:
-    """
-    Get current tenant ID from authentication token
-    TODO: Implement proper authentication integration
-    """
-    # Mock implementation - in production, this will extract from JWT token
-    return "default-tenant"
 
 
 @router.get("/", response_model=PaginatedResponse)
@@ -37,15 +41,28 @@ async def list_branches(
     per_page: int = Query(20, ge=1, le=100),
     search: Optional[str] = Query(None),
     is_active: Optional[bool] = Query(None),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_any_permission([BRANCH_READ_ALL[0], BRANCH_READ[0]])),
+    tenant_id: str = Depends(get_current_tenant_id)
 ):
     """
     List all branches for the current tenant
+
+    Requires:
+    - branches:read_all to see all branches
+    - branches:read to see assigned branches only
     """
-    tenant_id = await get_current_tenant_id()
 
     # Build query
     query = select(Branch).where(Branch.tenant_id == tenant_id)
+
+    # Filter branches based on user permissions
+    has_read_all = await token_data.has_permission("branches:read_all")
+    if not token_data.is_super_user() and not has_read_all:
+        # For users with only branches:read permission, filter by assigned branches
+        # TODO: Implement branch assignment logic based on user-branch relationships
+        # For now, we'll show all branches for users with read permission
+        pass
 
     # Apply filters
     if search:
@@ -86,12 +103,16 @@ async def list_branches(
 @router.get("/{branch_id}", response_model=BranchSchema)
 async def get_branch(
     branch_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_any_permission([BRANCH_READ_ALL[0], BRANCH_READ[0]])),
+    tenant_id: str = Depends(get_current_tenant_id)
 ):
     """
     Get a specific branch by ID
+
+    Requires:
+    - branches:read_all or branches:read
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get branch with relationships
     query = select(Branch).where(
@@ -114,12 +135,17 @@ async def get_branch(
 @router.post("/", response_model=BranchSchema, status_code=201)
 async def create_branch(
     branch_data: BranchCreate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_permissions([BRANCH_CREATE[0]])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Create a new branch
+
+    Requires:
+    - branches:create
     """
-    tenant_id = await get_current_tenant_id()
 
     # Check if branch code already exists
     existing_query = select(Branch).where(
@@ -134,9 +160,12 @@ async def create_branch(
         )
 
     # Create new branch
+    branch_data_dict = branch_data.model_dump()
+    branch_data_dict["created_by"] = user_id  # Add user tracking
+
     branch = Branch(
         tenant_id=tenant_id,
-        **branch_data.model_dump()
+        **branch_data_dict
     )
 
     db.add(branch)
@@ -150,12 +179,19 @@ async def create_branch(
 async def update_branch(
     branch_id: UUID,
     branch_data: BranchUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_any_permission([BRANCH_UPDATE[0], BRANCH_MANAGE_ALL[0], BRANCH_MANAGE_OWN[0]])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Update a branch
+
+    Requires:
+    - branches:update or
+    - branches:manage_all or
+    - branches:manage_own (for assigned branches)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing branch
     query = select(Branch).where(
@@ -168,8 +204,18 @@ async def update_branch(
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
 
+    # Additional permission check for branches:manage_own
+    if (not token_data.is_super_user() and
+        "branches:manage_all" not in token_data.permissions and
+        "branches:update" not in token_data.permissions and
+        "branches:manage_own" in token_data.permissions):
+        # TODO: Verify user is assigned to this branch
+        # For now, we'll allow manage_own permission to proceed
+        pass
+
     # Update branch
     update_data = branch_data.model_dump(exclude_unset=True)
+    update_data["updated_by"] = user_id  # Add user tracking
     for field, value in update_data.items():
         setattr(branch, field, value)
 
@@ -182,12 +228,18 @@ async def update_branch(
 @router.delete("/{branch_id}", status_code=204)
 async def delete_branch(
     branch_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_any_permission([BRANCH_DELETE[0], BRANCH_MANAGE_ALL[0]])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Delete (deactivate) a branch
+
+    Requires:
+    - branches:delete or
+    - branches:manage_all
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing branch
     query = select(Branch).where(
@@ -204,22 +256,32 @@ async def delete_branch(
     if branch.customers or branch.vehicles:
         # Soft delete - deactivate instead
         branch.is_active = False
+        branch.deleted_by = user_id  # Track who deleted the branch
         await db.commit()
     else:
         # Hard delete if no dependencies
-        await db.delete(branch)
+        # Note: In a production system, you might want to always soft delete for audit purposes
+        branch.deleted_by = user_id
+        branch.is_active = False
         await db.commit()
+        # Uncomment below for actual hard delete (not recommended for audit trail)
+        # await db.delete(branch)
+        # await db.commit()
 
 
 @router.get("/{branch_id}/metrics")
 async def get_branch_metrics(
     branch_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_any_permission([BRANCH_READ_ALL[0], BRANCH_READ[0], "branches:view_metrics"])),
+    tenant_id: str = Depends(get_current_tenant_id)
 ):
     """
     Get performance metrics for a branch
+
+    Requires:
+    - branches:read_all or branches:read or branches:view_metrics
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get branch
     query = select(Branch).where(

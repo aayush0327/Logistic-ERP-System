@@ -16,11 +16,13 @@ import {
   Package,
   Tag,
   DollarSign,
-  Box
+  Box,
+  Building
 } from 'lucide-react';
 import {
   useCreateProductMutation,
-  useGetProductCategoriesQuery
+  useGetProductCategoriesQuery,
+  useGetBranchesQuery
 } from '@/services/api/companyApi';
 import { ProductCreate, ProductCategory } from '@/services/api/companyApi';
 import { toast } from 'react-hot-toast';
@@ -29,9 +31,12 @@ export default function NewProductPage() {
   const router = useRouter();
   const { data: categoriesData } = useGetProductCategoriesQuery({});
   const categories = Array.isArray(categoriesData) ? categoriesData : categoriesData?.items || [];
+  const { data: branches } = useGetBranchesQuery({});
   const [createProduct, { isLoading: isCreating }] = useCreateProductMutation();
 
   const [formData, setFormData] = useState<ProductCreate>({
+    branch_ids: [],
+    available_for_all_branches: true,
     category_id: undefined,
     code: '',
     name: '',
@@ -51,6 +56,8 @@ export default function NewProductPage() {
   } as ProductCreate);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isAvailableForAllBranches, setIsAvailableForAllBranches] = useState(true);
+  const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -101,7 +108,9 @@ export default function NewProductPage() {
         min_stock_level: formData.min_stock_level,
         current_stock: formData.current_stock,
         is_active: formData.is_active,
+        available_for_all_branches: isAvailableForAllBranches,
         // Only include optional fields if they have meaningful values
+        ...(!isAvailableForAllBranches && selectedBranches.length > 0 && { branch_ids: selectedBranches }),
         ...(formData.category_id && { category_id: formData.category_id }),
         ...(formData.description && { description: formData.description }),
         ...(formData.special_price && formData.special_price > 0 && { special_price: formData.special_price }),
@@ -258,6 +267,58 @@ export default function NewProductPage() {
                     <option key={category.id} value={category.id}>{category.name}</option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <Label className="text-sm font-medium text-gray-700 mb-3 block">Branch Availability</Label>
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      id="available_for_all_branches"
+                      checked={isAvailableForAllBranches}
+                      onChange={(e) => setIsAvailableForAllBranches(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <Label htmlFor="available_for_all_branches" className="text-sm font-medium text-gray-900">
+                      Available for all branches
+                    </Label>
+                  </div>
+
+                  {!isAvailableForAllBranches && (
+                    <div className="mt-3 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                      <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                        Select specific branches:
+                      </Label>
+                      <div className="space-y-2 max-h-40 overflow-y-auto">
+                        {branches?.items?.map((branch: any) => (
+                          <div key={branch.id} className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              id={`branch_${branch.id}`}
+                              checked={selectedBranches.includes(branch.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedBranches([...selectedBranches, branch.id]);
+                                } else {
+                                  setSelectedBranches(selectedBranches.filter(id => id !== branch.id));
+                                }
+                              }}
+                              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                            <Label htmlFor={`branch_${branch.id}`} className="text-sm text-gray-900">
+                              {branch.name} ({branch.code})
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                      {selectedBranches.length === 0 && (
+                        <p className="text-xs text-amber-600 mt-2">
+                          Please select at least one branch
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
               <div>
                 <Label htmlFor="description">Description</Label>

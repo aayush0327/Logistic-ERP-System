@@ -17,10 +17,11 @@ services:
       - ./scripts/init-orders-schema.sql:/docker-entrypoint-initdb.d/03-orders-schema.sql
       - ./scripts/init-tms-schema.sql:/docker-entrypoint-initdb.d/03-tms-schema.sql
       - ./scripts/init-company-schema.sql:/docker-entrypoint-initdb.d/04-company-schema.sql
+      - ./scripts/init-finance-schema.sql:/docker-entrypoint-initdb.d/05-finance-schema.sql
     networks:
       - logistics-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -40,7 +41,7 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -56,7 +57,7 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      test: [ "CMD", "nc", "-z", "localhost", "2181" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -82,13 +83,7 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test:
-        [
-          "CMD",
-          "kafka-broker-api-versions",
-          "--bootstrap-server",
-          "localhost:9092",
-        ]
+      test: [ "CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -123,8 +118,7 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test:
-        ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      test: [ "CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -182,7 +176,7 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -198,7 +192,7 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -257,7 +251,7 @@ services:
     command:
       - '--path.procfs=/host/proc'
       - '--path.sysfs=/host/sys'
-      - '--no-collector.hwmon'  # Disable hardware monitoring on Windows
+      - '--no-collector.hwmon' # Disable hardware monitoring on Windows
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
@@ -416,9 +410,13 @@ services:
       - REDIS_PORT=6379
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - AUTH_SERVICE_URL=http://auth-service:8001
+      - GLOBAL_JWT_SECRET=eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck
       - ENV=development
       - PORT=8002
       - CORS_ORIGINS=http://localhost:3000
+      - RATE_LIMIT_ENABLED=true
+      - AUDIT_LOG_ENABLED=true
+      - LOG_LEVEL=INFO
     depends_on:
       postgres:
         condition: service_healthy
@@ -446,13 +444,14 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/tms_db
       - LOG_LEVEL=INFO
+      - GLOBAL_JWT_SECRET=eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - logistics-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8004/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -476,7 +475,7 @@ services:
       - POSTGRES_DB=orders_db
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - JWT_SECRET=${JWT_SECRET:-dev-secret-key-change-this-in-production}
+      - GLOBAL_JWT_SECRET=eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck
       - ENV=development
       - AUTH_SERVICE_URL=http://auth-service:8001
     depends_on:
@@ -488,6 +487,49 @@ services:
         condition: service_healthy
     networks:
       - logistics-network
+
+  # Finance Service
+  finance-service:
+    build:
+      context: ./services/finance
+      dockerfile: Dockerfile
+    container_name: finance-service
+    restart: unless-stopped
+    ports:
+      - "8006:8006"
+    volumes:
+      - ./services/finance/src:/app/src
+      - ./services/finance/pyproject.toml:/app/pyproject.toml
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/finance_db
+      - REDIS_URL=redis://redis:6379
+      - GLOBAL_JWT_SECRET=eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck
+      - ENV=development
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+      - SERVICE_HOST=0.0.0.0
+      - SERVICE_PORT=8006
+      - ORDERS_SERVICE_URL=http://orders-service:8003
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://frontend:3000
+      - AUDIT_LOG_ENABLED=true
+      - RATE_LIMIT_ENABLED=true
+      - JWT_SECRET=eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck
+      - NEXT_PUBLIC_FINANCE_API_URL=http://finance-service:8006
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      orders-service:
+        condition: service_started
+    networks:
+      - logistics-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8006/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # Driver Service
   driver-service:
@@ -504,12 +546,12 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/tms_db
       - REDIS_URL=redis://redis:6379
-      - DRIVER_ID=DRV-002
       - ENV=development
       - DEBUG=true
       - LOG_LEVEL=INFO
-      - JWT_SECRET=${JWT_SECRET:-dev-secret-key-change-this-in-production}
+      - GLOBAL_JWT_SECRET=eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - AUTH_SERVICE_URL=http://auth-service:8001
       - NEXT_PUBLIC_TMS_API_URL=http://tms-service:8004
       - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://frontend:3000
     depends_on:
@@ -522,11 +564,11 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8005/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s      
+      start_period: 40s
 
 volumes:
   postgres_data:
@@ -537,6 +579,7 @@ volumes:
   prometheus_data:
   grafana_data:
   alertmanager_data:
+
 
 networks:
   logistics-network:

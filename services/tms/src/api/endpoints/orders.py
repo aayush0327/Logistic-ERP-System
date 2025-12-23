@@ -1,28 +1,52 @@
-"""Order management API endpoints"""
+"""Order management API endpoints with authentication"""
 
 from typing import List, Optional
+from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, and_
 
-from src.database import get_async_session, TripOrder, Trip
+from src.database import get_db, TripOrder, Trip
 from src.schemas import TripOrderResponse, TripResponse
+from src.security import (
+    TokenData,
+    require_permissions,
+    require_any_permission,
+    get_current_tenant_id,
+    get_current_user_id
+)
 
 router = APIRouter()
 
 
-@router.post("/split", response_model=dict)
+@router.post("/split")
 async def split_order(
     order_id: str,
     split_quantity: int,
     trip_id: str,
-    db: AsyncSession = Depends(get_async_session)
+    token_data: TokenData = Depends(require_permissions(["orders:split"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
 ):
     """Split an order between trips"""
+    # Verify the trip belongs to the tenant
+    trip_query = select(Trip).where(
+        and_(
+            Trip.id == trip_id,
+            Trip.company_id == tenant_id
+        )
+    )
+    trip_result = await db.execute(trip_query)
+    if not trip_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Trip not found")
+
     # Get the original order
     query = select(TripOrder).where(
-        TripOrder.order_id == order_id,
-        TripOrder.trip_id == trip_id
+        and_(
+            TripOrder.order_id == order_id,
+            TripOrder.company_id == tenant_id
+        )
     )
     result = await db.execute(query)
     original_order = result.scalar_one_or_none()
@@ -30,53 +54,93 @@ async def split_order(
     if not original_order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    if split_quantity >= original_order.items:
+    # Validate split quantity
+    if split_quantity <= 0 or split_quantity >= original_order.quantity:
         raise HTTPException(
             status_code=400,
-            detail="Split quantity must be less than original order quantity"
+            detail="Invalid split quantity. Must be between 1 and current quantity - 1"
         )
 
-    # Calculate split amounts
-    ratio = split_quantity / original_order.items
-    split_weight = int(original_order.weight * ratio)
-    split_volume = int(original_order.volume * ratio)
-    split_total = original_order.total * ratio
-
-    # Create split order
-    split_order = TripOrder(
+    # Create new split order
+    new_order = TripOrder(
         trip_id=trip_id,
-        order_id=f"{order_id}-SPLIT-{split_quantity}",
+        user_id=user_id,
+        company_id=tenant_id,
+        order_id=f"{order_id}-split-{uuid4().hex[:8]}",
         customer=original_order.customer,
-        customerAddress=original_order.customerAddress,
-        total=split_total,
-        weight=split_weight,
-        volume=split_volume,
-        items=split_quantity,
-        priority=original_order.priority,
-        address=original_order.address,
-        original_order_id=order_id,
-        original_items=original_order.items,
-        original_weight=original_order.weight
+        customer_address=original_order.customer_address,
+        customer_contact=original_order.customer_contact,
+        customer_phone=original_order.customer_phone,
+        product_name=original_order.product_name,
+        weight=original_order.weight * (split_quantity / original_order.quantity),
+        volume=original_order.volume * (split_quantity / original_order.quantity),
+        quantity=split_quantity,
+        special_instructions=original_order.special_instructions,
+        delivery_instructions=original_order.delivery_instructions
     )
 
-    # Update original order
-    original_order.items -= split_quantity
-    original_order.weight -= split_weight
-    original_order.volume -= split_volume
-    original_order.total -= split_total
+    # Update original order quantity
+    original_order.quantity -= split_quantity
 
-    db.add(split_order)
+    db.add(new_order)
     await db.commit()
-    await db.refresh(split_order)
 
     return {
         "message": "Order split successfully",
-        "original_order": {
-            "id": original_order.order_id,
-            "remaining_items": original_order.items
-        },
-        "split_order": {
-            "id": split_order.order_id,
-            "items": split_order.items
-        }
+        "original_order_id": order_id,
+        "new_order_id": new_order.order_id,
+        "original_quantity": original_order.quantity + split_quantity,
+        "split_quantity": split_quantity
+    }
+
+
+@router.post("/reassign")
+async def reassign_order(
+    order_id: str,
+    from_trip_id: str,
+    to_trip_id: str,
+    token_data: TokenData = Depends(require_permissions(["orders:reassign"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """Reassign an order to a different trip"""
+    # Verify both trips belong to the tenant
+    trip_query = select(Trip).where(
+        and_(
+            Trip.id.in_([from_trip_id, to_trip_id]),
+            Trip.company_id == tenant_id
+        )
+    )
+    trip_result = await db.execute(trip_query)
+    trips = trip_result.scalars().all()
+
+    if len(trips) < 2:
+        raise HTTPException(status_code=404, detail="One or both trips not found")
+
+    # Get the order
+    query = select(TripOrder).where(
+        and_(
+            TripOrder.order_id == order_id,
+            TripOrder.company_id == tenant_id,
+            TripOrder.trip_id == from_trip_id
+        )
+    )
+    result = await db.execute(query)
+    order = result.scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found in the specified trip")
+
+    # Update the order's trip
+    order.trip_id = to_trip_id
+    order.user_id = user_id  # Update who made the change
+
+    await db.commit()
+
+    return {
+        "message": "Order reassigned successfully",
+        "order_id": order_id,
+        "from_trip_id": from_trip_id,
+        "to_trip_id": to_trip_id
     }

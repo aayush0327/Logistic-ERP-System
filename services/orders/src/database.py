@@ -13,7 +13,7 @@ settings = OrdersSettings()
 
 # Create async engine
 engine = create_async_engine(
-    settings.get_database_url(),
+    settings.get_database_url(settings.POSTGRES_ORDERS_DB),
     echo=settings.LOG_LEVEL.lower() == "debug",
     pool_pre_ping=True,
     pool_recycle=300,
@@ -34,6 +34,8 @@ AsyncSessionLocal = async_sessionmaker(
 Base = declarative_base()
 
 # Dependency to get DB session
+
+
 async def get_db():
     async with AsyncSessionLocal() as session:
         try:

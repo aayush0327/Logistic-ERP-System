@@ -16,6 +16,13 @@ from src.schemas import (
     ProductCategoryUpdate,
     PaginatedResponse
 )
+from src.security import (
+    TokenData,
+    get_current_tenant_id,
+    get_current_user_id,
+    require_permissions,
+    require_any_permission
+)
 
 router = APIRouter()
 
@@ -53,14 +60,6 @@ def safe_validate_category(category):
         return ProductCategorySchema.model_validate(category_to_dict(category))
 
 
-# Helper function to get tenant_id from request (mock for now)
-async def get_current_tenant_id() -> str:
-    """
-    Get current tenant ID from authentication token
-    TODO: Implement proper authentication integration
-    """
-    # Mock implementation - in production, this will extract from JWT token
-    return "default-tenant"
 
 
 @router.get("/", response_model=PaginatedResponse)
@@ -71,12 +70,17 @@ async def list_product_categories(
     parent_id: Optional[UUID] = Query(None),
     is_active: Optional[bool] = Query(None),
     include_children: bool = Query(True),
+    token_data: TokenData = Depends(require_any_permission(["products:read_all", "products:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     List all product categories for the current tenant
+
+    Requires:
+    - products:read_all (to view all product categories) OR
+    - products:read (to view basic product category info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Build query
     query = select(ProductCategory).where(ProductCategory.tenant_id == tenant_id)
@@ -135,12 +139,17 @@ async def list_product_categories(
 
 @router.get("/tree", response_model=List[ProductCategorySchema])
 async def get_category_tree(
+    token_data: TokenData = Depends(require_any_permission(["products:read_all", "products:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get product categories as a tree structure
+
+    Requires:
+    - products:read_all (to view all product category trees) OR
+    - products:read (to view basic product category tree)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get all active categories
     query = select(ProductCategory).where(
@@ -173,12 +182,17 @@ async def get_category_tree(
 @router.get("/{category_id}", response_model=ProductCategorySchema)
 async def get_product_category(
     category_id: UUID,
+    token_data: TokenData = Depends(require_any_permission(["products:read_all", "products:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get a specific product category by ID
+
+    Requires:
+    - products:read_all (to view any product category) OR
+    - products:read (to view basic product category info)
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get category with relationships
     query = select(ProductCategory).where(
@@ -201,12 +215,17 @@ async def get_product_category(
 @router.post("/", response_model=ProductCategorySchema, status_code=201)
 async def create_product_category(
     category_data: ProductCategoryCreate,
+    token_data: TokenData = Depends(require_permissions(["products:create"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Create a new product category
+
+    Requires:
+    - products:create
     """
-    tenant_id = await get_current_tenant_id()
 
     # Check if category name already exists under same parent
     existing_query = select(ProductCategory).where(
@@ -268,12 +287,16 @@ async def create_product_category(
 async def update_product_category(
     category_id: UUID,
     category_data: ProductCategoryUpdate,
+    token_data: TokenData = Depends(require_permissions(["products:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Update a product category
+
+    Requires:
+    - products:update
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing category
     query = select(ProductCategory).where(
@@ -324,12 +347,16 @@ async def update_product_category(
 @router.delete("/{category_id}", status_code=204)
 async def delete_product_category(
     category_id: UUID,
+    token_data: TokenData = Depends(require_permissions(["products:delete"])),
+    tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Delete (deactivate) a product category
+
+    Requires:
+    - products:delete
     """
-    tenant_id = await get_current_tenant_id()
 
     # Get existing category
     query = select(ProductCategory).where(

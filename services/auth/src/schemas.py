@@ -181,6 +181,7 @@ class TokenData(BaseSchema):
     role_id: int
     permissions: List[str]
     exp: Optional[datetime] = None
+    is_superuser: bool = False
 
 
 class PasswordResetRequest(BaseSchema):

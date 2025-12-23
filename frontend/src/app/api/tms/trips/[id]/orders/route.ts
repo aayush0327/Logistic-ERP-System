@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const NEXT_PUBLIC_TMS_API_URL = process.env.NEXT_PUBLIC_TMS_API_URL || 'http://localhost:8004';
+const TMS_SERVICE_URL = process.env.NEXT_PUBLIC_TMS_API_URL || 'http://localhost:8004';
+
+// Helper function to get auth token from request
+function getAuthToken(request: NextRequest): string | null {
+  // Try to get token from Authorization header
+  const authHeader = request.headers.get('authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7);
+  }
+
+  // Try to get token from cookies (if using httpOnly cookies)
+  const tokenCookie = request.cookies.get('access_token');
+  return tokenCookie?.value || null;
+}
 
 export async function GET(
   request: NextRequest,
@@ -9,18 +22,14 @@ export async function GET(
   try {
     const { id } = await params; // Unwrap the params Promise
 
-    // Hardcoded user and company values (in production, get from authentication)
-    const HARDCODED_USER_ID = "user-001";
-    const HARDCODED_COMPANY_ID = "company-001";
+    // Get auth token
+    const token = getAuthToken(request);
 
-    const queryParams = new URLSearchParams();
-    queryParams.append('user_id', HARDCODED_USER_ID);
-    queryParams.append('company_id', HARDCODED_COMPANY_ID);
-
-    const response = await fetch(`${NEXT_PUBLIC_TMS_API_URL}/api/v1/trips/${id}/orders?${queryParams.toString()}`, {
+    const response = await fetch(`${TMS_SERVICE_URL}/api/v1/trips/${id}/orders`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` }),
       },
     });
 
@@ -31,7 +40,8 @@ export async function GET(
           { status: 404 }
         );
       }
-      throw new Error(`Failed to fetch trip orders: ${response.statusText}`);
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error?.message || `Failed to fetch trip orders: ${response.statusText}`);
     }
 
     const data = await response.json();
@@ -40,7 +50,52 @@ export async function GET(
   } catch (error) {
     console.error('Error fetching trip orders:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch trip orders' },
+      { error: error instanceof Error ? error.message : 'Failed to fetch trip orders' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params; // Unwrap the params Promise
+    const { searchParams } = new URL(request.url);
+    const orderId = searchParams.get('order_id');
+
+    if (!orderId) {
+      return NextResponse.json(
+        { error: 'order_id parameter is required' },
+        { status: 400 }
+      );
+    }
+
+    // Get auth token
+    const token = getAuthToken(request);
+
+    // The backend will handle user_id and company_id from JWT token
+    const response = await fetch(`${TMS_SERVICE_URL}/api/v1/trips/${id}/orders/remove?order_id=${orderId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` }),
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Failed to remove order: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return NextResponse.json(data);
+
+  } catch (error) {
+    console.error('Error removing order:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to remove order' },
       { status: 500 }
     );
   }
@@ -54,36 +109,27 @@ export async function POST(
     const body = await request.json();
     const { id } = await params; // Unwrap the params Promise
 
-    // Hardcoded user and company values (in production, get from authentication)
-    const HARDCODED_USER_ID = "user-001";
-    const HARDCODED_COMPANY_ID = "company-001";
+    // Get auth token
+    const token = getAuthToken(request);
 
-    // Add user_id and company_id to each order in the request
+    // The backend will handle user_id and company_id from JWT token
+    // So we don't need to add them here
     const ordersData = {
-      orders: body.orders.map((order: any) => ({
-        ...order,
-        user_id: HARDCODED_USER_ID,
-        company_id: HARDCODED_COMPANY_ID,
-      })),
+      orders: body.orders || body, // Handle both wrapped and unwrapped formats
     };
 
-    const queryParams = new URLSearchParams();
-    queryParams.append('user_id', HARDCODED_USER_ID);
-    queryParams.append('company_id', HARDCODED_COMPANY_ID);
-
-    const url = `${NEXT_PUBLIC_TMS_API_URL}/api/v1/trips/${id}/orders?${queryParams.toString()}`;
-
-    const response = await fetch(url, {
+    const response = await fetch(`${TMS_SERVICE_URL}/api/v1/trips/${id}/orders`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` }),
       },
       body: JSON.stringify(ordersData),
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || `Failed to assign orders: ${response.statusText}`);
+      throw new Error(errorData.error?.message || `Failed to assign orders: ${response.statusText}`);
     }
 
     const data = await response.json();
