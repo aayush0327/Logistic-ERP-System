@@ -262,6 +262,15 @@ export interface BusinessTypeModel {
   updated_at?: string
 }
 
+// Union type for business types API response (handles both array and paginated formats)
+export type BusinessTypesListResponse = BusinessTypeModel[] | {
+  items: BusinessTypeModel[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+};
+
 export interface VehicleTypeModel {
   id: string
   tenant_id: string
@@ -742,7 +751,7 @@ export const companyApi = createApi({
       },
       providesTags: ['BusinessTypeModel'],
     }),
-    getAllBusinessTypes: builder.query<BusinessTypeModel[], { is_active?: boolean }>({
+    getAllBusinessTypes: builder.query<BusinessTypesListResponse, { is_active?: boolean }>({
       query: ({ is_active = true }) => {
         const params = new URLSearchParams()
         if (is_active !== undefined) params.append('is_active', is_active.toString())

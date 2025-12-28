@@ -29,6 +29,7 @@ import {
   Settings,
   Calendar,
   Wrench,
+  ArrowLeft,
   Power,
   PowerOff,
   Trash2,
@@ -61,7 +62,9 @@ export default function VehiclesPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [vehicleToDelete, setVehicleToDelete] = useState<string | null>(null);
 
-  const { data: vehicleTypes } = useGetAllVehicleTypesQuery({ is_active: true });
+  const { data: vehicleTypes } = useGetAllVehicleTypesQuery({
+    is_active: true,
+  });
   const { data: statusOptions } = useGetVehicleStatusOptionsQuery();
   const { data: branches } = useGetBranchesQuery({});
 
@@ -114,7 +117,9 @@ export default function VehiclesPage() {
     const vehicle = vehiclesList.find((v: any) => v.id === vehicleToDelete);
 
     if (vehicle?.status === "on_trip") {
-      toast.error("Cannot delete a vehicle that is currently on a trip. Please complete the trip first.");
+      toast.error(
+        "Cannot delete a vehicle that is currently on a trip. Please complete the trip first."
+      );
       setDeleteDialogOpen(false);
       setVehicleToDelete(null);
       return;
@@ -139,9 +144,13 @@ export default function VehiclesPage() {
     try {
       await updateVehicle({
         id: vehicle.id,
-        vehicle: { is_active: !vehicle.is_active }
+        vehicle: { is_active: !vehicle.is_active },
       }).unwrap();
-      toast.success(vehicle.is_active ? "Vehicle deactivated successfully" : "Vehicle activated successfully");
+      toast.success(
+        vehicle.is_active
+          ? "Vehicle deactivated successfully"
+          : "Vehicle activated successfully"
+      );
     } catch (error: any) {
       toast.error(error?.data?.message || "Failed to update vehicle status");
     }
@@ -166,12 +175,11 @@ export default function VehiclesPage() {
 
   const getTypeBadge = (vehicle: any) => {
     // Use the vehicle_type_relation if available, otherwise fall back to the old enum
-    const typeName = vehicle.vehicle_type_relation?.name || vehicle.vehicle_type?.replace("_", " ") || "N/A";
-    return (
-      <Badge variant="default">
-        {typeName}
-      </Badge>
-    );
+    const typeName =
+      vehicle.vehicle_type_relation?.name ||
+      vehicle.vehicle_type?.replace("_", " ") ||
+      "N/A";
+    return <Badge variant="default">{typeName}</Badge>;
   };
 
   const getVehicleTypeId = (vehicle: any) => {
@@ -181,7 +189,11 @@ export default function VehiclesPage() {
 
   const getVehicleTypeName = (vehicle: any) => {
     // Return the vehicle type name for display
-    return vehicle.vehicle_type_relation?.name || vehicle.vehicle_type?.replace("_", " ") || "N/A";
+    return (
+      vehicle.vehicle_type_relation?.name ||
+      vehicle.vehicle_type?.replace("_", " ") ||
+      "N/A"
+    );
   };
 
   if (error) {
@@ -204,16 +216,31 @@ export default function VehiclesPage() {
       <div className="space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              Vehicle Management
-            </h1>
-            <p className="text-gray-500 mt-2">Manage your fleet of vehicles</p>
+          <div className="flex items-center space-x-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.back()}
+              className="flex items-center"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">
+                Vehicle Management
+              </h1>
+              <p className="text-gray-500 mt-2">
+                Manage your fleet of vehicles
+              </p>
+            </div>
           </div>
           <div className="flex gap-2">
             <Button
               variant="outline"
-              onClick={() => router.push("/company-admin/masters/vehicle-types")}
+              onClick={() =>
+                router.push("/company-admin/masters/vehicle-types")
+              }
               className="flex items-center gap-2"
             >
               <Settings className="w-4 h-4" />
@@ -417,13 +444,18 @@ export default function VehiclesPage() {
                     {filteredVehicles.map((vehicle: any) => (
                       <TableRow
                         key={vehicle.id}
-                        className={`hover:bg-gray-50 ${!vehicle.is_active ? 'bg-gray-50 opacity-60' : ''}`}
+                        className={`hover:bg-gray-50 ${
+                          !vehicle.is_active ? "bg-gray-50 opacity-60" : ""
+                        }`}
                       >
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
                             {vehicle.plate_number}
                             {!vehicle.is_active && (
-                              <Badge variant="default" className="text-xs bg-gray-400">
+                              <Badge
+                                variant="default"
+                                className="text-xs bg-gray-400"
+                              >
                                 Inactive
                               </Badge>
                             )}
@@ -441,9 +473,7 @@ export default function VehiclesPage() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          {getTypeBadge(vehicle)}
-                        </TableCell>
+                        <TableCell>{getTypeBadge(vehicle)}</TableCell>
                         <TableCell>
                           <div>
                             {vehicle.capacity_weight && (
@@ -514,11 +544,23 @@ export default function VehiclesPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => handleToggleActive(vehicle)}
-                              title={vehicle.is_active ? "Deactivate Vehicle" : "Activate Vehicle"}
-                              className={vehicle.is_active ? "text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50" : "text-green-600 hover:text-green-700 hover:bg-green-50"}
+                              title={
+                                vehicle.is_active
+                                  ? "Deactivate Vehicle"
+                                  : "Activate Vehicle"
+                              }
+                              className={
+                                vehicle.is_active
+                                  ? "text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50"
+                                  : "text-green-600 hover:text-green-700 hover:bg-green-50"
+                              }
                               disabled={isUpdating}
                             >
-                              {vehicle.is_active ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
+                              {vehicle.is_active ? (
+                                <PowerOff className="w-4 h-4" />
+                              ) : (
+                                <Power className="w-4 h-4" />
+                              )}
                             </Button>
                             <Button
                               variant="ghost"
@@ -581,42 +623,51 @@ export default function VehiclesPage() {
               <DialogTitle>Confirm Delete</DialogTitle>
             </DialogHeader>
             <div className="py-4">
-              {vehicleToDelete && (() => {
-                const vehicle = vehiclesList.find((v: any) => v.id === vehicleToDelete);
-                const isOnTrip = vehicle?.status === "on_trip";
+              {vehicleToDelete &&
+                (() => {
+                  const vehicle = vehiclesList.find(
+                    (v: any) => v.id === vehicleToDelete
+                  );
+                  const isOnTrip = vehicle?.status === "on_trip";
 
-                return (
-                  <>
-                    {isOnTrip && (
-                      <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg mb-4">
-                        <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-sm font-medium text-red-800">Cannot Delete Active Vehicle</p>
-                          <p className="text-sm text-red-600 mt-1">
-                            This vehicle is currently on a trip. You must complete the trip before deleting it.
-                          </p>
+                  return (
+                    <>
+                      {isOnTrip && (
+                        <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg mb-4">
+                          <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-medium text-red-800">
+                              Cannot Delete Active Vehicle
+                            </p>
+                            <p className="text-sm text-red-600 mt-1">
+                              This vehicle is currently on a trip. You must
+                              complete the trip before deleting it.
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {!isOnTrip && (
-                      <>
-                        <p className="text-sm text-gray-600">
-                          Are you sure you want to delete this vehicle? This action cannot be undone.
-                        </p>
-                        <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                          <p className="text-sm font-medium text-gray-900">{vehicle?.plate_number}</p>
+                      )}
+                      {!isOnTrip && (
+                        <>
                           <p className="text-sm text-gray-600">
-                            {vehicle?.make} {vehicle?.model} ({vehicle?.year})
+                            Are you sure you want to delete this vehicle? This
+                            action cannot be undone.
                           </p>
-                          <p className="text-sm text-gray-500 mt-1">
-                            Status: {vehicle?.status?.replace('_', ' ')}
-                          </p>
-                        </div>
-                      </>
-                    )}
-                  </>
-                );
-              })()}
+                          <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                            <p className="text-sm font-medium text-gray-900">
+                              {vehicle?.plate_number}
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              {vehicle?.make} {vehicle?.model} ({vehicle?.year})
+                            </p>
+                            <p className="text-sm text-gray-500 mt-1">
+                              Status: {vehicle?.status?.replace("_", " ")}
+                            </p>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
             </div>
             <div className="flex justify-end space-x-2">
               <Button
@@ -628,19 +679,22 @@ export default function VehiclesPage() {
               >
                 Cancel
               </Button>
-              {vehicleToDelete && (() => {
-                const vehicle = vehiclesList.find((v: any) => v.id === vehicleToDelete);
-                return vehicle?.status !== "on_trip" ? (
-                  <Button
-                    variant="primary"
-                    onClick={handleDelete}
-                    disabled={isDeleting}
-                    className="bg-red-600 hover:bg-red-700"
-                  >
-                    {isDeleting ? "Deleting..." : "Delete"}
-                  </Button>
-                ) : null;
-              })()}
+              {vehicleToDelete &&
+                (() => {
+                  const vehicle = vehiclesList.find(
+                    (v: any) => v.id === vehicleToDelete
+                  );
+                  return vehicle?.status !== "on_trip" ? (
+                    <Button
+                      variant="primary"
+                      onClick={handleDelete}
+                      disabled={isDeleting}
+                      className="bg-red-600 hover:bg-red-700"
+                    >
+                      {isDeleting ? "Deleting..." : "Delete"}
+                    </Button>
+                  ) : null;
+                })()}
             </div>
           </DialogContent>
         </Dialog>

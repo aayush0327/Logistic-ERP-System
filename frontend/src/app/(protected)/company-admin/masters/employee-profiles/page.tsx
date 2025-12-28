@@ -1,96 +1,151 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
-import { useGetProfilesByRoleQuery, useGetProfileStatsQuery } from '@/services/api/profileApi'
-import { ProfilesByRoleResponse, ProfileStatsResponse, RoleData } from '@/services/api/profileApi'
-import RoleUserList from './RoleUserList'
-import { Search, Filter, Users, UserCheck, UserX, Download } from 'lucide-react'
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import {
+  useGetProfilesByRoleQuery,
+  useGetProfileStatsQuery,
+} from "@/services/api/profileApi";
+import {
+  ProfilesByRoleResponse,
+  ProfileStatsResponse,
+  RoleData,
+} from "@/services/api/profileApi";
+import RoleUserList from "./RoleUserList";
+import {
+  Search,
+  Filter,
+  Users,
+  UserCheck,
+  UserX,
+  Download,
+  ArrowLeft,
+} from "lucide-react";
 
 export default function EmployeeProfilesPage() {
-  const router = useRouter()
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null)
-  const [filterStatus, setFilterStatus] = useState<'all' | 'completed' | 'pending'>('all')
+  const router = useRouter();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState<
+    "all" | "completed" | "pending"
+  >("all");
 
   // Fetch profiles grouped by roles
-  const { data: profilesData, isLoading: isLoadingProfiles, refetch: refetchProfiles } = useGetProfilesByRoleQuery({
+  const {
+    data: profilesData,
+    isLoading: isLoadingProfiles,
+    refetch: refetchProfiles,
+  } = useGetProfilesByRoleQuery({
     include_inactive: false,
     include_completion_stats: true,
-  })
+  });
 
   // Fetch profile statistics
-  const { data: profileStats, isLoading: isLoadingStats } = useGetProfileStatsQuery()
+  const { data: profileStats, isLoading: isLoadingStats } =
+    useGetProfileStatsQuery();
 
   // Get roles from profiles data
-  const roles = profilesData?.roles || []
+  const roles = profilesData?.roles || [];
 
   // Filter roles and users based on search and filters
   const filteredRoles = roles.filter((role: RoleData) => {
-    const matchesSearch = role.role_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      role.users.some(user =>
-        `${user.first_name} ${user.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.email.toLowerCase().includes(searchTerm.toLowerCase())
-      )
+    const matchesSearch =
+      role.role_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      role.users.some(
+        (user) =>
+          `${user.first_name} ${user.last_name}`
+            .toLowerCase()
+            .includes(searchTerm.toLowerCase()) ||
+          user.email.toLowerCase().includes(searchTerm.toLowerCase())
+      );
 
-    const matchesRoleFilter = !selectedRoleId || role.role_id === selectedRoleId
+    const matchesRoleFilter =
+      !selectedRoleId || role.role_id === selectedRoleId;
 
-    return matchesSearch && matchesRoleFilter
-  })
+    return matchesSearch && matchesRoleFilter;
+  });
 
   // Further filter users within each role based on completion status
   const filteredRolesWithUsers = filteredRoles.map((role: RoleData) => {
-    let filteredUsers = role.users
+    let filteredUsers = role.users;
 
     // Filter by completion status if needed
-    if (filterStatus === 'completed') {
-      filteredUsers = filteredUsers.filter(user => user.profile_completion?.is_complete === true)
-    } else if (filterStatus === 'pending') {
-      filteredUsers = filteredUsers.filter(user => user.profile_completion?.is_complete !== true)
+    if (filterStatus === "completed") {
+      filteredUsers = filteredUsers.filter(
+        (user) => user.profile_completion?.is_complete === true
+      );
+    } else if (filterStatus === "pending") {
+      filteredUsers = filteredUsers.filter(
+        (user) => user.profile_completion?.is_complete !== true
+      );
     }
 
     return {
       ...role,
-      users: filteredUsers
-    }
-  })
+      users: filteredUsers,
+    };
+  });
 
   // Calculate filtered statistics
   const calculateFilteredStats = () => {
-    const allUsers = filteredRolesWithUsers.flatMap(role => role.users)
-    const total = allUsers.length
-    const completed = allUsers.filter(user => user.profile_completion?.is_complete === true).length
-    const pending = total - completed
+    const allUsers = filteredRolesWithUsers.flatMap((role) => role.users);
+    const total = allUsers.length;
+    const completed = allUsers.filter(
+      (user) => user.profile_completion?.is_complete === true
+    ).length;
+    const pending = total - completed;
 
-    return { total, completed, pending }
-  }
+    return { total, completed, pending };
+  };
 
-  const filteredStats = calculateFilteredStats()
+  const filteredStats = calculateFilteredStats();
 
   const handleUserClick = (userId: string) => {
     // Ensure userId is a string (defensive check)
-    const safeUserId = typeof userId === 'string' ? userId : String(userId)
-    console.log('handleUserClick - userId:', userId, 'safeUserId:', safeUserId, 'type:', typeof userId)
+    const safeUserId = typeof userId === "string" ? userId : String(userId);
+    console.log(
+      "handleUserClick - userId:",
+      userId,
+      "safeUserId:",
+      safeUserId,
+      "type:",
+      typeof userId
+    );
 
     // Don't navigate if it's an invalid userId that became "[object Object]"
-    if (safeUserId === '[object Object]' || !safeUserId) {
-      console.error('Invalid userId, cannot navigate:', userId)
-      return
+    if (safeUserId === "[object Object]" || !safeUserId) {
+      console.error("Invalid userId, cannot navigate:", userId);
+      return;
     }
 
-    router.push(`/company-admin/masters/employee-profiles/${safeUserId}`)
-  }
+    router.push(`/company-admin/masters/employee-profiles/${safeUserId}`);
+  };
 
   return (
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Employee Profiles</h1>
-          <p className="text-gray-600 mt-1">Manage employee profiles and track completion status</p>
+        <div className="flex items-center space-x-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.back()}
+            className="flex items-center"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">
+              Employee Profiles
+            </h1>
+            <p className="text-gray-600 mt-1">
+              Manage employee profiles and track completion status
+            </p>
+          </div>
         </div>
         <div className="flex gap-3">
           <Button variant="outline" className="flex items-center gap-2">
@@ -110,9 +165,11 @@ export default function EmployeeProfilesPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Employees</p>
+                <p className="text-sm font-medium text-gray-600">
+                  Total Employees
+                </p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {isLoadingStats ? '-' : filteredStats.total}
+                  {isLoadingStats ? "-" : filteredStats.total}
                 </p>
               </div>
               <Users className="w-8 h-8 text-blue-600" />
@@ -124,9 +181,11 @@ export default function EmployeeProfilesPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Profiles Completed</p>
+                <p className="text-sm font-medium text-gray-600">
+                  Profiles Completed
+                </p>
                 <p className="text-2xl font-bold text-green-600">
-                  {isLoadingStats ? '-' : filteredStats.completed}
+                  {isLoadingStats ? "-" : filteredStats.completed}
                 </p>
               </div>
               <UserCheck className="w-8 h-8 text-green-600" />
@@ -138,9 +197,11 @@ export default function EmployeeProfilesPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Profiles Pending</p>
+                <p className="text-sm font-medium text-gray-600">
+                  Profiles Pending
+                </p>
                 <p className="text-2xl font-bold text-orange-600">
-                  {isLoadingStats ? '-' : filteredStats.pending}
+                  {isLoadingStats ? "-" : filteredStats.pending}
                 </p>
               </div>
               <UserX className="w-8 h-8 text-orange-600" />
@@ -152,12 +213,15 @@ export default function EmployeeProfilesPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Completion Rate</p>
+                <p className="text-sm font-medium text-gray-600">
+                  Completion Rate
+                </p>
                 <p className="text-2xl font-bold text-blue-600">
                   {filteredStats.total > 0
-                    ? `${Math.round((filteredStats.completed / filteredStats.total) * 100)}%`
-                    : '0%'
-                  }
+                    ? `${Math.round(
+                        (filteredStats.completed / filteredStats.total) * 100
+                      )}%`
+                    : "0%"}
                 </p>
               </div>
               <div className="relative w-8 h-8">
@@ -178,7 +242,11 @@ export default function EmployeeProfilesPage() {
                     stroke="currentColor"
                     strokeWidth="3"
                     fill="none"
-                    strokeDasharray={`${filteredStats.total > 0 ? (filteredStats.completed / filteredStats.total) * 75.4 : 0} 75.4`}
+                    strokeDasharray={`${
+                      filteredStats.total > 0
+                        ? (filteredStats.completed / filteredStats.total) * 75.4
+                        : 0
+                    } 75.4`}
                     className="text-blue-600"
                   />
                 </svg>
@@ -230,12 +298,13 @@ export default function EmployeeProfilesPage() {
           <Card>
             <CardContent className="p-12 text-center">
               <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No profiles found</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                No profiles found
+              </h3>
               <p className="text-gray-600">
                 {searchTerm || selectedRoleId
-                  ? 'Try adjusting your search or filters'
-                  : 'No employee profiles have been created yet'
-                }
+                  ? "Try adjusting your search or filters"
+                  : "No employee profiles have been created yet"}
               </p>
             </CardContent>
           </Card>
@@ -251,5 +320,5 @@ export default function EmployeeProfilesPage() {
         )}
       </div>
     </div>
-  )
+  );
 }

@@ -15,6 +15,11 @@ import {
   X,
   User,
   Shield,
+  Building,
+  Phone,
+  Users,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import {
@@ -43,6 +48,7 @@ type UserCreateFormData = z.infer<typeof userCreateSchema>;
 export default function NewUserPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Fetch branches from company service and roles from auth service (via company service proxy)
   const { data: branchesData } = useGetBranchesQuery({
@@ -90,7 +96,10 @@ export default function NewUserPage() {
     const currentIds = selectedBranchIds || [];
     if (currentIds.includes(branchId)) {
       // Remove branch if already selected
-      setValue("branch_ids", currentIds.filter((id) => id !== branchId));
+      setValue(
+        "branch_ids",
+        currentIds.filter((id) => id !== branchId)
+      );
     } else {
       // Add branch
       setValue("branch_ids", [...currentIds, branchId]);
@@ -110,7 +119,8 @@ export default function NewUserPage() {
     if (roles && !selectedAuthRoleId && roles.length > 0) {
       // Find first non-system role, or use first role if all are system roles
       // Note: roles can be either Role (is_system_role) or AuthRole (is_system)
-      const firstNonSystemRole = roles.find((r: any) => !r.is_system && !r.is_system_role) || roles[0];
+      const firstNonSystemRole =
+        roles.find((r: any) => !r.is_system && !r.is_system_role) || roles[0];
       console.log("Auto-selecting first role:", firstNonSystemRole);
       setValue("auth_role_id", firstNonSystemRole.id);
     }
@@ -155,7 +165,10 @@ export default function NewUserPage() {
         profile_type: data.profile_type,
         role_id: String(data.auth_role_id), // Auth service role ID (stored as string)
         branch_id: data.branch_id || undefined,
-        branch_ids: data.branch_ids && data.branch_ids.length > 0 ? data.branch_ids : undefined,
+        branch_ids:
+          data.branch_ids && data.branch_ids.length > 0
+            ? data.branch_ids
+            : undefined,
         is_active: data.is_active,
       };
 
@@ -296,7 +309,7 @@ export default function NewUserPage() {
                   id="profile_type"
                   {...register("profile_type")}
                   onChange={(e) => handleProfileTypeChange(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
                 >
                   <option value="staff">Staff</option>
                   <option value="driver">Driver</option>
@@ -355,18 +368,22 @@ export default function NewUserPage() {
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                       <span className="flex-1">{branch.name}</span>
-                      <span className="text-xs text-gray-500">{branch.code}</span>
+                      <span className="text-xs text-gray-500">
+                        {branch.code}
+                      </span>
                     </label>
                   );
                 })}
               </div>
               {selectedBranchIds.length > 0 && (
                 <p className="text-sm text-gray-600 mt-2">
-                  {selectedBranchIds.length} branch{selectedBranchIds.length > 1 ? "es" : ""} selected
+                  {selectedBranchIds.length} branch
+                  {selectedBranchIds.length > 1 ? "es" : ""} selected
                 </p>
               )}
               <p className="text-xs text-gray-500 mt-1">
-                Users can be assigned to multiple branches for cross-branch operations
+                Users can be assigned to multiple branches for cross-branch
+                operations
               </p>
             </div>
           </CardContent>
@@ -383,13 +400,26 @@ export default function NewUserPage() {
           <CardContent className="space-y-4">
             <div>
               <Label htmlFor="password">Password *</Label>
-              <Input
-                id="password"
-                type="password"
-                {...register("password")}
-                placeholder="Enter password"
-                className={errors.password ? "border-red-500" : ""}
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  {...register("password")}
+                  placeholder="Enter password"
+                  className={`pr-10 ${errors.password ? "border-red-500" : ""}`}
+                />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4 text-gray-400" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-gray-400" />
+                  )}
+                </button>
+              </div>
               {errors.password && (
                 <p className="text-sm text-red-600 mt-1">
                   {errors.password.message}

@@ -27,6 +27,7 @@ import {
   Tag,
   Box,
   Building,
+  ArrowLeft,
   Power,
   PowerOff,
   Trash2,
@@ -106,9 +107,13 @@ export default function ProductsPage() {
     try {
       await updateProduct({
         id: product.id,
-        product: { is_active: !product.is_active }
+        product: { is_active: !product.is_active },
       }).unwrap();
-      toast.success(product.is_active ? "Product deactivated successfully" : "Product activated successfully");
+      toast.success(
+        product.is_active
+          ? "Product deactivated successfully"
+          : "Product activated successfully"
+      );
     } catch (error: any) {
       toast.error(error?.data?.message || "Failed to update product status");
     }
@@ -172,13 +177,24 @@ export default function ProductsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">
-            Product Management
-          </h1>
-          <p className="text-gray-500 mt-2">
-            Manage your product catalog and inventory
-          </p>
+        <div className="flex items-center space-x-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.back()}
+            className="flex items-center"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">
+              Product Management
+            </h1>
+            <p className="text-gray-500 mt-2">
+              Manage your product catalog and inventory
+            </p>
+          </div>
         </div>
         <div className="flex gap-3">
           <Button
@@ -417,13 +433,18 @@ export default function ProductsPage() {
                     return (
                       <TableRow
                         key={product.id}
-                        className={`hover:bg-gray-50 ${!product.is_active ? 'bg-gray-50 opacity-60' : ''}`}
+                        className={`hover:bg-gray-50 ${
+                          !product.is_active ? "bg-gray-50 opacity-60" : ""
+                        }`}
                       >
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
                             {product.code}
                             {!product.is_active && (
-                              <Badge variant="default" className="text-xs bg-gray-400">
+                              <Badge
+                                variant="default"
+                                className="text-xs bg-gray-400"
+                              >
                                 Inactive
                               </Badge>
                             )}
@@ -449,16 +470,23 @@ export default function ProductsPage() {
                         <TableCell>
                           <div className="flex flex-col">
                             <Badge
-                              variant={product.weight_type === "fixed" ? "success" : "warning"}
+                              variant={
+                                product.weight_type === "fixed"
+                                  ? "success"
+                                  : "warning"
+                              }
                               className="w-fit mb-1"
                             >
-                              {product.weight_type === "fixed" ? "Fixed" : "Variable"}
+                              {product.weight_type === "fixed"
+                                ? "Fixed"
+                                : "Variable"}
                             </Badge>
                             <span className="text-xs text-gray-600">
                               {product.weight_type === "fixed"
-                                ? `${product.fixed_weight || product.weight || 0} ${product.weight_unit || "kg"}`
-                                : "Enter weight when creating order"
-                              }
+                                ? `${
+                                    product.fixed_weight || product.weight || 0
+                                  } ${product.weight_unit || "kg"}`
+                                : "Enter weight when creating order"}
                             </span>
                           </div>
                         </TableCell>
@@ -527,8 +555,14 @@ export default function ProductsPage() {
                               variant={product.is_active ? "ghost" : "outline"}
                               size="sm"
                               onClick={() => handleToggleActive(product)}
-                              title={product.is_active ? "Deactivate" : "Activate"}
-                              className={product.is_active ? "text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50" : "text-green-600 hover:text-green-700 hover:bg-green-50"}
+                              title={
+                                product.is_active ? "Deactivate" : "Activate"
+                              }
+                              className={
+                                product.is_active
+                                  ? "text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50"
+                                  : "text-green-600 hover:text-green-700 hover:bg-green-50"
+                              }
                             >
                               {product.is_active ? (
                                 <Power className="w-4 h-4" />
@@ -596,23 +630,29 @@ export default function ProductsPage() {
             <DialogTitle>Confirm Delete</DialogTitle>
           </DialogHeader>
           <div className="py-4">
-            {productToDelete && (() => {
-              const product = products.find((p: any) => p.id === productToDelete);
-              return (
-                <>
-                  <p className="text-sm text-gray-600">
-                    Are you sure you want to delete this product? This action cannot be undone.
-                  </p>
-                  <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                    <p className="text-sm font-medium text-gray-900">{product?.code}</p>
-                    <p className="text-sm text-gray-600">{product?.name}</p>
-                    <p className="text-sm text-gray-500 mt-1">
-                      ${product?.unit_price?.toFixed(2) || 0} per unit
+            {productToDelete &&
+              (() => {
+                const product = products.find(
+                  (p: any) => p.id === productToDelete
+                );
+                return (
+                  <>
+                    <p className="text-sm text-gray-600">
+                      Are you sure you want to delete this product? This action
+                      cannot be undone.
                     </p>
-                  </div>
-                </>
-              );
-            })()}
+                    <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                      <p className="text-sm font-medium text-gray-900">
+                        {product?.code}
+                      </p>
+                      <p className="text-sm text-gray-600">{product?.name}</p>
+                      <p className="text-sm text-gray-500 mt-1">
+                        ${product?.unit_price?.toFixed(2) || 0} per unit
+                      </p>
+                    </div>
+                  </>
+                );
+              })()}
           </div>
           <div className="flex justify-end space-x-2">
             <Button

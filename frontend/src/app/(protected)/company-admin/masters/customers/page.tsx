@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { BusinessTypeModel, BusinessTypesListResponse } from "@/services/api/companyApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -28,6 +29,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Briefcase,
+  ArrowLeft,
   Power,
   PowerOff,
   Trash2,
@@ -39,7 +41,6 @@ import {
   useUpdateCustomerMutation,
   useGetAllBusinessTypesQuery,
 } from "@/services/api/companyApi";
-import { BusinessTypeModel } from "@/services/api/companyApi";
 import {
   Dialog,
   DialogContent,
@@ -47,6 +48,13 @@ import {
   DialogTitle,
 } from "@/components/ui/Dialog";
 import { toast } from "react-hot-toast";
+
+// Type guard function to check if response is paginated
+function isPaginatedBusinessTypesResponse(
+  data: BusinessTypesListResponse | undefined
+): data is { items: BusinessTypeModel[]; total: number; page: number; per_page: number; pages: number } {
+  return data !== undefined && !Array.isArray(data) && 'items' in data;
+}
 
 export default function CustomersPage() {
   const router = useRouter();
@@ -59,12 +67,14 @@ export default function CustomersPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState<string | null>(null);
 
-  const { data: businessTypesData } = useGetAllBusinessTypesQuery({ is_active: true });
+  const { data: businessTypesData } = useGetAllBusinessTypesQuery({
+    is_active: true,
+  });
 
-  // Handle both array and paginated response formats
-  const businessTypes: BusinessTypeModel[] = Array.isArray(businessTypesData)
-    ? businessTypesData
-    : businessTypesData?.items || [];
+  // Handle both array and paginated response formats using type guard
+  const businessTypes: BusinessTypeModel[] = isPaginatedBusinessTypesResponse(businessTypesData)
+    ? businessTypesData.items
+    : (businessTypesData || []);
 
   const {
     data: customersData,
@@ -101,9 +111,13 @@ export default function CustomersPage() {
     try {
       await updateCustomer({
         id: customer.id,
-        customer: { is_active: !customer.is_active }
+        customer: { is_active: !customer.is_active },
       }).unwrap();
-      toast.success(customer.is_active ? "Customer deactivated successfully" : "Customer activated successfully");
+      toast.success(
+        customer.is_active
+          ? "Customer deactivated successfully"
+          : "Customer activated successfully"
+      );
     } catch (error: any) {
       toast.error(error?.data?.message || "Failed to update customer status");
     }
@@ -137,7 +151,8 @@ export default function CustomersPage() {
 
   const getBusinessTypeBadge = (customer: any) => {
     // Use business_type_relation (new) if available, fallback to business_type (old enum)
-    const businessTypeName = customer.business_type_relation?.name ||
+    const businessTypeName =
+      customer.business_type_relation?.name ||
       customer.business_type?.replace("_", " ") ||
       "N/A";
 
@@ -152,7 +167,8 @@ export default function CustomersPage() {
     };
 
     // Determine badge color based on business type name (for dynamic types)
-    let badgeColor: "default" | "success" | "warning" | "danger" | "info" = "default";
+    let badgeColor: "default" | "success" | "warning" | "danger" | "info" =
+      "default";
 
     if (customer.business_type_relation?.code) {
       badgeColor = colors[customer.business_type_relation.code] || "info";
@@ -162,11 +178,7 @@ export default function CustomersPage() {
       badgeColor = "default";
     }
 
-    return (
-      <Badge variant={badgeColor}>
-        {businessTypeName}
-      </Badge>
-    );
+    return <Badge variant={badgeColor}>{businessTypeName}</Badge>;
   };
 
   if (error) {
@@ -186,13 +198,24 @@ export default function CustomersPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">
-            Customer Management
-          </h1>
-          <p className="text-gray-500 mt-2">
-            Manage your customer database and relationships
-          </p>
+        <div className="flex items-center space-x-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.back()}
+            className="flex items-center"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">
+              Customer Management
+            </h1>
+            <p className="text-gray-500 mt-2">
+              Manage your customer database and relationships
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <Button
@@ -250,9 +273,10 @@ export default function CustomersPage() {
                 <p className="text-sm text-gray-600">Corporate</p>
                 <p className="text-2xl font-bold text-purple-600">
                   {
-                    customers.filter((c) =>
-                      c.business_type_relation?.code === "corporate" ||
-                      c.business_type === "corporate"
+                    customers.filter(
+                      (c) =>
+                        c.business_type_relation?.code === "corporate" ||
+                        c.business_type === "corporate"
                     ).length
                   }
                 </p>
@@ -399,13 +423,18 @@ export default function CustomersPage() {
                   {customers.map((customer) => (
                     <TableRow
                       key={customer.id}
-                      className={`hover:bg-gray-50 ${!customer.is_active ? 'bg-gray-50 opacity-60' : ''}`}
+                      className={`hover:bg-gray-50 ${
+                        !customer.is_active ? "bg-gray-50 opacity-60" : ""
+                      }`}
                     >
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           {customer.code}
                           {!customer.is_active && (
-                            <Badge variant="default" className="text-xs bg-gray-400">
+                            <Badge
+                              variant="default"
+                              className="text-xs bg-gray-400"
+                            >
                               Inactive
                             </Badge>
                           )}
@@ -442,9 +471,7 @@ export default function CustomersPage() {
                             : "N/A"}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        {getBusinessTypeBadge(customer)}
-                      </TableCell>
+                      <TableCell>{getBusinessTypeBadge(customer)}</TableCell>
                       <TableCell>
                         <div className="flex items-center text-sm text-gray-900">
                           <Building className="w-3 h-3 mr-1" />
@@ -481,8 +508,14 @@ export default function CustomersPage() {
                             variant={customer.is_active ? "ghost" : "outline"}
                             size="sm"
                             onClick={() => handleToggleActive(customer)}
-                            title={customer.is_active ? "Deactivate" : "Activate"}
-                            className={customer.is_active ? "text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50" : "text-green-600 hover:text-green-700 hover:bg-green-50"}
+                            title={
+                              customer.is_active ? "Deactivate" : "Activate"
+                            }
+                            className={
+                              customer.is_active
+                                ? "text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50"
+                                : "text-green-600 hover:text-green-700 hover:bg-green-50"
+                            }
                           >
                             {customer.is_active ? (
                               <Power className="w-4 h-4" />

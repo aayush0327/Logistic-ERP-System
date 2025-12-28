@@ -28,6 +28,9 @@ import {
   Download,
   ChevronLeft,
   ChevronRight,
+  ArrowLeft,
+  X,
+  ChevronDown,
   Power,
   PowerOff,
   Trash2,
@@ -55,6 +58,7 @@ export default function BranchesPage() {
   const [page, setPage] = useState(1);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [branchToDelete, setBranchToDelete] = useState<string | null>(null);
+  const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
 
   const {
     data: branchesData,
@@ -100,9 +104,13 @@ export default function BranchesPage() {
     try {
       await updateBranch({
         id: branch.id,
-        branch: { is_active: !branch.is_active }
+        branch: { is_active: !branch.is_active },
       }).unwrap();
-      toast.success(branch.is_active ? "Branch deactivated successfully" : "Branch activated successfully");
+      toast.success(
+        branch.is_active
+          ? "Branch deactivated successfully"
+          : "Branch activated successfully"
+      );
     } catch (error: any) {
       toast.error(error?.data?.message || "Failed to update branch status");
     }
@@ -151,138 +159,218 @@ export default function BranchesPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">
-            Branch Management
-          </h1>
-          <p className="text-gray-500 mt-2">
-            Manage your company branches and locations
-          </p>
+        <div className="flex items-center space-x-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.back()}
+            className="flex items-center"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">
+              Branch Management
+            </h1>
+            <p className="text-gray-500 mt-2">
+              Manage your company branches and locations
+            </p>
+          </div>
         </div>
         <Button
           onClick={() => router.push("/company-admin/masters/branches/new")}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 px-3 md:px-4 py-3 bg-[#1f40ae] hover:bg-[#1f40ae] active:bg-[#1f40ae] text-white rounded-xl transition-all duration-200 hover:scale-[1.02] hover:shadow-lg shadow-md"
         >
           <Plus className="w-4 h-4" />
-          New Branch
+          <span className="text-sm md:text-base font-semibold hover:font-bold">
+            New Branch
+          </span>
         </Button>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Total Branches</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {branches?.length || 0}
-                </p>
-              </div>
-              <Building className="w-8 h-8 text-blue-600" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+        {/* Total Branches Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#edf0f7] border-2 border-[#c4cde9]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Total Branches
+            </p>
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <Building className="w-5 h-5 md:w-6 md:h-6 text-blue-500" />
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Active</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {branches?.filter((b) => b.is_active).length || 0}
-                </p>
-              </div>
-              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                <div className="w-4 h-4 bg-green-600 rounded-full" />
-              </div>
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {isLoading ? "..." : branches?.length || 0}
+            </p>
+          </div>
+        </div>
+
+        {/* Active Branches Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#f0f7f0] border-2 border-[#c5edd6]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Active Branches
+            </p>
+            <div className="p-2 bg-emerald-100 rounded-lg">
+              <div className="w-5 h-5 md:w-6 md:h-6 bg-emerald-500 rounded-full" />
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Inactive</p>
-                <p className="text-2xl font-bold text-gray-600">
-                  {branches?.filter((b) => !b.is_active).length || 0}
-                </p>
-              </div>
-              <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-                <div className="w-4 h-4 bg-gray-600 rounded-full" />
-              </div>
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {isLoading
+                ? "..."
+                : branches?.filter((b) => b.is_active).length || 0}
+            </p>
+          </div>
+        </div>
+
+        {/* Inactive Branches Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#f0f7fa] border-2 border-[#c0e5f7]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Inactive Branches
+            </p>
+            <div className="p-2 bg-sky-100 rounded-lg">
+              <div className="w-5 h-5 md:w-6 md:h-6 bg-sky-500 rounded-full" />
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Total Customers</p>
-                <p className="text-2xl font-bold text-purple-600">
-                  {branches?.reduce(
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {isLoading
+                ? "..."
+                : branches?.filter((b) => !b.is_active).length || 0}
+            </p>
+          </div>
+        </div>
+
+        {/* Total Customers Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#fff8f0] border-2 border-[#f8e4c2]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Total Customers
+            </p>
+            <div className="p-2 bg-amber-100 rounded-lg">
+              <Users className="w-5 h-5 md:w-6 md:h-6 text-amber-500" />
+            </div>
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {isLoading
+                ? "..."
+                : branches?.reduce(
                     (acc, branch) => acc + (branch.customers?.length || 0),
                     0
                   ) || 0}
-                </p>
-              </div>
-              <Users className="w-8 h-8 text-purple-600" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <Input
-                placeholder="Search branches..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant={statusFilter === "all" ? "primary" : "outline"}
-                size="sm"
-                onClick={() => setStatusFilter("all")}
-              >
-                All
-              </Button>
-              <Button
-                variant={statusFilter === "active" ? "primary" : "outline"}
-                size="sm"
-                onClick={() => setStatusFilter("active")}
-              >
-                Active
-              </Button>
-              <Button
-                variant={statusFilter === "inactive" ? "primary" : "outline"}
-                size="sm"
-                onClick={() => setStatusFilter("inactive")}
-              >
-                Inactive
-              </Button>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex items-center gap-2"
-            >
-              <Download className="w-4 h-4" />
-              Export
-            </Button>
+            </p>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Branches Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Branches</CardTitle>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <CardTitle>Branches</CardTitle>
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              {/* Search */}
+              <div className="relative flex-1 sm:flex-none">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input
+                  placeholder="Search branches..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 pr-4 py-2 w-full sm:w-64"
+                />
+              </div>
+
+              {/* Filter Button with Dropdown */}
+              <div className="relative">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
+                  className="flex items-center gap-2"
+                >
+                  <Filter className="w-4 h-4" />
+                  Filter
+                  <ChevronDown className="w-4 h-4" />
+                </Button>
+
+                {/* Filter Dropdown */}
+                {filterDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                    <div className="py-1">
+                      <button
+                        onClick={() => {
+                          setStatusFilter("all");
+                          setFilterDropdownOpen(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between"
+                      >
+                        <span>All Branches</span>
+                        {statusFilter === "all" && (
+                          <span className="w-2 h-2 bg-blue-600 rounded-full" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setStatusFilter("active");
+                          setFilterDropdownOpen(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between"
+                      >
+                        <span>Active</span>
+                        {statusFilter === "active" && (
+                          <span className="w-2 h-2 bg-green-600 rounded-full" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setStatusFilter("inactive");
+                          setFilterDropdownOpen(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between"
+                      >
+                        <span>Inactive</span>
+                        {statusFilter === "inactive" && (
+                          <span className="w-2 h-2 bg-gray-600 rounded-full" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Export Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Export
+              </Button>
+            </div>
+          </div>
+
+          {/* Active Filter Chips */}
+          {statusFilter !== "all" && (
+            <div className="flex items-center gap-2 mt-3 flex-wrap">
+              <span className="text-sm text-gray-600">Active filters:</span>
+              <div className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+                {statusFilter === "active" ? "Active" : "Inactive"}
+                <button
+                  onClick={() => setStatusFilter("all")}
+                  className="ml-1 hover:bg-blue-200 rounded-full p-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -316,60 +404,72 @@ export default function BranchesPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Branch Code</TableHead>
-                    <TableHead>Name</TableHead>
+                    <TableHead className="w-[120px]">Branch Code</TableHead>
+                    <TableHead className="w-[200px]">Name</TableHead>
                     <TableHead>Location</TableHead>
                     <TableHead>Contact</TableHead>
                     <TableHead>Manager</TableHead>
                     <TableHead>Customers</TableHead>
                     <TableHead>Vehicles</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className="text-right w-[80px]">
+                      Actions
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredBranches.map((branch) => (
                     <TableRow
                       key={branch.id}
-                      className={`hover:bg-gray-50 ${!branch.is_active ? 'bg-gray-50 opacity-60' : ''}`}
+                      className={`hover:bg-gray-50 ${
+                        !branch.is_active ? "bg-gray-50 opacity-60" : ""
+                      }`}
                     >
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           {branch.code}
                           {!branch.is_active && (
-                            <Badge variant="default" className="text-xs bg-gray-400">
+                            <Badge
+                              variant="default"
+                              className="text-xs bg-gray-400"
+                            >
                               Inactive
                             </Badge>
                           )}
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div>
-                          <p className="font-medium text-gray-900">
+                        <div className="max-w-[200px]">
+                          <p
+                            className="font-medium text-gray-900 truncate"
+                            title={branch.name}
+                          >
                             {branch.name}
                           </p>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center text-sm text-gray-600">
-                          <MapPin className="w-4 h-4 mr-1" />
-                          {branch.city && branch.state
-                            ? `${branch.city}, ${branch.state}`
-                            : "N/A"}
+                          <MapPin className="w-4 h-4 mr-1 flex-shrink-0" />
+                          <span className="truncate">
+                            {branch.city && branch.state
+                              ? `${branch.city}, ${branch.state}`
+                              : "N/A"}
+                          </span>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="space-y-1">
                           {branch.phone && (
                             <div className="flex items-center text-sm text-gray-600">
-                              <Phone className="w-3 h-3 mr-1" />
-                              {branch.phone}
+                              <Phone className="w-3 h-3 mr-1 flex-shrink-0" />
+                              <span className="truncate">{branch.phone}</span>
                             </div>
                           )}
                           {branch.email && (
                             <div className="flex items-center text-sm text-gray-600">
-                              <Mail className="w-3 h-3 mr-1" />
-                              {branch.email}
+                              <Mail className="w-3 h-3 mr-1 flex-shrink-0" />
+                              <span className="truncate">{branch.email}</span>
                             </div>
                           )}
                         </div>
@@ -415,7 +515,11 @@ export default function BranchesPage() {
                             size="sm"
                             onClick={() => handleToggleActive(branch)}
                             title={branch.is_active ? "Deactivate" : "Activate"}
-                            className={branch.is_active ? "text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50" : "text-green-600 hover:text-green-700 hover:bg-green-50"}
+                            className={
+                              branch.is_active
+                                ? "text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50"
+                                : "text-green-600 hover:text-green-700 hover:bg-green-50"
+                            }
                           >
                             {branch.is_active ? (
                               <Power className="w-4 h-4" />

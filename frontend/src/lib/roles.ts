@@ -28,13 +28,13 @@ export const ROLE_HIERARCHY: Record<Role, number> = {
 
 // Role ID to Role constant mapping (from backend role_id to frontend Role)
 export const ROLE_ID_MAP: Record<number, Role> = {
-  1: ROLES.SUPER_ADMIN,      // "Super Admin"
-  2: ROLES.COMPANY_ADMIN,    // "Admin" -> maps to Company Admin
-  3: ROLES.BRANCH_MANAGER,   // "Branch Manager"
-  4: ROLES.FINANCE_MANAGER,  // "Finance Manager"
-  5: ROLES.LOGISTICS_MANAGER,// "Logistics Manager"
-  6: ROLES.DRIVER,           // "Driver"
-  7: ROLES.USER,             // "User"
+  1: ROLES.SUPER_ADMIN, // "Super Admin"
+  2: ROLES.COMPANY_ADMIN, // "Admin" -> maps to Company Admin
+  3: ROLES.BRANCH_MANAGER, // "Branch Manager"
+  4: ROLES.FINANCE_MANAGER, // "Finance Manager"
+  5: ROLES.LOGISTICS_MANAGER, // "Logistics Manager"
+  6: ROLES.DRIVER, // "Driver"
+  7: ROLES.USER, // "User"
 };
 
 // Role display names
@@ -64,7 +64,7 @@ export const ROLE_ROUTES: Record<Role, string[]> = {
     "/branch-manager",
     "/finance-manager",
     "/logistics-manager",
-     "/drivermodule"
+    "/drivermodule",
   ],
   [ROLES.FINANCE_MANAGER]: ["/finance-manager"],
   [ROLES.LOGISTICS_MANAGER]: ["/logistics-manager"],
