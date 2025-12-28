@@ -93,19 +93,70 @@ async def list_orders(
     tenant_id: str = Depends(get_current_tenant_id),
 ):
     """List orders with filtering and pagination"""
+    # Log incoming request details
+    logger.info(f"ORDERS SERVICE - Incoming request: user_id={token_data.user_id}, role={token_data.role}, tenant={tenant_id}")
+    logger.info(f"ORDERS SERVICE - Request params: status={status}, branch_id={branch_id}, page={page}, per_page={per_page}")
+
     # Get authorization header from the request and forward it
     auth_headers = {}
     auth_header = request.headers.get("authorization")
     if auth_header:
         auth_headers["Authorization"] = auth_header
+        logger.info(f"ORDERS SERVICE - Auth header present, will forward to company service")
+    else:
+        logger.warning(f"ORDERS SERVICE - No auth header found!")
 
     order_service = OrderService(db, auth_headers, tenant_id)
 
     # Build filters
     filters = [Order.tenant_id == tenant_id, Order.is_active == True]
 
+    # Check if user is Admin - if not, filter by assigned branches
+    is_admin = token_data.role == "Admin"
+    logger.info(f"Orders access check - user_id: {token_data.user_id}, role: {token_data.role}, is_admin: {is_admin}")
+
+    if not is_admin:
+        # Fetch assigned branches for non-admin users
+        logger.info(f"ORDERS SERVICE - Non-admin user detected, fetching assigned branches from company service")
+        try:
+            async with AsyncClient(timeout=30.0) as client:
+                branches_response = await client.get(
+                    f"{COMPANY_SERVICE_URL}/branches/my/assigned",
+                    params={
+                        "is_active": True,
+                        "per_page": 100,
+                        "tenant_id": tenant_id
+                    },
+                    headers=auth_headers
+                )
+                logger.info(f"ORDERS SERVICE - Company service branches response status: {branches_response.status_code}")
+
+                if branches_response.status_code == 200:
+                    branches_data = branches_response.json()
+                    assigned_branch_ids = [branch["id"] for branch in branches_data.get("items", [])]
+                    logger.info(f"ORDERS SERVICE - Assigned branches for user {token_data.user_id}: {assigned_branch_ids}")
+
+                    if assigned_branch_ids:
+                        # Filter orders by assigned branches
+                        filters.append(Order.branch_id.in_(assigned_branch_ids))
+                        logger.info(f"ORDERS SERVICE - Filtering orders by assigned branches: {assigned_branch_ids}")
+                    else:
+                        # No assigned branches - return empty result
+                        logger.warning(f"ORDERS SERVICE - No assigned branches found for user {token_data.user_id}")
+                        return OrderListPaginatedResponse(
+                            items=[],
+                            total=0,
+                            page=page,
+                            per_page=per_page or 20,
+                            pages=0
+                        )
+                else:
+                    logger.error(f"ORDERS SERVICE - Failed to fetch assigned branches: {branches_response.status_code}, response: {branches_response.text}")
+        except Exception as e:
+            logger.error(f"ORDERS SERVICE - Error fetching assigned branches: {str(e)}", exc_info=True)
+
     if status:
-        filters.append(cast(Order.status, String) == status.name)
+        filters.append(Order.status == status.value)
     if customer_id:
         filters.append(Order.customer_id == customer_id)
     if branch_id:
@@ -138,6 +189,11 @@ async def list_orders(
         page=page,
         page_size=limit
     )
+
+    # Log query results for debugging
+    logger.info(f"ORDERS SERVICE - Query returned {len(orders)} orders (total: {total})")
+    for order in orders:
+        logger.info(f"ORDERS SERVICE - Order: {order.order_number}, Branch: {order.branch_id}, Status: {order.status}")
 
     # Calculate total pages
     pages = (total + limit - 1) // limit
@@ -208,6 +264,9 @@ async def list_orders(
             'order_type': order.order_type,
             'priority': order.priority,
             'total_amount': float(order.total_amount) if order.total_amount else 0,
+            'total_weight': float(order.total_weight) if order.total_weight else 0,
+            'total_volume': float(order.total_volume) if order.total_volume else 0,
+            'package_count': order.package_count if order.package_count else 0,
             'payment_type': order.payment_type,
             'pickup_date': order.pickup_date,
             'delivery_date': order.delivery_date,
@@ -228,15 +287,22 @@ async def list_orders(
     )
 
 
-@router.get("/{order_id}", response_model=OrderResponse)
+@router.get("/{order_id}")
 async def get_order(
     order_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     token_data: TokenData = Depends(require_permissions(["orders:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
-    """Get order by ID"""
-    order_service = OrderService(db)
+    """Get order by ID with customer details"""
+    # Get authorization header from the request and forward it
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    order_service = OrderService(db, auth_headers, tenant_id)
     order = await order_service.get_order_by_id(str(order_id), tenant_id)
 
     if not order:
@@ -245,7 +311,79 @@ async def get_order(
             detail="Order not found"
         )
 
-    return order
+    # Fetch customer data
+    customer_data = None
+    try:
+        async with AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                f"{COMPANY_SERVICE_URL}/customers/{order.customer_id}",
+                params={"tenant_id": tenant_id},
+                headers=auth_headers
+            )
+            if response.status_code == 200:
+                customer_data = response.json()
+    except Exception as e:
+        logger.error(f"Error fetching customer {order.customer_id}: {str(e)}")
+
+    # Prepare order data with customer info
+    order_dict = {
+        'id': order.id,
+        'order_number': order.order_number,
+        'customer_id': order.customer_id,
+        'branch_id': order.branch_id,
+        'status': order.status,
+        'order_type': order.order_type,
+        'priority': order.priority,
+        'total_amount': float(order.total_amount) if order.total_amount else 0,
+        'payment_type': order.payment_type,
+        'pickup_date': order.pickup_date,
+        'delivery_date': order.delivery_date,
+        'pickup_address': order.pickup_address,
+        'pickup_contact_name': order.pickup_contact_name,
+        'pickup_contact_phone': order.pickup_contact_phone,
+        'delivery_address': order.delivery_address,
+        'delivery_contact_name': order.delivery_contact_name,
+        'delivery_contact_phone': order.delivery_contact_phone,
+        'total_weight': float(order.total_weight) if order.total_weight else 0,
+        'total_volume': float(order.total_volume) if order.total_volume else 0,
+        'package_count': order.package_count,
+        'special_instructions': order.special_instructions,
+        'delivery_instructions': order.delivery_instructions,
+        'created_by': order.created_by,
+        'updated_by': order.updated_by,
+        'driver_id': order.driver_id,
+        'trip_id': order.trip_id,
+        'created_at': order.created_at,
+        'updated_at': order.updated_at,
+        'finance_approved_at': order.finance_approved_at,
+        'finance_approved_by': order.finance_approved_by,
+        'logistics_approved_at': order.logistics_approved_at,
+        'logistics_approved_by': order.logistics_approved_by,
+        'customer': customer_data,
+        'items': [],
+        'items_count': 0
+    }
+
+    # Add items
+    if order.items:
+        for item in order.items:
+            order_dict['items'].append({
+                'id': item.id,
+                'product_id': item.product_id,
+                'product_name': item.product_name,
+                'product_code': item.product_code,
+                'description': item.description,
+                'quantity': item.quantity,
+                'unit': item.unit,
+                'unit_price': float(item.unit_price) if item.unit_price else 0,
+                'total_price': float(item.total_price) if item.total_price else 0,
+                'weight': float(item.weight) if item.weight else 0,
+                'total_weight': float(item.weight) * item.quantity if item.weight else 0,
+                'volume': float(item.volume) if item.volume else 0
+            })
+        order_dict['items_count'] = len(order.items)
+
+    return order_dict
 
 
 @router.post("/", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
@@ -268,6 +406,7 @@ async def create_order(
 
     # Order service will use the tenant_id from the token
     order = await order_service.create_order(order_data, user_id, tenant_id)
+
     return order
 
 

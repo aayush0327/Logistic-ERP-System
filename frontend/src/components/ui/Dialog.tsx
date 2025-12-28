@@ -1,5 +1,7 @@
-import React, { useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
+"use client";
+
+import React, { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 interface DialogProps {
   open: boolean;
@@ -12,19 +14,19 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
 
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         onOpenChange(false);
       }
     };
 
     if (open) {
-      document.addEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'hidden';
+      document.addEventListener("keydown", handleEscape);
+      document.body.style.overflow = "hidden";
     }
 
     return () => {
-      document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'unset';
+      document.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = "unset";
     };
   }, [open, onOpenChange]);
 
@@ -56,11 +58,7 @@ interface DialogHeaderProps {
 }
 
 export function DialogHeader({ children }: DialogHeaderProps) {
-  return (
-    <div className="mb-4">
-      {children}
-    </div>
-  );
+  return <div className="mb-4">{children}</div>;
 }
 
 interface DialogTitleProps {
@@ -68,7 +66,7 @@ interface DialogTitleProps {
   className?: string;
 }
 
-export function DialogTitle({ children, className = '' }: DialogTitleProps) {
+export function DialogTitle({ children, className = "" }: DialogTitleProps) {
   return (
     <h2 className={`text-lg font-semibold text-gray-900 ${className}`}>
       {children}
@@ -81,10 +79,9 @@ interface DialogContentProps {
   className?: string;
 }
 
-export function DialogContent({ children, className = '' }: DialogContentProps) {
-  return (
-    <div className={`text-sm text-gray-600 ${className}`}>
-      {children}
-    </div>
-  );
+export function DialogContent({
+  children,
+  className = "",
+}: DialogContentProps) {
+  return <div className={`text-sm text-gray-600 ${className}`}>{children}</div>;
 }

@@ -1,7 +1,8 @@
-import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { ArrowLeft, Save, X } from 'lucide-react';
+import React from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { ArrowLeft, Save, X } from "lucide-react";
+import { useRouter } from "next/router";
 
 interface FormWrapperProps {
   title: string;
@@ -24,15 +25,15 @@ export function FormWrapper({
   children,
   onSubmit,
   onCancel,
-  submitText = 'Save',
-  cancelText = 'Cancel',
+  submitText = "Save",
+  cancelText = "Cancel",
   loading = false,
   disabled = false,
   showActions = true,
   backUrl,
-  extraActions
+  extraActions,
 }: FormWrapperProps) {
-  const router = React.useRouter();
+  const router = useRouter();
 
   const handleBack = () => {
     if (backUrl) {
@@ -43,7 +44,7 @@ export function FormWrapper({
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto inline space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
@@ -58,9 +59,7 @@ export function FormWrapper({
           </Button>
           <div>
             <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
-            {subtitle && (
-              <p className="text-gray-500 mt-1">{subtitle}</p>
-            )}
+            {subtitle && <p className="text-gray-500 mt-1">{subtitle}</p>}
           </div>
         </div>
       </div>

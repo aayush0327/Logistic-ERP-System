@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry
 from starlette.responses import Response as StarletteResponse
 
-from src.api.endpoints import branches, customers, vehicles, products, product_categories
+from src.api.endpoints import branches, customers, vehicles, products, product_categories, business_types, vehicle_types, users, roles, profiles
 from src.config_local import settings
 from src.database import engine, Base
 from src.security import (
@@ -252,13 +252,63 @@ app.include_router(
     tags=["Product Categories"]
 )
 
+app.include_router(
+    business_types.router,
+    prefix="/business-types",
+    tags=["Business Types"]
+)
 
-# Add security exception handlers
-app.add_exception_handler(SecurityException, security_exception_handler)
-app.add_exception_handler(HTTPException, http_exception_handler)
-from fastapi.exceptions import RequestValidationError
-app.add_exception_handler(RequestValidationError, validation_exception_handler)
-app.add_exception_handler(Exception, general_exception_handler)
+app.include_router(
+    vehicle_types.router,
+    prefix="/vehicle-types",
+    tags=["Vehicle Types"]
+)
+
+app.include_router(
+    users.router,
+    prefix="/users",
+    tags=["User Management"]
+)
+
+app.include_router(
+    roles.router,
+    prefix="/roles",
+    tags=["Role Management"]
+)
+
+app.include_router(
+    profiles.router,
+    prefix="/profiles",
+    tags=["Profile Management"]
+)
+
+
+# Exception handlers
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """HTTP exception handler"""
+    logger.warning(
+        f"HTTP exception - path={request.url.path}, method={request.method}, "
+        f"status={exc.status_code}, detail={exc.detail}"
+    )
+    return JSONResponse(
+        content={"detail": exc.detail},
+        status_code=exc.status_code
+    )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global exception handler"""
+    logger.error(
+        f"Unhandled exception - path={request.url.path}, method={request.method}",
+        exc_info=exc
+    )
+
+    return JSONResponse(
+        content={"detail": "Internal server error"},
+        status_code=500
+    )
 
 
 if __name__ == "__main__":

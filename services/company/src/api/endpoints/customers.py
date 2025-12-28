@@ -9,7 +9,8 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.database import get_db, Customer, Branch, BusinessType
+from src.database import get_db, Customer, Branch, BusinessType, BusinessTypeModel
+from src.helpers import validate_branch_exists
 from src.schemas import (
     Customer as CustomerSchema,
     CustomerCreate,
@@ -21,7 +22,12 @@ from src.security import (
     get_current_tenant_id,
     get_current_user_id,
     require_permissions,
-    require_any_permission
+    require_any_permission,
+    CUSTOMER_READ_ALL,
+    CUSTOMER_READ,
+    CUSTOMER_CREATE,
+    CUSTOMER_UPDATE,
+    CUSTOMER_DELETE,
 )
 
 router = APIRouter()
@@ -32,7 +38,8 @@ async def list_customers(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     search: Optional[str] = Query(None),
-    business_type: Optional[BusinessType] = Query(None),
+    business_type: Optional[BusinessType] = Query(None),  # Deprecated - old enum filter
+    business_type_id: Optional[UUID] = Query(None),  # New - dynamic business type filter
     home_branch_id: Optional[UUID] = Query(None),
     is_active: Optional[bool] = Query(None),
     token_data: TokenData = Depends(require_any_permission(["customers:read_all", "customers:read"])),
@@ -47,7 +54,7 @@ async def list_customers(
     - customers:read (to view basic customer info)
     """
 
-    
+
     # Build query
     query = select(Customer).where(Customer.tenant_id == tenant_id)
 
@@ -60,7 +67,10 @@ async def list_customers(
             Customer.phone.ilike(f"%{search}%")
         )
 
-    if business_type:
+    # Support both old enum filter and new foreign key filter
+    if business_type_id:
+        query = query.where(Customer.business_type_id == business_type_id)
+    elif business_type:
         query = query.where(Customer.business_type == business_type)
 
     if home_branch_id:
@@ -78,8 +88,11 @@ async def list_customers(
     offset = (page - 1) * per_page
     query = query.offset(offset).limit(per_page).order_by(Customer.name)
 
-    # Include branch relationship
-    query = query.options(selectinload(Customer.home_branch))
+    # Include branch and business type relationships
+    query = query.options(
+        selectinload(Customer.home_branch),
+        selectinload(Customer.business_type_relation)
+    )
 
     # Execute query
     result = await db.execute(query)
@@ -117,7 +130,8 @@ async def get_customer(
         Customer.id == customer_id,
         Customer.tenant_id == tenant_id
     ).options(
-        selectinload(Customer.home_branch)
+        selectinload(Customer.home_branch),
+        selectinload(Customer.business_type_relation)
     )
 
     result = await db.execute(query)
@@ -158,15 +172,12 @@ async def create_customer(
 
     # Validate home branch if provided
     if customer_data.home_branch_id:
-        branch_query = select(Branch).where(
-            Branch.id == customer_data.home_branch_id,
-            Branch.tenant_id == tenant_id
-        )
-        branch_result = await db.execute(branch_query)
-        if not branch_result.scalar_one_or_none():
+        try:
+            await validate_branch_exists(db, customer_data.home_branch_id, tenant_id)
+        except ValueError as e:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid home branch"
+                detail=str(e)
             )
 
     # Create new customer
@@ -179,8 +190,8 @@ async def create_customer(
     await db.commit()
     await db.refresh(customer)
 
-    # Load the branch relationship for response
-    await db.refresh(customer, ["home_branch"])
+    # Load the branch and business_type relationships for response
+    await db.refresh(customer, ["home_branch", "business_type_relation"])
 
     return CustomerSchema.model_validate(customer)
 
@@ -201,10 +212,13 @@ async def update_customer(
     - customers:update_own (to update own assigned customers)
     """
 
-    # Get existing customer
+    # Get existing customer with relationships
     query = select(Customer).where(
         Customer.id == customer_id,
         Customer.tenant_id == tenant_id
+    ).options(
+        selectinload(Customer.home_branch),
+        selectinload(Customer.business_type_relation)
     )
     result = await db.execute(query)
     customer = result.scalar_one_or_none()
@@ -214,15 +228,12 @@ async def update_customer(
 
     # Validate home branch if provided
     if customer_data.home_branch_id:
-        branch_query = select(Branch).where(
-            Branch.id == customer_data.home_branch_id,
-            Branch.tenant_id == tenant_id
-        )
-        branch_result = await db.execute(branch_query)
-        if not branch_result.scalar_one_or_none():
+        try:
+            await validate_branch_exists(db, customer_data.home_branch_id, tenant_id)
+        except ValueError as e:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid home branch"
+                detail=str(e)
             )
 
     # Update customer
@@ -233,8 +244,8 @@ async def update_customer(
     await db.commit()
     await db.refresh(customer)
 
-    # Load the branch relationship for response
-    await db.refresh(customer, ["home_branch"])
+    # Load the branch and business_type relationships for response
+    await db.refresh(customer, ["home_branch", "business_type_relation"])
 
     return CustomerSchema.model_validate(customer)
 
@@ -247,7 +258,7 @@ async def delete_customer(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Delete (deactivate) a customer
+    Delete (hard delete) a customer
 
     Requires:
     - customers:delete
@@ -264,16 +275,24 @@ async def delete_customer(
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
 
-    # Soft delete - deactivate customer
-    customer.is_active = False
+    # Hard delete - remove customer from database
+    await db.delete(customer)
     await db.commit()
+
+    return None
 
 
 @router.get("/business-types")
 @router.get("/business-types/")
-async def get_business_types():
+async def get_business_types(
+    token_data: TokenData = Depends(require_any_permission([*CUSTOMER_READ_ALL, *CUSTOMER_READ]))
+):
     """
     Get list of available business types
+
+    Requires:
+    - customers:read_all (to view all customers) OR
+    - customers:read (to view basic customer info)
     """
     try:
         # Return the enum values - these will be used as both value and display in frontend

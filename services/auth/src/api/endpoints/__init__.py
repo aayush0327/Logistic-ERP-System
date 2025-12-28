@@ -1,3 +1,3 @@
 """API endpoints for auth service"""
 
-from . import admin
+from . import admin, roles

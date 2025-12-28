@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.database import get_db, Product, ProductCategory, Branch, ProductBranch
+from src.helpers import validate_category_exists, validate_branch_exists
 from src.schemas import (
     Product as ProductSchema,
     ProductCreate,
@@ -188,15 +189,12 @@ async def create_product(
 
     # Validate category if provided
     if product_data.category_id:
-        category_query = select(ProductCategory).where(
-            ProductCategory.id == product_data.category_id,
-            ProductCategory.tenant_id == tenant_id
-        )
-        category_result = await db.execute(category_query)
-        if not category_result.scalar_one_or_none():
+        try:
+            await validate_category_exists(db, product_data.category_id, tenant_id)
+        except ValueError as e:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid product category"
+                detail=str(e)
             )
 
     # Validate branches if product is not available for all branches
@@ -206,15 +204,12 @@ async def create_product(
             branch_ids = product_data.branch_ids
             # Validate all branches exist and belong to tenant
             for branch_id in branch_ids:
-                branch_query = select(Branch).where(
-                    Branch.id == branch_id,
-                    Branch.tenant_id == tenant_id
-                )
-                branch_result = await db.execute(branch_query)
-                if not branch_result.scalar_one_or_none():
+                try:
+                    await validate_branch_exists(db, branch_id, tenant_id)
+                except ValueError as e:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Invalid branch: {branch_id}"
+                        detail=str(e)
                     )
         else:
             raise HTTPException(
@@ -300,15 +295,12 @@ async def update_product(
 
     # Validate category if provided
     if product_data.category_id:
-        category_query = select(ProductCategory).where(
-            ProductCategory.id == product_data.category_id,
-            ProductCategory.tenant_id == tenant_id
-        )
-        category_result = await db.execute(category_query)
-        if not category_result.scalar_one_or_none():
+        try:
+            await validate_category_exists(db, product_data.category_id, tenant_id)
+        except ValueError as e:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid product category"
+                detail=str(e)
             )
 
     # Validate branch if provided
@@ -365,7 +357,7 @@ async def delete_product(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Delete (deactivate) a product
+    Delete (hard delete) a product
 
     Requires:
     - products:delete
@@ -382,9 +374,11 @@ async def delete_product(
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    # Soft delete - deactivate product
-    product.is_active = False
+    # Hard delete - remove product from database
+    await db.delete(product)
     await db.commit()
+
+    return None
 
 
 @router.get("/low-stock", response_model=PaginatedResponse)

@@ -5,6 +5,9 @@ from typing import Callable, List, Optional
 from fastapi import HTTPException, status, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from functools import wraps
+import logging
+
+logger = logging.getLogger(__name__)
 
 from .auth import TokenData, verify_token, extract_token_from_header, TokenExpiredError, TokenInvalidError
 from src.database import get_db
@@ -47,9 +50,16 @@ async def get_current_token_data(
     """
     Dependency to get current user's token data from JWT token
     """
-    authorization = request.headers.get("Authorization")
+    # Try to get authorization header - case insensitive for httpx compatibility
+    # httpx converts all headers to lowercase
+    authorization = (
+        request.headers.get("Authorization") or
+        request.headers.get("authorization") or
+        request.headers.get("AUTHORIZATION")
+    )
 
     if not authorization:
+        logger.warning("Authorization header missing from request to TMS service")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authorization header required",
@@ -57,11 +67,15 @@ async def get_current_token_data(
         )
 
     try:
+        logger.info(f"TMS: Received authorization header (first 30 chars): {authorization[:30] if authorization else 'None'}...")
+
         # Extract token from header
         token = extract_token_from_header(authorization)
+        logger.info(f"TMS: Extracted token (first 30 chars): {token[:30] if token else 'None'}...")
 
         # Verify token and get user data
         token_data = verify_token(token)
+        logger.info(f"TMS: Token verified successfully for user_id: {token_data.user_id}")
 
         return token_data
 

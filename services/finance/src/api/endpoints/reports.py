@@ -25,34 +25,35 @@ ORDERS_SERVICE_URL = "http://orders-service:8003"
 router = APIRouter()
 
 
-async def fetch_pending_orders_from_service(headers: dict = None) -> dict:
-    """Fetch pending orders from Orders Service"""
+async def fetch_orders_by_status_from_service(status: str, headers: dict = None) -> dict:
+    """Fetch orders by status from Orders Service"""
+    logger.info(f"FINANCE REPORTS - Fetching {status} orders from orders service")
     async with AsyncClient(timeout=10.0) as client:
         try:
             response = await client.get(
                 f"{ORDERS_SERVICE_URL}/api/v1/orders/",
-                params={"status": "submitted", "per_page": 100},  # max per_page is 100
+                params={"status": status, "per_page": 100},  # max per_page is 100
                 headers=headers or {},
                 follow_redirects=True
             )
             if response.status_code == 200:
                 data = response.json()
-                logger.info(f"Fetched pending orders: total={data.get('total', 0)}, items_count={len(data.get('items', []))}")
+                logger.info(f"FINANCE REPORTS - Fetched {status} orders: total={data.get('total', 0)}, items_count={len(data.get('items', []))}")
                 return data
             elif response.status_code == 401:
-                logger.warning(f"Authorization failed when fetching pending orders - returning empty")
+                logger.warning(f"FINANCE REPORTS - Authorization failed when fetching {status} orders - returning empty")
                 return {"items": [], "total": 0}
             else:
-                logger.warning(f"Failed to fetch pending orders: {response.status_code} - {response.text}")
+                logger.warning(f"FINANCE REPORTS - Failed to fetch {status} orders: {response.status_code} - {response.text}")
                 return {"items": [], "total": 0}
         except ConnectError as e:
-            logger.warning(f"Connection error fetching pending orders (service may be starting): {str(e)}")
+            logger.warning(f"FINANCE REPORTS - Connection error fetching {status} orders (service may be starting): {str(e)}")
             return {"items": [], "total": 0}
         except TimeoutException as e:
-            logger.warning(f"Timeout fetching pending orders: {str(e)}")
+            logger.warning(f"FINANCE REPORTS - Timeout fetching {status} orders: {str(e)}")
             return {"items": [], "total": 0}
         except Exception as e:
-            logger.error(f"Error fetching pending orders: {str(e)}")
+            logger.error(f"FINANCE REPORTS - Error fetching {status} orders: {str(e)}")
             return {"items": [], "total": 0}
 
 
@@ -67,6 +68,9 @@ async def get_dashboard_summary(
     """
     Get financial dashboard summary with key metrics
     """
+    # Log user info for debugging
+    logger.info(f"FINANCE REPORTS - User: {token_data.user_id}, Role: {token_data.role}, Tenant: {tenant_id}")
+
     # Calculate date range
     end_date = datetime.utcnow()
     start_date = end_date - timedelta(days=days)
@@ -77,6 +81,9 @@ async def get_dashboard_summary(
         auth_header = request.headers.get("authorization")
         if auth_header:
             auth_headers["Authorization"] = auth_header
+            logger.info(f"FINANCE REPORTS - Auth header found and will be forwarded to orders service")
+        else:
+            logger.warning(f"FINANCE REPORTS - No auth header found in request!")
 
     try:
         # Get approval statistics
@@ -164,8 +171,8 @@ async def get_dashboard_summary(
         pending_result = await db.execute(pending_query)
         pending_stats = pending_result.first()
 
-        # Fetch real-time pending orders from Orders Service
-        pending_orders_data = await fetch_pending_orders_from_service(auth_headers)
+        # Fetch real-time order counts from Orders Service with role-based filtering
+        pending_orders_data = await fetch_orders_by_status_from_service("submitted", auth_headers)
         real_pending_count = pending_orders_data.get("total", 0)
         pending_items = pending_orders_data.get("items", [])
         real_pending_amount = sum(
@@ -173,8 +180,26 @@ async def get_dashboard_summary(
             for order in pending_items
         )
 
-        logger.info(f"Dashboard Summary - Pending Orders: count={real_pending_count}, amount={real_pending_amount}")
-        logger.info(f"Dashboard Summary - Approval Stats: PENDING={stats_dict[ApprovalStatus.PENDING]}, APPROVED={stats_dict[ApprovalStatus.APPROVED]}, REJECTED={stats_dict[ApprovalStatus.REJECTED]}")
+        approved_orders_data = await fetch_orders_by_status_from_service("finance_approved", auth_headers)
+        real_approved_count = approved_orders_data.get("total", 0)
+        approved_items = approved_orders_data.get("items", [])
+        real_approved_amount = sum(
+            order.get("total_amount", 0) or 0
+            for order in approved_items
+        )
+
+        rejected_orders_data = await fetch_orders_by_status_from_service("finance_rejected", auth_headers)
+        real_rejected_count = rejected_orders_data.get("total", 0)
+        rejected_items = rejected_orders_data.get("items", [])
+        real_rejected_amount = sum(
+            order.get("total_amount", 0) or 0
+            for order in rejected_items
+        )
+
+        logger.info(f"Dashboard Summary - Orders from Orders Service (with role-based filtering):")
+        logger.info(f"  PENDING: count={real_pending_count}, amount={real_pending_amount}")
+        logger.info(f"  APPROVED: count={real_approved_count}, amount={real_approved_amount}")
+        logger.info(f"  REJECTED: count={real_rejected_count}, amount={real_rejected_amount}")
 
         return {
             "period": {
@@ -183,23 +208,17 @@ async def get_dashboard_summary(
                 "days": days
             },
             "summary": {
-                "total_orders": real_pending_count +
-                               stats_dict[ApprovalStatus.APPROVED]["count"] +
-                               stats_dict[ApprovalStatus.REJECTED]["count"],
-                "total_amount": real_pending_amount +
-                              stats_dict[ApprovalStatus.APPROVED]["amount"] +
-                              stats_dict[ApprovalStatus.REJECTED]["amount"],
+                "total_orders": real_pending_count + real_approved_count + real_rejected_count,
+                "total_amount": real_pending_amount + real_approved_amount + real_rejected_amount,
                 "total_pending_orders": real_pending_count,
                 "total_pending_amount": real_pending_amount,
-                "approved_orders": stats_dict[ApprovalStatus.APPROVED]["count"],
-                "approved_amount": stats_dict[ApprovalStatus.APPROVED]["amount"],
-                "rejected_orders": stats_dict[ApprovalStatus.REJECTED]["count"],
-                "rejected_amount": stats_dict[ApprovalStatus.REJECTED]["amount"],
+                "approved_orders": real_approved_count,
+                "approved_amount": real_approved_amount,
+                "rejected_orders": real_rejected_count,
+                "rejected_amount": real_rejected_amount,
                 "approval_rate": (
-                    stats_dict[ApprovalStatus.APPROVED]["count"] /
-                    (stats_dict[ApprovalStatus.APPROVED]["count"] +
-                     stats_dict[ApprovalStatus.REJECTED]["count"])
-                ) if (stats_dict[ApprovalStatus.APPROVED]["count"] + stats_dict[ApprovalStatus.REJECTED]["count"]) > 0 else 0
+                    real_approved_count / (real_approved_count + real_rejected_count)
+                ) if (real_approved_count + real_rejected_count) > 0 else 0
             },
             "daily_trends": [
                 {

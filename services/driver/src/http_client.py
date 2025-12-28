@@ -34,6 +34,11 @@ class TMSClient:
         # Add Authorization header if token is available
         if self.auth_token:
             headers["Authorization"] = f"Bearer {self.auth_token}"
+            logger.info(f"Adding Authorization header to TMS request. Token length: {len(self.auth_token)}, prefix: {self.auth_token[:20] if len(self.auth_token) > 20 else self.auth_token}...")
+        else:
+            logger.warning("No auth_token available for TMS request - request may fail authentication")
+
+        logger.info(f"TMS Request: {method} {url}")
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
@@ -44,6 +49,9 @@ class TMSClient:
                     params=params,
                     json=json
                 )
+                logger.info(f"TMS Response: Status {response.status_code}")
+                if response.status_code >= 400:
+                    logger.error(f"TMS API error response: {response.text}")
                 response.raise_for_status()
                 return response.json()
             except httpx.HTTPStatusError as e:

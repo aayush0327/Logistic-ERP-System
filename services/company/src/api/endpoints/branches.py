@@ -3,6 +3,7 @@ Branch management endpoints
 """
 from typing import List, Optional
 from uuid import UUID
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.database import get_db, Branch, Customer, Vehicle, VehicleStatus
+from src.helpers import validate_branch_exists
 from src.schemas import (
     Branch as BranchSchema,
     BranchCreate,
@@ -33,6 +35,7 @@ from src.security import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/", response_model=PaginatedResponse)
@@ -90,6 +93,116 @@ async def list_branches(
 
     # Calculate pages
     pages = (total + per_page - 1) // per_page
+
+    return PaginatedResponse(
+        items=[BranchSchema.model_validate(branch) for branch in branches],
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=pages
+    )
+
+
+@router.get("/my/assigned", response_model=PaginatedResponse)
+async def get_my_assigned_branches(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    search: Optional[str] = Query(None),
+    is_active: Optional[bool] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_any_permission([BRANCH_READ_ALL[0], BRANCH_READ[0]])),
+    tenant_id: str = Depends(get_current_tenant_id)
+):
+    """
+    Get branches for the current user
+
+    This endpoint:
+    - Returns ALL branches for superuser OR users with branches:read_all permission
+    - Returns only ASSIGNED branches for regular users
+
+    Requires:
+    - branches:read_all or branches:read
+    """
+    from src.database import EmployeeBranch, EmployeeProfile
+
+    # Get user_id from token_data
+    user_id = token_data.user_id
+
+    # Check if user is superuser OR has branches:read_all permission OR is Admin
+    is_super = token_data.is_super_user()
+    has_read_all = await token_data.has_permission("branches:read_all")
+    logger.info(f"Checking branch access for user {token_data}")
+    role = token_data.role
+    is_admin = role == "Admin"  
+    # Debug logging
+    logger.info(f"Branch access check - user_id: {user_id}, tenant_id: {tenant_id}, is_super: {is_super}, has_read_all: {has_read_all}, is_admin: {is_admin}")
+
+    if is_admin:
+        # Admin user - return ALL branches for the tenant
+        logger.info(f"Returning ALL branches for admin user {user_id}")
+        query = select(Branch).where(Branch.tenant_id == tenant_id)
+    else:
+        # Regular user - return only assigned branches
+        logger.info(f"Returning assigned branches for user {user_id}")
+        # First get the employee profile for this user
+        employee_query = select(EmployeeProfile).where(
+            EmployeeProfile.user_id == user_id,
+            EmployeeProfile.tenant_id == tenant_id
+        )
+        employee_result = await db.execute(employee_query)
+        employee = employee_result.scalar_one_or_none()
+
+        if not employee:
+            # No employee profile found, return empty result
+            logger.warning(f"No employee profile found for user {user_id}")
+            return PaginatedResponse(
+                items=[],
+                total=0,
+                page=page,
+                per_page=per_page,
+                pages=0
+            )
+
+        logger.info(f"Employee profile found: {employee.id}, fetching assigned branches")
+
+        # Get branches assigned to this employee through employee_branches table
+        query = select(Branch).join(
+            EmployeeBranch,
+            Branch.id == EmployeeBranch.branch_id
+        ).where(
+            EmployeeBranch.employee_profile_id == employee.id,
+            EmployeeBranch.tenant_id == tenant_id,
+            Branch.tenant_id == tenant_id
+        )
+
+    # Apply filters
+    if search:
+        query = query.where(
+            Branch.name.ilike(f"%{search}%") |
+            Branch.code.ilike(f"%{search}%") |
+            Branch.city.ilike(f"%{search}%")
+        )
+
+    if is_active is not None:
+        query = query.where(Branch.is_active == is_active)
+
+    # Count total items
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar()
+
+    # Apply pagination
+    offset = (page - 1) * per_page
+    query = query.offset(offset).limit(per_page).order_by(Branch.name)
+
+    # Execute query
+    result = await db.execute(query)
+    branches = result.scalars().all()
+
+    logger.info(f"Returning {len(branches)} branches for user {user_id}")
+
+    # Calculate pages
+    pages = (total + per_page - 1) // per_page if total > 0 else 0
 
     return PaginatedResponse(
         items=[BranchSchema.model_validate(branch) for branch in branches],

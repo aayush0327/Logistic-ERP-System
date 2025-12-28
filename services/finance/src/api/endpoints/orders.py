@@ -132,12 +132,18 @@ async def list_orders_for_approval(
     List orders that need finance approval.
     Fetches orders from Orders Service with appropriate filters for finance team.
     """
+    # Log user info for debugging
+    logger.info(f"FINANCE SERVICE - User: {token_data.user_id}, Role: {token_data.role}, Tenant: {tenant_id}")
+
     # Get authorization header from the request
     auth_headers = {}
     if request and hasattr(request, 'headers'):
         auth_header = request.headers.get("authorization")
         if auth_header:
             auth_headers["Authorization"] = auth_header
+            logger.info(f"FINANCE SERVICE - Auth header found and will be forwarded to orders service")
+        else:
+            logger.warning(f"FINANCE SERVICE - No auth header found in request!")
 
     # For finance approval, we want orders that are submitted, approved, or rejected
     # but we allow flexible filtering
@@ -180,10 +186,32 @@ async def list_orders_for_approval(
         )
 
     try:
+        # Log orders received from orders service
+        logger.info(f"FINANCE SERVICE - Total orders received from orders service: {len(orders_data.get('items', []))}")
+        for item in orders_data.get("items", []):
+            logger.info(f"FINANCE SERVICE - Order: {item.get('order_number')}, Branch: {item.get('branch_id')}, Status: {item.get('status')}")
 
         # Transform Orders Service response to Finance Service response format
         finance_orders = []
         for item in orders_data.get("items", []):
+            # Transform items to OrderItemResponse format
+            items_data = []
+            for order_item in item.get("items", []):
+                items_data.append({
+                    "id": order_item.get("id"),
+                    "product_id": order_item.get("product_id"),
+                    "product_name": order_item.get("product_name"),
+                    "product_code": order_item.get("product_code"),
+                    "description": order_item.get("description"),
+                    "quantity": order_item.get("quantity"),
+                    "unit": order_item.get("unit"),
+                    "unit_price": order_item.get("unit_price"),
+                    "total_price": order_item.get("total_price"),
+                    "weight": order_item.get("weight"),
+                    "total_weight": order_item.get("total_weight"),
+                    "volume": order_item.get("volume")
+                })
+
             order_data = {
                 "id": item.get("id"),
                 "order_number": item.get("order_number"),
@@ -196,6 +224,8 @@ async def list_orders_for_approval(
                 "priority": item.get("priority"),
                 "created_at": item.get("created_at"),
                 "submitted_at": None,  # This would need to be determined from order status changes
+                "items": items_data,
+                "items_count": len(items_data),
                 "approval_status": None,  # This would be determined from finance approval table
                 "finance_approved_at": item.get("finance_approved_at"),
                 "finance_approved_by": item.get("finance_approved_by"),
@@ -243,6 +273,24 @@ async def get_order_for_approval(
         )
 
         # Transform Orders Service response to Finance Service response format
+        # Transform items to OrderItemResponse format
+        items_data = []
+        for order_item in order_data.get("items", []):
+            items_data.append({
+                "id": order_item.get("id"),
+                "product_id": order_item.get("product_id"),
+                "product_name": order_item.get("product_name"),
+                "product_code": order_item.get("product_code"),
+                "description": order_item.get("description"),
+                "quantity": order_item.get("quantity"),
+                "unit": order_item.get("unit"),
+                "unit_price": order_item.get("unit_price"),
+                "total_price": order_item.get("total_price"),
+                "weight": order_item.get("weight"),
+                "total_weight": order_item.get("total_weight"),
+                "volume": order_item.get("volume")
+            })
+
         finance_order = {
             "id": order_data.get("id"),
             "order_number": order_data.get("order_number"),
@@ -255,6 +303,8 @@ async def get_order_for_approval(
             "priority": order_data.get("priority"),
             "created_at": order_data.get("created_at"),
             "submitted_at": None,  # This would need to be determined from order status changes
+            "items": items_data,
+            "items_count": len(items_data),
             "approval_status": None,  # This would be determined from finance approval table
             "finance_approved_at": order_data.get("finance_approved_at"),
             "finance_approved_by": order_data.get("finance_approved_by"),

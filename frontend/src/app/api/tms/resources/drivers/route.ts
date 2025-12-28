@@ -24,7 +24,7 @@ const dummyDrivers = [
     phone: '+201234567890',
     license: 'DL-001234',
     experience: '5 years',
-    status: 'active',
+    status: 'available',
     currentTruck: null,
   },
   {
@@ -33,7 +33,7 @@ const dummyDrivers = [
     phone: '+201112223333',
     license: 'DL-002345',
     experience: '3 years',
-    status: 'active',
+    status: 'available',
     currentTruck: null,
   },
   {
@@ -42,7 +42,7 @@ const dummyDrivers = [
     phone: '+201445556666',
     license: 'DL-003456',
     experience: '7 years',
-    status: 'active',
+    status: 'available',
     currentTruck: null,
   },
   {
@@ -51,7 +51,7 @@ const dummyDrivers = [
     phone: '+201556667778',
     license: 'DL-004567',
     experience: '4 years',
-    status: 'active',
+    status: 'available',
     currentTruck: null,
   },
 ];
@@ -60,6 +60,7 @@ export async function GET(request: NextRequest) {
   try {
     // Get auth token
     const token = getAuthToken(request);
+    console.log("FRONTEND API - Fetching drivers, token present:", !!token);
 
     // Try to fetch from resource service first
     try {
@@ -71,26 +72,44 @@ export async function GET(request: NextRequest) {
         },
       });
 
+      console.log("FRONTEND API - TMS service response status:", response.status);
+
       if (response.ok) {
         const data = await response.json();
-        // Filter only active drivers without current truck assignment
+        console.log("FRONTEND API - driver data from backend:", data);
+        console.log("FRONTEND API - Total drivers received:", data?.length || 0);
+
+        // Log each driver status for debugging
+        if (Array.isArray(data)) {
+          data.forEach((driver: any) => {
+            console.log(`FRONTEND API - Driver: ${driver.name}, status: ${driver.status}, currentTruck: ${driver.currentTruck}`);
+          });
+        }
+
+        // Filter only available drivers without current truck assignment
         const availableDrivers = data.filter(
-          (driver: any) => driver.status === 'active' && !driver.currentTruck
+          (driver: any) => driver.status === 'available' && !driver.currentTruck
         );
+        console.log("FRONTEND API - filtered drivers:", availableDrivers);
+        console.log("FRONTEND API - Available drivers count:", availableDrivers.length);
         return NextResponse.json(availableDrivers);
+      } else {
+        const errorText = await response.text();
+        console.error("FRONTEND API - TMS service error:", response.status, errorText);
       }
     } catch (error) {
-      console.warn('Resource service not available, using dummy data:', error);
+      console.warn('FRONTEND API - Resource service not available, using dummy data:', error);
     }
 
     // Fallback to dummy data
     const availableDrivers = dummyDrivers.filter(
-      driver => driver.status === 'active' && !driver.currentTruck
+      driver => driver.status === 'available' && !driver.currentTruck
     );
+    console.log("FRONTEND API - Using dummy drivers, count:", availableDrivers.length);
     return NextResponse.json(availableDrivers);
 
   } catch (error) {
-    console.error('Error fetching drivers:', error);
+    console.error('FRONTEND API - Error fetching drivers:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to fetch drivers' },
       { status: 500 }

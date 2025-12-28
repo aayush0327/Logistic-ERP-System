@@ -1,9 +1,10 @@
 """
 User management endpoints
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, and_, or_, func
+from sqlalchemy.orm import joinedload
 from typing import List, Optional
 
 from ...database import get_db, User
@@ -44,8 +45,8 @@ async def list_users(
             detail="Access denied"
         )
 
-    # Build query
-    query = select(User)
+    # Build query with eager loading of role relationship
+    query = select(User).options(joinedload(User.role))
 
     # Filter by tenant if not superadmin or tenant_id specified
     if not token_data.is_superuser:
@@ -73,7 +74,30 @@ async def list_users(
     result = await db.execute(query)
     users = result.scalars().all()
 
-    return list(users)
+    # Build response with role information
+    response_users = []
+    for user in users:
+        user_dict = {
+            "id": user.id,
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "is_active": user.is_active,
+            "is_superuser": user.is_superuser,
+            "tenant_id": user.tenant_id,
+            "role_id": user.role_id,
+            "last_login": user.last_login,
+            "login_attempts": user.login_attempts,
+            "locked_until": user.locked_until,
+            "created_at": user.created_at,
+            "updated_at": user.updated_at,
+            # Add role information
+            "role_name": user.role.name if user.role else None,
+            "is_system_role": user.role.is_system if user.role else None
+        }
+        response_users.append(UserSchema(**user_dict))
+
+    return response_users
 
 
 @router.get("/{user_id}", response_model=UserSchema)
@@ -220,6 +244,7 @@ async def update_user(
 
 @router.delete("/{user_id}")
 async def delete_user(
+    request: Request,
     user_id: str,
     token_data: TokenData = Depends(get_current_user_token),
     perm_service: PermissionService = Depends(get_permission_service),
@@ -267,7 +292,11 @@ async def delete_user(
             detail="Cannot delete superuser accounts"
         )
 
-    success = await UserService.delete_user(db, user_id)
+    # Extract auth token from request
+    auth_header = request.headers.get("authorization")
+    auth_token = auth_header[7:] if auth_header and auth_header.startswith("Bearer ") else None
+
+    success = await UserService.delete_user(db, user_id, auth_token)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

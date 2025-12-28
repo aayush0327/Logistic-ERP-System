@@ -45,6 +45,8 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
         to_encode["tenant_id"] = data["tenant_id"]
     if "role_id" in data:
         to_encode["role_id"] = data["role_id"]
+    if "role" in data:
+        to_encode["role"] = data["role"]
     if "email" in data:
         to_encode["email"] = data["email"]
     if "is_superuser" in data:
@@ -87,6 +89,7 @@ def verify_token(token: str) -> TokenData:
         user_id: str = payload.get("sub")
         tenant_id: str = payload.get("tenant_id")
         role_id: int = payload.get("role_id")
+        role: str = payload.get("role")
         email: str = payload.get("email")
         is_superuser: bool = payload.get("is_superuser", False)
         exp: Optional[datetime] = payload.get("exp")
@@ -98,6 +101,7 @@ def verify_token(token: str) -> TokenData:
             user_id=user_id,
             tenant_id=tenant_id,
             role_id=role_id,
+            role=role,
             permissions=[],  # Permissions will be fetched from database
             exp=exp,
             is_superuser=is_superuser

@@ -374,12 +374,49 @@ CUSTOMER_CREATE = ["customers:create"]
 CUSTOMER_UPDATE = ["customers:update"]
 CUSTOMER_DELETE = ["customers:delete"]
 
+# User management permissions
+USER_READ_ALL = ["users:read_all"]
+USER_READ = ["users:read"]
+USER_READ_OWN = ["users:read_own"]
+USER_CREATE = ["users:create"]
+USER_UPDATE = ["users:update"]
+USER_UPDATE_OWN = ["users:update_own"]
+USER_DELETE = ["users:delete"]
+USER_MANAGE_ALL = ["users:manage_all"]
+USER_INVITE = ["users:invite"]
+USER_ACTIVATE = ["users:activate"]
+
+# Role management permissions
+ROLE_READ = ["roles:read"]
+ROLE_CREATE = ["roles:create"]
+ROLE_UPDATE = ["roles:update"]
+ROLE_DELETE = ["roles:delete"]
+ROLE_ASSIGN = ["roles:assign"]
+
+# Profile management permissions
+PROFILE_READ = ["profiles:read"]
+PROFILE_READ_OWN = ["profiles:read_own"]
+PROFILE_CREATE = ["profiles:create"]
+PROFILE_UPDATE = ["profiles:update"]
+PROFILE_UPDATE_OWN = ["profiles:update_own"]
+PROFILE_DELETE = ["profiles:delete"]
+PROFILE_UPLOAD_AVATAR = ["profiles:upload_avatar"]
+
 VEHICLE_READ_ALL = ["vehicles:read_all"]
 VEHICLE_READ = ["vehicles:read"]
 VEHICLE_CREATE = ["vehicles:create"]
 VEHICLE_UPDATE = ["vehicles:update"]
 VEHICLE_DELETE = ["vehicles:delete"]
 VEHICLE_ASSIGN = ["vehicles:assign"]
+
+# Driver management permissions
+DRIVER_READ_ALL = ["drivers:read_all", "drivers:read"]
+DRIVER_READ = ["drivers:read"]
+DRIVER_UPDATE = ["drivers:update"]
+
+# Generic resource permissions (for cross-service access)
+RESOURCES_READ = ["resources:read"]
+RESOURCES_READ_ALL = ["resources:read_all"]
 
 PRODUCT_READ_ALL = ["products:read_all"]
 PRODUCT_READ = ["products:read"]

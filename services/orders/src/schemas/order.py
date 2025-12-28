@@ -196,6 +196,9 @@ class OrderListResponse(BaseModel):
     order_type: OrderType
     priority: str
     total_amount: Optional[float]
+    total_weight: Optional[float] = Field(None, ge=0)
+    total_volume: Optional[float] = Field(None, ge=0)
+    package_count: Optional[int] = Field(None, ge=0)
     payment_type: Optional[PaymentType]
     pickup_date: Optional[datetime]
     delivery_date: Optional[datetime]

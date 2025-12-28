@@ -59,7 +59,8 @@ class UserCreate(UserBase):
     """Schema for creating a user"""
     password: str = Field(..., min_length=8)
     tenant_id: Optional[str] = None  # Optional for super admins
-    role_id: int
+    role_id: Optional[int] = None  # Will be set to default role if not provided
+    is_superuser: bool = False  # Only superadmins can create superusers
 
 
 class UserUpdate(BaseSchema):
@@ -93,6 +94,9 @@ class UserInDB(UserBase):
 class User(UserInDB):
     """Schema for user response"""
     tenant: Optional[Tenant] = None
+    # Additional role information from role relationship
+    role_name: Optional[str] = None
+    is_system_role: Optional[bool] = None
 
 
 # Role schemas
@@ -179,6 +183,7 @@ class TokenData(BaseSchema):
     user_id: str
     tenant_id: Optional[str] = None  # Nullable for super admins
     role_id: int
+    role: Optional[str] = None  # Role name from JWT
     permissions: List[str]
     exp: Optional[datetime] = None
     is_superuser: bool = False

@@ -1,4 +1,6 @@
-import { cn } from '@/lib/utils';
+"use client";
+
+import { cn } from "@/lib/utils";
 
 interface TableProps {
   className?: string;
@@ -8,36 +10,44 @@ interface TableProps {
 export function Table({ className, children }: TableProps) {
   return (
     <div className="w-full overflow-auto">
-      <table className={cn('w-full caption-bottom text-sm', className)}>
+      <table className={cn("w-full caption-bottom text-sm", className)}>
         {children}
       </table>
     </div>
   );
 }
 
-export function TableHeader({ className, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) {
+export function TableHeader({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLTableSectionElement>) {
+  return <thead className={cn("[&_tr]:border-b", className)} {...props} />;
+}
+
+export function TableBody({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLTableSectionElement>) {
   return (
-    <thead className={cn('[&_tr]:border-b', className)} {...props} />
+    <tbody className={cn("[&_tr:last-child]:border-0", className)} {...props} />
   );
 }
 
-export function TableBody({ className, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) {
-  return (
-    <tbody className={cn('[&_tr:last-child]:border-0', className)} {...props} />
-  );
+export function TableFooter({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLTableSectionElement>) {
+  return <tfoot className={cn("border-t bg-gray-50", className)} {...props} />;
 }
 
-export function TableFooter({ className, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) {
-  return (
-    <tfoot className={cn('border-t bg-gray-50', className)} {...props} />
-  );
-}
-
-export function TableRow({ className, ...props }: React.HTMLAttributes<HTMLTableRowElement>) {
+export function TableRow({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLTableRowElement>) {
   return (
     <tr
       className={cn(
-        'border-b transition-colors hover:bg-gray-50 data-[state=selected]:bg-gray-50',
+        "border-b transition-colors hover:bg-gray-50 data-[state=selected]:bg-gray-50",
         className
       )}
       {...props}
@@ -45,11 +55,14 @@ export function TableRow({ className, ...props }: React.HTMLAttributes<HTMLTable
   );
 }
 
-export function TableHead({ className, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) {
+export function TableHead({
+  className,
+  ...props
+}: React.ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <th
       className={cn(
-        'h-12 px-4 text-left align-middle font-medium text-gray-500 [&:has([role=checkbox])]:pr-0',
+        "h-12 px-4 text-left align-middle font-medium text-gray-500 [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}
@@ -57,19 +70,28 @@ export function TableHead({ className, ...props }: React.ThHTMLAttributes<HTMLTa
   );
 }
 
-export function TableCell({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
+export function TableCell({
+  className,
+  ...props
+}: React.TdHTMLAttributes<HTMLTableCellElement>) {
   return (
     <td
-      className={cn('p-4 align-middle [&:has([role=checkbox])]:pr-0', className)}
+      className={cn(
+        "p-4 align-middle [&:has([role=checkbox])]:pr-0 text-black",
+        className
+      )}
       {...props}
     />
   );
 }
 
-export function TableCaption({ className, ...props }: React.HTMLAttributes<HTMLTableCaptionElement>) {
+export function TableCaption({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLTableCaptionElement>) {
   return (
     <caption
-      className={cn('mt-4 text-sm text-gray-500', className)}
+      className={cn("mt-4 text-sm text-gray-500", className)}
       {...props}
     />
   );

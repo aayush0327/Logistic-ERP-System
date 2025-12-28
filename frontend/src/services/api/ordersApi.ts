@@ -1,5 +1,5 @@
+import { RootState } from '@/store';
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
-import { RootState } from '@/store/index';
 
 // Types for API
 export interface Order {
@@ -103,6 +103,7 @@ export interface OrderCreate {
     product_id: string;
     quantity: number;
     unit_price: number;
+    weight?: number;
   }[];
 }
 
@@ -193,6 +194,7 @@ export const ordersApi = createApi({
       date_to?: string;
       sort_by?: string;
       sort_order?: 'asc' | 'desc';
+      search?: string;
     }>({
       query: (params) => ({
         url: '/',

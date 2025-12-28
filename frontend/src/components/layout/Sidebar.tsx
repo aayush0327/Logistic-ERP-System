@@ -1,157 +1,399 @@
-'use client';
+"use client";
 
-import { cn } from '@/lib/utils';
+import { cn } from "@/lib/utils";
 import {
-  Home,
   Package,
   Truck,
-  CheckCircle,
-  Clock,
   Settings,
   FileText,
   ChevronRight,
+  ChevronDown,
   User,
-  UserCircle,
   LogOut,
+  Building2,
+  Users,
+  DollarSign,
+  Package2,
+  LayoutDashboard,
+  MapPin,
+  ShoppingCart,
+  ChevronLeft,
+  Menu,
+  UserCircle,
   UserCheck,
-  DollarSign
-} from 'lucide-react';
-import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { useAppSelector, useAppDispatch } from '@/store/hooks';
-import { Dropdown, DropdownItem } from '@/components/ui/Dropdown';
-import { logoutAsync } from '@/store/slices/auth.slice';
-import { showSuccessToast } from '@/utils/toast';
+} from "lucide-react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useAppSelector, useAppDispatch } from "@/store/hooks";
+import { logoutAsync } from "@/store/slices/auth.slice";
+import { useState, useEffect } from "react";
+import { Dropdown, DropdownItem } from "@/components/ui/Dropdown";
+import { ROLES, getUserRole, getAccessibleRoutes } from "@/lib/roles";
+import { showSuccessToast } from "@/utils/toast";
+
+interface SubMenuItem {
+  label: string;
+  href: string;
+  icon?: React.ElementType;
+}
 
 interface NavItem {
   label: string;
-  href: string;
+  href?: string;
   icon: React.ElementType;
-  access?: 'super_admin' | 'admin' | 'user';
+  role: string;
+  subItems?: SubMenuItem[];
 }
 
-const navItems: NavItem[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: Home, access: 'user' },
-  { label: 'Orders', href: '/orders', icon: Package, access: 'user' },
-  { label: 'Trips', href: '/trips', icon: Truck, access: 'user' },
-  { label: 'Driver', href: '/driver', icon: UserCheck, access: 'user' },
-  { label: 'Finance', href: '/finance', icon: DollarSign, access: 'admin' },
-  { label: 'Deliveries', href: '/deliveries', icon: CheckCircle, access: 'user' },
-  { label: 'History', href: '/history', icon: Clock, access: 'user' },
-  { label: 'Manage Masters', href: '/masters', icon: Settings, access: 'admin' },
-  { label: 'Audit Logs', href: '/audit-logs', icon: FileText, access: 'admin' },
-  { label: 'Super Admin', href: '/super-admin', icon: User, access: 'super_admin' },
+// Define navigation structure for each role
+const navigationStructure: NavItem[] = [
+  {
+    label: "Super Admin",
+    icon: User,
+    role: ROLES.SUPER_ADMIN,
+    subItems: [
+      {
+        label: "Dashboard",
+        href: "/super-admin/dashboard",
+        icon: LayoutDashboard,
+      },
+    ],
+  },
+  {
+    label: "Company Admin",
+    icon: Building2,
+    role: ROLES.COMPANY_ADMIN,
+    subItems: [
+      {
+        label: "Dashboard",
+        href: "/company-admin/masters",
+        icon: LayoutDashboard,
+      },
+      // {
+      //   label: "Dashboard",
+      //   href: "/company-admin/masters",
+      //   icon: LayoutDashboard,
+      // },
+    ],
+  },
+  {
+    label: "Branch Manager",
+    icon: MapPin,
+    role: ROLES.BRANCH_MANAGER,
+    subItems: [
+      {
+        label: "Dashboard",
+        href: "/branch-manager/dashboard",
+        icon: LayoutDashboard,
+      },
+      // {
+      //   label: "Dashboard New",
+      //   href: "/branch-manager/orders",
+      //   icon: LayoutDashboard,
+      // },
+    ],
+  },
+  {
+    label: "Finance Manager",
+    icon: DollarSign,
+    role: ROLES.FINANCE_MANAGER,
+    subItems: [
+      {
+        label: "Dashboard",
+        href: "/finance-manager/dashboard",
+        icon: LayoutDashboard,
+      },
+      // { label: "Invoices", href: "/finance-manager/invoices", icon: FileText },
+      // { label: "Reports", href: "/finance-manager/reports", icon: FileText },
+    ],
+  },
+  {
+    label: "Logistics Manager",
+    icon: Package2,
+    role: ROLES.LOGISTICS_MANAGER,
+    subItems: [
+      // {
+      //   label: "Dashboard",
+      //   href: "/logistics-manager/dashboard",
+      //   icon: LayoutDashboard,
+      // },
+      {
+        label: "Dashboard",
+        href: "/logistics-manager/trips-management",
+        icon: LayoutDashboard,
+      },
+      // {
+      //   label: "Fleet Management",
+      //   href: "/logistics-manager/fleet",
+      //   icon: Truck,
+      // },
+      // { label: "Routes", href: "/logistics-manager/routes", icon: MapPin },
+    ],
+  },
+  {
+    label: "Driver",
+    icon: Truck,
+    role: ROLES.DRIVER,
+    subItems: [
+      { label: "My Trips", href: "/drivermodule/trips", icon: Truck },
+      // { label: "Deliveries", href: "/drivermodule/deliveries", icon: Package },
+    ],
+  },
+  {
+    label: "User",
+    icon: UserCircle,
+    role: ROLES.USER,
+    subItems: [
+      // Will be populated based on your instructions
+      // { label: "Profile", href: "/user/profile", icon: UserCircle },
+    ],
+  },
 ];
 
 interface SidebarProps {
   className?: string;
+  isCollapsed?: boolean;
+  onToggle?: () => void;
 }
 
-export function Sidebar({ className }: SidebarProps) {
+export function Sidebar({
+  className,
+  isCollapsed = false,
+  onToggle,
+}: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { user } = useAppSelector((state) => state.auth);
+  const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
+
+  // Get user role using the new getUserRole function
+  const userRole = getUserRole(user || {});
 
   // Handle logout
   const handleLogout = async () => {
     try {
       await dispatch(logoutAsync()).unwrap();
-      router.push('/login');
+      router.push("/login");
     } catch (error) {
-      console.error('Logout failed:', error);
+      console.error("Logout failed:", error);
     }
   };
 
-  // Filter nav items based on user access level
-  const filteredNavItems = navItems.filter(item => {
-    // If no access level specified, show to everyone
-    if (!item.access) return true;
+  // Toggle menu expansion - only one open at a time
+  const toggleMenu = (role: string) => {
+    setExpandedMenu((prev) => (prev === role ? null : role));
+  };
 
-    // Super admin can see everything
-    if (user?.is_superuser) return true;
+  // Filter navigation based on user role using ROLE_ROUTES
+  const getFilteredNavigation = () => {
+    if (!user || !userRole) return [];
 
-    // Check access levels
-    if (item.access === 'user') return true;
-    if (item.access === 'admin' && user?.role_id === 2) return true;  // Admin role
-    if (item.access === 'admin' && user?.role_id === 3) return true;  // Manager role
-    if (item.access === 'super_admin') return user?.is_superuser;
+    // Super admin sees everything
+    // if (user.is_superuser || userRole === ROLES.SUPER_ADMIN) {
+    //   return navigationStructure;
+    // }
 
-    return false;
-  });
+    // Get accessible routes for the user's role
+    const accessibleRoutes = getAccessibleRoutes(userRole);
+
+    // Filter navigation items based on accessible routes
+    return navigationStructure.filter((nav) => {
+      // If no subItems, check if the main href is accessible
+      if (!nav.subItems || nav.subItems.length === 0) {
+        return (
+          nav.href &&
+          accessibleRoutes.some((route) => nav.href!.startsWith(route))
+        );
+      }
+
+      // Check if any subItem is accessible
+      return nav.subItems.some((subItem) =>
+        accessibleRoutes.some((route) => subItem.href.startsWith(route))
+      );
+    });
+  };
+
+  const filteredNavigation = getFilteredNavigation();
+
+  // Auto-expand active menu on mount
+  useEffect(() => {
+    filteredNavigation.forEach((nav) => {
+      const isActive = nav.subItems?.some((sub) =>
+        pathname.startsWith(sub.href)
+      );
+      if (isActive) {
+        setExpandedMenu(nav.role);
+      }
+    });
+  }, [pathname]);
 
   return (
-    <aside className={cn('w-64 bg-white border-r border-gray-200 flex flex-col h-full', className)}>
-      <div className="p-6">
-        <h1 className="text-2xl font-bold text-gray-900">AnimalCare</h1>
-        <p className="text-sm text-gray-500">Orders & Deliveries</p>
+    <aside
+      className={cn(
+        "bg-white border-r border-gray-200 flex flex-col h-full overflow-hidden transition-all duration-300 ease-in-out",
+        isCollapsed ? "w-16" : "w-64",
+        className
+      )}
+    >
+      {/* Header with Toggle Button */}
+      <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+        {!isCollapsed && (
+          <div className="overflow-hidden">
+            <h1 className="text-xl font-bold text-gray-900 whitespace-nowrap">
+              LogisticERP
+            </h1>
+            <p className="text-xs text-gray-500 whitespace-nowrap">
+              Management System
+            </p>
+          </div>
+        )}
+        <button
+          onClick={onToggle}
+          className={cn(
+            "p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-600",
+            isCollapsed && "mx-auto"
+          )}
+          title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {isCollapsed ? (
+            <Menu className="w-5 h-5" />
+          ) : (
+            <ChevronLeft className="w-5 h-5" />
+          )}
+        </button>
       </div>
 
-      <nav className="flex-1 px-4 pb-4">
+      <nav className="flex-1 px-2 py-4 overflow-y-auto overflow-x-hidden">
         <ul className="space-y-1">
-          {filteredNavItems.map((item) => {
+          {filteredNavigation.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname === item.href;
+            const isExpanded = expandedMenu === item.role;
+            const hasActiveChild = item.subItems?.some((sub) =>
+              pathname.startsWith(sub.href)
+            );
 
             return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
+              <li key={item.role}>
+                {/* Main Menu Item */}
+                <button
+                  onClick={() => toggleMenu(item.role)}
                   className={cn(
-                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                    isActive
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-700 hover:bg-gray-100'
+                    "w-full flex items-center cursor-pointer px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                    hasActiveChild
+                      ? "bg-blue-50 text-blue-700"
+                      : "text-gray-700 hover:bg-gray-100",
+                    isCollapsed ? "justify-center" : "justify-between"
+                  )}
+                  title={isCollapsed ? item.label : undefined}
+                >
+                  <div
+                    className={cn("flex items-center", !isCollapsed && "gap-3")}
+                  >
+                    <Icon className="w-5 h-5 shrink-0" />
+                    {!isCollapsed && (
+                      <span className="whitespace-nowrap">{item.label}</span>
+                    )}
+                  </div>
+                  {!isCollapsed && (
+                    <span className="transition-transform duration-200">
+                      {isExpanded ? (
+                        <ChevronDown className="w-4 h-4" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4" />
+                      )}
+                    </span>
+                  )}
+                </button>
+
+                {/* Sub Menu Items with Animation */}
+                <div
+                  className={cn(
+                    "overflow-hidden transition-all duration-300 ease-in-out",
+                    isExpanded && !isCollapsed
+                      ? "max-h-96 opacity-100"
+                      : "max-h-0 opacity-0"
                   )}
                 >
-                  <Icon className="w-5 h-5" />
-                  {item.label}
-                  {isActive && <ChevronRight className="w-4 h-4 ml-auto" />}
-                </Link>
+                  {item.subItems && (
+                    <ul className="mt-1 ml-4 space-y-1">
+                      {item.subItems.map((subItem) => {
+                        const SubIcon = subItem.icon || ChevronRight;
+                        const isActive =
+                          pathname === subItem.href ||
+                          pathname.startsWith(subItem.href + "/");
+
+                        return (
+                          <li key={subItem.href}>
+                            <Link
+                              href={subItem.href}
+                              className={cn(
+                                "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
+                                isActive
+                                  ? "bg-blue-100 text-blue-700 font-medium"
+                                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                              )}
+                            >
+                              <SubIcon className="w-4 h-4 shrink-0" />
+                              <span className="whitespace-nowrap">
+                                {subItem.label}
+                              </span>
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
               </li>
             );
           })}
         </ul>
       </nav>
 
-      <div className="border-t border-gray-200 p-4">
-        <Dropdown
-          trigger={
-            <div className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-colors">
-              <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
-                <User className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-900">
-                  {user?.first_name || 'User'}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {user?.email || 'user@example.com'}
-                </p>
-              </div>
-            </div>
-          }
+      {/* User Info and Logout Section */}
+      <div className="border-t border-gray-200 p-2 space-y-1">
+        {/* User Info Row */}
+        <div
+          className={cn(
+            "flex items-center cursor-pointer rounded-lg p-2 transition-colors",
+            isCollapsed ? "justify-center" : "gap-3"
+          )}
         >
-          <DropdownItem onClick={() => window.location.href = '/profile'}>
-            <div className="flex items-center gap-2">
-              <UserCircle className="w-4 h-4" />
-              Profile
+          <div
+            className={cn(
+              "bg-blue-600 rounded-full flex items-center justify-center shrink-0",
+              isCollapsed ? "w-8 h-8" : "w-10 h-10"
+            )}
+          >
+            <User
+              className={cn("text-white", isCollapsed ? "w-4 h-4" : "w-5 h-5")}
+            />
+          </div>
+          {!isCollapsed && (
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <p className="text-sm font-medium text-gray-900 truncate">
+                {user?.first_name || "User"}
+              </p>
+              <p className="text-xs text-gray-500 truncate">
+                {user?.role_name || user?.role?.name || "User"}
+              </p>
             </div>
-          </DropdownItem>
-          <DropdownItem onClick={() => window.location.href = '/settings'}>
-            <div className="flex items-center gap-2">
-              <Settings className="w-4 h-4" />
-              Settings
-            </div>
-          </DropdownItem>
-          <hr className="my-1" />
-          <DropdownItem onClick={handleLogout}>
-            <div className="flex items-center gap-2">
-              <LogOut className="w-4 h-4" />
-              Logout
-            </div>
-          </DropdownItem>
-        </Dropdown>
+          )}
+        </div>
+
+        {/* Logout Button */}
+        <button
+          onClick={handleLogout}
+          className={cn(
+            "w-full flex items-center cursor-pointer rounded-lg p-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors",
+            isCollapsed ? "justify-center" : "gap-3 px-3"
+          )}
+          title={isCollapsed ? "Logout" : undefined}
+        >
+          <LogOut className="w-5 h-5 shrink-0" />
+          {!isCollapsed && <span>Logout</span>}
+        </button>
       </div>
     </aside>
   );

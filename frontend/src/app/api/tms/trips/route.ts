@@ -91,6 +91,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
+    console.log("trip data",data)
     return NextResponse.json(data, { status: 201 });
 
   } catch (error) {

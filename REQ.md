@@ -16,7 +16,7 @@ View and manage all tenants (companies)
 
 Enable/disable companies
 
-View subscription/usage (simple overview)
+- View subscription/usage (simple overview)
 
 2. COMPANY ADMIN MODULE
 

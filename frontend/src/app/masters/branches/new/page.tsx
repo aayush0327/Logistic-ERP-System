@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Label } from '@/components/ui/Label';
-import { Textarea } from '@/components/ui/Textarea';
-import { Switch } from '@/components/ui/Switch';
-import { AppLayout } from '@/components/layout/AppLayout';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Label } from "@/components/ui/Label";
+import { Textarea } from "@/components/ui/Textarea";
+import { Switch } from "@/components/ui/Switch";
+import { AppLayout } from "@/components/layout/AppLayout";
 import {
   ArrowLeft,
   Save,
@@ -20,49 +20,54 @@ import {
   User,
   Check,
   AlertCircle,
-  Loader2
-} from 'lucide-react';
-import { useCreateBranchMutation, useGetBranchesQuery } from '@/services/api/companyApi';
-import { BranchCreate } from '@/services/api/companyApi';
-import { toast } from 'react-hot-toast';
+  Loader2,
+} from "lucide-react";
+import {
+  useCreateBranchMutation,
+  useGetBranchesQuery,
+} from "@/services/api/companyApi";
+import { BranchCreate } from "@/services/api/companyApi";
+import { toast } from "react-hot-toast";
 
 export default function NewBranchPage() {
   const router = useRouter();
   const [createBranch, { isLoading: isCreating }] = useCreateBranchMutation();
 
   const [formData, setFormData] = useState<BranchCreate>({
-    code: '',
-    name: '',
-    address: '',
-    city: '',
-    state: '',
-    postal_code: '',
-    phone: '',
-    email: '',
-    manager_id: '',
-    is_active: true
+    code: "",
+    name: "",
+    address: "",
+    city: "",
+    state: "",
+    postal_code: "",
+    phone: "",
+    email: "",
+    manager_id: "",
+    is_active: true,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
     if (!formData.code?.trim()) {
-      newErrors.code = 'Branch code is required';
+      newErrors.code = "Branch code is required";
     }
     if (!formData.name?.trim()) {
-      newErrors.name = 'Branch name is required';
+      newErrors.name = "Branch name is required";
     }
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Invalid email address';
+      newErrors.email = "Invalid email address";
     }
     if (formData.phone && !/^[+]?[\d\s-()]+$/.test(formData.phone)) {
-      newErrors.phone = 'Invalid phone number';
+      newErrors.phone = "Invalid phone number";
     }
-    if (formData.postal_code && !/^[a-zA-Z0-9\s-]+$/.test(formData.postal_code)) {
-      newErrors.postal_code = 'Invalid postal code';
+    if (
+      formData.postal_code &&
+      !/^[a-zA-Z0-9\s-]+$/.test(formData.postal_code)
+    ) {
+      newErrors.postal_code = "Invalid postal code";
     }
 
     setErrors(newErrors);
@@ -73,39 +78,40 @@ export default function NewBranchPage() {
     e.preventDefault();
 
     if (!validateForm()) {
-      toast.error('Please fix the errors in the form');
+      toast.error("Please fix the errors in the form");
       return;
     }
 
     try {
       const newBranch = await createBranch(formData).unwrap();
-      toast.success('Branch created successfully');
+      toast.success("Branch created successfully");
       router.push(`/masters/branches/${newBranch.id}`);
     } catch (error: any) {
       // Show the actual backend error message directly in toast
-      const errorMessage = error?.data?.detail || error?.message || 'Failed to create branch';
+      const errorMessage =
+        error?.data?.detail || error?.message || "Failed to create branch";
 
       // Show the exact error message from backend in toast
       toast.error(errorMessage);
 
       // Also set field-specific error for common cases
-      if (typeof errorMessage === 'string') {
+      if (typeof errorMessage === "string") {
         const lowerMessage = errorMessage.toLowerCase();
 
-        if (lowerMessage.includes('code already exists')) {
-          setErrors(prev => ({
+        if (lowerMessage.includes("code already exists")) {
+          setErrors((prev) => ({
             ...prev,
-            code: 'Already exists'
+            code: "Already exists",
           }));
-        } else if (lowerMessage.includes('email')) {
-          setErrors(prev => ({
+        } else if (lowerMessage.includes("email")) {
+          setErrors((prev) => ({
             ...prev,
-            email: 'Invalid format'
+            email: "Invalid format",
           }));
-        } else if (lowerMessage.includes('phone')) {
-          setErrors(prev => ({
+        } else if (lowerMessage.includes("phone")) {
+          setErrors((prev) => ({
             ...prev,
-            phone: 'Invalid format'
+            phone: "Invalid format",
           }));
         }
       }
@@ -113,23 +119,23 @@ export default function NewBranchPage() {
   };
 
   const handleInputChange = (field: string, value: string | boolean) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [field]: value
+      [field]: value,
     }));
 
     // Clear error for this field when user starts typing
     if (errors[field]) {
-      setErrors(prev => ({
+      setErrors((prev) => ({
         ...prev,
-        [field]: ''
+        [field]: "",
       }));
     }
   };
 
   return (
     <AppLayout>
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto inline space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
@@ -166,9 +172,11 @@ export default function NewBranchPage() {
                   <Input
                     id="code"
                     value={formData.code}
-                    onChange={(e) => handleInputChange('code', e.target.value.toUpperCase())}
+                    onChange={(e) =>
+                      handleInputChange("code", e.target.value.toUpperCase())
+                    }
                     placeholder="e.g., BR001"
-                    className={errors.code ? 'border-red-500' : ''}
+                    className={errors.code ? "border-red-500" : ""}
                   />
                   {errors.code && (
                     <p className="text-sm text-red-600 mt-1">{errors.code}</p>
@@ -179,9 +187,9 @@ export default function NewBranchPage() {
                   <Input
                     id="name"
                     value={formData.name}
-                    onChange={(e) => handleInputChange('name', e.target.value)}
+                    onChange={(e) => handleInputChange("name", e.target.value)}
                     placeholder="e.g., Mumbai Main Branch"
-                    className={errors.name ? 'border-red-500' : ''}
+                    className={errors.name ? "border-red-500" : ""}
                   />
                   {errors.name && (
                     <p className="text-sm text-red-600 mt-1">{errors.name}</p>
@@ -191,7 +199,9 @@ export default function NewBranchPage() {
               <div className="flex items-center space-x-3">
                 <Switch
                   checked={formData.is_active}
-                  onCheckedChange={(checked) => handleInputChange('is_active', checked)}
+                  onCheckedChange={(checked) =>
+                    handleInputChange("is_active", checked)
+                  }
                 />
                 <Label>Active Branch</Label>
               </div>
@@ -212,7 +222,7 @@ export default function NewBranchPage() {
                 <Textarea
                   id="address"
                   value={formData.address}
-                  onChange={(e) => handleInputChange('address', e.target.value)}
+                  onChange={(e) => handleInputChange("address", e.target.value)}
                   placeholder="Enter complete address"
                   rows={3}
                 />
@@ -223,7 +233,7 @@ export default function NewBranchPage() {
                   <Input
                     id="city"
                     value={formData.city}
-                    onChange={(e) => handleInputChange('city', e.target.value)}
+                    onChange={(e) => handleInputChange("city", e.target.value)}
                     placeholder="e.g., Mumbai"
                   />
                 </div>
@@ -232,7 +242,7 @@ export default function NewBranchPage() {
                   <Input
                     id="state"
                     value={formData.state}
-                    onChange={(e) => handleInputChange('state', e.target.value)}
+                    onChange={(e) => handleInputChange("state", e.target.value)}
                     placeholder="e.g., Maharashtra"
                   />
                 </div>
@@ -241,12 +251,16 @@ export default function NewBranchPage() {
                   <Input
                     id="postal_code"
                     value={formData.postal_code}
-                    onChange={(e) => handleInputChange('postal_code', e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("postal_code", e.target.value)
+                    }
                     placeholder="e.g., 400001"
-                    className={errors.postal_code ? 'border-red-500' : ''}
+                    className={errors.postal_code ? "border-red-500" : ""}
                   />
                   {errors.postal_code && (
-                    <p className="text-sm text-red-600 mt-1">{errors.postal_code}</p>
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.postal_code}
+                    </p>
                   )}
                 </div>
               </div>
@@ -269,9 +283,9 @@ export default function NewBranchPage() {
                     id="phone"
                     type="tel"
                     value={formData.phone}
-                    onChange={(e) => handleInputChange('phone', e.target.value)}
+                    onChange={(e) => handleInputChange("phone", e.target.value)}
                     placeholder="e.g., +91 22 1234 5678"
-                    className={errors.phone ? 'border-red-500' : ''}
+                    className={errors.phone ? "border-red-500" : ""}
                   />
                   {errors.phone && (
                     <p className="text-sm text-red-600 mt-1">{errors.phone}</p>
@@ -283,9 +297,9 @@ export default function NewBranchPage() {
                     id="email"
                     type="email"
                     value={formData.email}
-                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    onChange={(e) => handleInputChange("email", e.target.value)}
                     placeholder="e.g., mumbai@company.com"
-                    className={errors.email ? 'border-red-500' : ''}
+                    className={errors.email ? "border-red-500" : ""}
                   />
                   {errors.email && (
                     <p className="text-sm text-red-600 mt-1">{errors.email}</p>
@@ -297,7 +311,9 @@ export default function NewBranchPage() {
                 <Input
                   id="manager_id"
                   value={formData.manager_id}
-                  onChange={(e) => handleInputChange('manager_id', e.target.value)}
+                  onChange={(e) =>
+                    handleInputChange("manager_id", e.target.value)
+                  }
                   placeholder="Enter manager user ID"
                 />
                 <p className="text-xs text-gray-500 mt-1">

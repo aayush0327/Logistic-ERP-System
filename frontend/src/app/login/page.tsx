@@ -1,26 +1,50 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Card, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { loginAsync, clearError } from '@/store/slices/auth.slice';
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Card, CardContent } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { loginAsync, clearError } from "@/store/slices/auth.slice";
+import { getDefaultRoute, getUserRole } from "@/lib/roles";
+import { Eye, EyeOff } from "lucide-react";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const dispatch = useAppDispatch();
-  const { isLoading, error, isAuthenticated } = useAppSelector((state) => state.auth);
+  const { isLoading, error, isAuthenticated, user } = useAppSelector(
+    (state) => state.auth
+  );
 
-  // Redirect to dashboard if already authenticated
+  // Redirect if already authenticated
   useEffect(() => {
-    if (isAuthenticated) {
-      router.push('/dashboard');
+    if (isAuthenticated && user) {
+      const redirect = searchParams.get("redirect");
+      if (redirect) {
+        // Only redirect if we're not already on the target route
+        if (window.location.pathname !== redirect) {
+          router.push(redirect);
+        }
+      } else {
+        // Use getUserRole to get the role from role_id
+        const userRole = getUserRole(user);
+        if (userRole) {
+          const defaultRoute = getDefaultRoute(userRole);
+          // Only redirect if we're not already on the default route
+          if (window.location.pathname !== defaultRoute) {
+            router.push(defaultRoute);
+          }
+        } else {
+          console.error("Unable to determine user role", user);
+        }
+      }
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, user, router, searchParams]);
 
   // Clear any existing errors when user starts typing
   useEffect(() => {
@@ -36,8 +60,23 @@ export default function LoginPage() {
     const result = await dispatch(loginAsync({ email, password }));
 
     if (loginAsync.fulfilled.match(result)) {
-      // Login successful, navigation will be handled by useEffect
-      router.push('/dashboard');
+      // Get user data from result
+      const userData = result.payload.user;
+      const redirect = searchParams.get("redirect");
+
+      if (redirect) {
+        router.push(redirect);
+      } else {
+        // Use getUserRole to get the role from role_id
+        const userRole = getUserRole(userData);
+        if (userRole) {
+          const defaultRoute = getDefaultRoute(userRole);
+          router.push(defaultRoute);
+        } else {
+          console.error("Unable to determine user role", userData);
+          router.push("/"); // Fallback to root
+        }
+      }
     }
   };
 
@@ -46,8 +85,18 @@ export default function LoginPage() {
       <div className="max-w-md w-full space-y-8">
         <div>
           <div className="mx-auto h-12 w-12 flex items-center justify-center rounded-full bg-blue-100">
-            <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            <svg
+              className="h-6 w-6 text-blue-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+              />
             </svg>
           </div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
@@ -68,7 +117,10 @@ export default function LoginPage() {
               )}
 
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                <label
+                  htmlFor="email"
+                  className="block text-sm font-medium text-gray-700"
+                >
                   Email address
                 </label>
                 <Input
@@ -85,20 +137,36 @@ export default function LoginPage() {
               </div>
 
               <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-medium text-gray-700"
+                >
                   Password
                 </label>
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  className="mt-1 text-black"
-                  placeholder="Enter your password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
+                <div className="relative mt-1">
+                  <Input
+                    id="password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    required
+                    className="pr-10"
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-5 w-5" />
+                    ) : (
+                      <Eye className="h-5 w-5" />
+                    )}
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -108,7 +176,7 @@ export default function LoginPage() {
                   className="w-full"
                   disabled={isLoading}
                 >
-                  {isLoading ? 'Signing in...' : 'Sign in'}
+                  {isLoading ? "Signing in..." : "Sign in"}
                 </Button>
               </div>
             </form>

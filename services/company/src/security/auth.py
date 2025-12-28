@@ -17,12 +17,14 @@ class TokenData:
         user_id: str = None,
         tenant_id: str = None,
         role_id: int = None,
+        role: str = None,
         permissions: list = None,
         exp: datetime = None
     ):
         self.user_id = user_id
         self.tenant_id = tenant_id
         self.role_id = role_id
+        self.role = role  # Role name from JWT
         self.permissions = permissions or []
         self.exp = exp
         self._is_superuser = False  # Will be set from JWT payload
@@ -92,7 +94,7 @@ class TokenData:
         return self._is_superuser
 
     def __str__(self):
-        return f"TokenData(user_id={self.user_id}, tenant_id={self.tenant_id}, role_id={self.role_id})"
+        return f"TokenData(user_id={self.user_id}, tenant_id={self.tenant_id}, role_id={self.role_id}, role={self.role})"
 
 
 def verify_token(token: str) -> TokenData:
@@ -116,6 +118,7 @@ def verify_token(token: str) -> TokenData:
         user_id: str = payload.get("sub")
         tenant_id: str = payload.get("tenant_id")
         role_id: int = payload.get("role_id")
+        role: str = payload.get("role")  # Extract role from JWT
         email: str = payload.get("email")
         is_superuser: bool = payload.get("is_superuser", False)
         exp: Optional[datetime] = payload.get("exp")
@@ -128,6 +131,7 @@ def verify_token(token: str) -> TokenData:
             user_id=user_id,
             tenant_id=tenant_id,
             role_id=role_id,
+            role=role,  # Include role in TokenData
             permissions=[],  # Permissions no longer stored in JWT
             exp=exp
         )

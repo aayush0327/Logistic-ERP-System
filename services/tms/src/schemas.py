@@ -60,6 +60,8 @@ class Driver(BaseSchema):
     experience: str
     status: str
     currentTruck: Optional[str] = None
+    branch_id: Optional[str] = None
+    user_id: Optional[str] = None
 
 
 # Order Schema (dummy data)
@@ -154,7 +156,7 @@ class TripOrderResponse(BaseSchema):
 
 # Trip Schemas
 class TripCreate(BaseModel):
-    branch: str
+    branch: str  # Contains branch ID (UUID)
     truck_plate: str
     truck_model: str
     truck_capacity: int
@@ -184,7 +186,7 @@ class TripResponse(BaseSchema):
     id: str
     user_id: str
     company_id: str
-    branch: str
+    branch: str  # Contains branch ID (UUID)
     truck_plate: str
     truck_model: str
     truck_capacity: int

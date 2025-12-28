@@ -1,15 +1,20 @@
-import React from 'react';
+"use client";
+
+import React from "react";
 
 interface SpinnerProps {
   className?: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
 }
 
-export const Spinner: React.FC<SpinnerProps> = ({ className = '', size = 'md' }) => {
+export const Spinner: React.FC<SpinnerProps> = ({
+  className = "",
+  size = "md",
+}) => {
   const sizeClasses = {
-    sm: 'w-4 h-4',
-    md: 'w-6 h-6',
-    lg: 'w-8 h-8',
+    sm: "w-4 h-4",
+    md: "w-6 h-6",
+    lg: "w-8 h-8",
   };
 
   return (

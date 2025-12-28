@@ -5,10 +5,10 @@ const NEXT_PUBLIC_DRIVER_SERVICE_URL = process.env.NEXT_PUBLIC_DRIVER_SERVICE_UR
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string; order_id: string } }
+  { params }: { params: Promise<{ id: string; order_id: string }> }
 ) {
   try {
-    const { id: tripId, order_id } = params;
+    const { id: tripId, order_id } = await params;
 
     const url = `${NEXT_PUBLIC_DRIVER_SERVICE_URL}/api/v1/driver/trips/${tripId}/orders/${order_id}/status`;
 
@@ -16,6 +16,10 @@ export async function GET(
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
+        // Forward authorization headers if any
+        ...(request.headers.get('authorization') && {
+          'Authorization': request.headers.get('authorization')!
+        }),
       },
     });
 

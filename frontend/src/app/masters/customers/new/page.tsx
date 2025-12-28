@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Label } from '@/components/ui/Label';
-import { Textarea } from '@/components/ui/Textarea';
-import { Switch } from '@/components/ui/Switch';
-import { AppLayout } from '@/components/layout/AppLayout';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Label } from "@/components/ui/Label";
+import { Textarea } from "@/components/ui/Textarea";
+import { Switch } from "@/components/ui/Switch";
+import { AppLayout } from "@/components/layout/AppLayout";
 import {
   ArrowLeft,
   Save,
@@ -18,39 +18,40 @@ import {
   Mail,
   Building,
   CreditCard,
-  User
-} from 'lucide-react';
+  User,
+} from "lucide-react";
 import {
   useCreateCustomerMutation,
   useGetBranchesQuery,
-  useGetBusinessTypesQuery
-} from '@/services/api/companyApi';
-import { CustomerCreate } from '@/services/api/companyApi';
-import { toast } from 'react-hot-toast';
+  useGetBusinessTypesQuery,
+} from "@/services/api/companyApi";
+import { CustomerCreate } from "@/services/api/companyApi";
+import { toast } from "react-hot-toast";
 
 export default function NewCustomerPage() {
   const router = useRouter();
   const { data: branchesData } = useGetBranchesQuery({});
 
-// Extract branches from paginated response
-const branches = branchesData?.items || [];
+  // Extract branches from paginated response
+  const branches = branchesData?.items || [];
   const { data: businessTypes } = useGetBusinessTypesQuery();
-  const [createCustomer, { isLoading: isCreating }] = useCreateCustomerMutation();
+  const [createCustomer, { isLoading: isCreating }] =
+    useCreateCustomerMutation();
 
   const [formData, setFormData] = useState<CustomerCreate>({
-    home_branch_id: '',
-    code: '',
-    name: '',
-    phone: '',
-    email: '',
-    address: '',
-    city: '',
-    state: '',
-    postal_code: '',
-    business_type: '',
+    home_branch_id: "",
+    code: "",
+    name: "",
+    phone: "",
+    email: "",
+    address: "",
+    city: "",
+    state: "",
+    postal_code: "",
+    business_type: "",
     credit_limit: 0,
-    pricing_tier: 'standard',
-    is_active: true
+    pricing_tier: "standard",
+    is_active: true,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -59,27 +60,30 @@ const branches = branchesData?.items || [];
     const newErrors: Record<string, string> = {};
 
     if (!formData.code?.trim()) {
-      newErrors.code = 'Customer code is required';
+      newErrors.code = "Customer code is required";
     }
     if (!formData.name?.trim()) {
-      newErrors.name = 'Customer name is required';
+      newErrors.name = "Customer name is required";
     }
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Invalid email address';
+      newErrors.email = "Invalid email address";
     }
     if (formData.phone && !/^[+]?[\d\s-()]+$/.test(formData.phone)) {
-      newErrors.phone = 'Invalid phone number';
+      newErrors.phone = "Invalid phone number";
     }
-    if (formData.postal_code && !/^[a-zA-Z0-9\s-]+$/.test(formData.postal_code)) {
-      newErrors.postal_code = 'Invalid postal code';
+    if (
+      formData.postal_code &&
+      !/^[a-zA-Z0-9\s-]+$/.test(formData.postal_code)
+    ) {
+      newErrors.postal_code = "Invalid postal code";
     }
     if (formData.credit_limit && formData.credit_limit < 0) {
-      newErrors.credit_limit = 'Credit limit must be positive';
+      newErrors.credit_limit = "Credit limit must be positive";
     }
 
     // Only validate business_type if business types are loaded
     if (businessTypes && businessTypes.length > 0 && !formData.business_type) {
-      newErrors.business_type = 'Please select a business type';
+      newErrors.business_type = "Please select a business type";
     }
 
     setErrors(newErrors);
@@ -90,7 +94,7 @@ const branches = branchesData?.items || [];
     e.preventDefault();
 
     if (!validateForm()) {
-      toast.error('Please fix the errors in the form');
+      toast.error("Please fix the errors in the form");
       return;
     }
 
@@ -106,9 +110,11 @@ const branches = branchesData?.items || [];
         state: formData.state || undefined,
         postal_code: formData.postal_code || undefined,
         // For business_type, don't send undefined - let backend handle default or omit entirely
-        business_type: formData.business_type || null,
+        ...(formData.business_type
+          ? { business_type: formData.business_type }
+          : {}),
         credit_limit: formData.credit_limit || 0,
-        pricing_tier: formData.pricing_tier || 'standard',
+        pricing_tier: formData.pricing_tier || "standard",
       };
 
       // Remove business_type from payload if it's null/empty to avoid enum casting issues
@@ -116,61 +122,68 @@ const branches = branchesData?.items || [];
         delete submitData.business_type;
       }
 
-      console.log('Submitting customer data:', submitData);
+      console.log("Submitting customer data:", submitData);
       const newCustomer = await createCustomer(submitData).unwrap();
-      toast.success('Customer created successfully');
+      toast.success("Customer created successfully");
       router.push(`/masters/customers/${newCustomer.id}`);
     } catch (error: any) {
-      console.error('Customer creation error:', error);
+      console.error("Customer creation error:", error);
 
       // Show the actual backend error message directly in toast
-      const errorMessage = error?.data?.detail || error?.message || 'Failed to create customer';
+      const errorMessage =
+        error?.data?.detail || error?.message || "Failed to create customer";
 
       // Show the exact error message from backend in toast
       toast.error(errorMessage);
 
       // Also set field-specific error for common cases
-      if (typeof errorMessage === 'string') {
+      if (typeof errorMessage === "string") {
         const lowerMessage = errorMessage.toLowerCase();
 
-        if (lowerMessage.includes('customer with this code already exists') || lowerMessage.includes('code already exists')) {
-          setErrors(prev => ({
+        if (
+          lowerMessage.includes("customer with this code already exists") ||
+          lowerMessage.includes("code already exists")
+        ) {
+          setErrors((prev) => ({
             ...prev,
-            code: 'Customer with this code already exists'
+            code: "Customer with this code already exists",
           }));
-        } else if (lowerMessage.includes('email')) {
-          setErrors(prev => ({
+        } else if (lowerMessage.includes("email")) {
+          setErrors((prev) => ({
             ...prev,
-            email: 'Invalid format'
+            email: "Invalid format",
           }));
-        } else if (lowerMessage.includes('phone')) {
-          setErrors(prev => ({
+        } else if (lowerMessage.includes("phone")) {
+          setErrors((prev) => ({
             ...prev,
-            phone: 'Invalid format'
+            phone: "Invalid format",
           }));
         }
       }
     }
   };
 
-  const handleInputChange = (field: string, value: string | boolean | number) => {
-    setFormData(prev => ({
+  const handleInputChange = (
+    field: string,
+    value: string | boolean | number
+  ) => {
+    setFormData((prev) => ({
       ...prev,
-      [field]: value
+      [field]: value,
     }));
 
     // Clear error for this field when user starts typing
     if (errors[field]) {
-      setErrors(prev => ({
+      setErrors((prev) => ({
         ...prev,
-        [field]: ''
+        [field]: "",
       }));
     }
   };
 
   return (
     <AppLayout>
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto inline space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
@@ -207,9 +220,11 @@ const branches = branchesData?.items || [];
                   <Input
                     id="code"
                     value={formData.code}
-                    onChange={(e) => handleInputChange('code', e.target.value.toUpperCase())}
+                    onChange={(e) =>
+                      handleInputChange("code", e.target.value.toUpperCase())
+                    }
                     placeholder="e.g., CUST001"
-                    className={errors.code ? 'border-red-500' : ''}
+                    className={errors.code ? "border-red-500" : ""}
                   />
                   {errors.code && (
                     <p className="text-sm text-red-600 mt-1">{errors.code}</p>
@@ -220,9 +235,9 @@ const branches = branchesData?.items || [];
                   <Input
                     id="name"
                     value={formData.name}
-                    onChange={(e) => handleInputChange('name', e.target.value)}
+                    onChange={(e) => handleInputChange("name", e.target.value)}
                     placeholder="e.g., ABC Corporation"
-                    className={errors.name ? 'border-red-500' : ''}
+                    className={errors.name ? "border-red-500" : ""}
                   />
                   {errors.name && (
                     <p className="text-sm text-red-600 mt-1">{errors.name}</p>
@@ -235,28 +250,41 @@ const branches = branchesData?.items || [];
                   <select
                     id="business_type"
                     value={formData.business_type}
-                    onChange={(e) => handleInputChange('business_type', e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("business_type", e.target.value)
+                    }
                     className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors.business_type ? 'border-red-500' : 'border-gray-300'
+                      errors.business_type
+                        ? "border-red-500"
+                        : "border-gray-300"
                     }`}
                   >
                     <option value="">Select Business Type</option>
-                    {businessTypes?.map(type => (
-                      <option key={type} value={type}>{type.replace('_', ' ')}</option>
+                    {businessTypes?.map((type) => (
+                      <option key={type} value={type}>
+                        {type.replace("_", " ")}
+                      </option>
                     ))}
                     {!businessTypes && (
-                      <option value="" disabled>Loading business types...</option>
+                      <option value="" disabled>
+                        Loading business types...
+                      </option>
                     )}
                     {businessTypes && businessTypes.length === 0 && (
-                      <option value="" disabled>No business types available</option>
+                      <option value="" disabled>
+                        No business types available
+                      </option>
                     )}
                   </select>
                   {errors.business_type && (
-                    <p className="text-sm text-red-600 mt-1">{errors.business_type}</p>
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.business_type}
+                    </p>
                   )}
                   {businessTypes && businessTypes.length === 0 && (
                     <p className="text-xs text-gray-500 mt-1">
-                      Business types could not be loaded. You can proceed without selecting one.
+                      Business types could not be loaded. You can proceed
+                      without selecting one.
                     </p>
                   )}
                 </div>
@@ -265,7 +293,9 @@ const branches = branchesData?.items || [];
                   <select
                     id="pricing_tier"
                     value={formData.pricing_tier}
-                    onChange={(e) => handleInputChange('pricing_tier', e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("pricing_tier", e.target.value)
+                    }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="standard">Standard</option>
@@ -277,7 +307,9 @@ const branches = branchesData?.items || [];
               <div className="flex items-center space-x-3">
                 <Switch
                   checked={formData.is_active}
-                  onCheckedChange={(checked) => handleInputChange('is_active', checked)}
+                  onCheckedChange={(checked) =>
+                    handleInputChange("is_active", checked)
+                  }
                 />
                 <Label>Active Customer</Label>
               </div>
@@ -298,7 +330,7 @@ const branches = branchesData?.items || [];
                 <Textarea
                   id="address"
                   value={formData.address}
-                  onChange={(e) => handleInputChange('address', e.target.value)}
+                  onChange={(e) => handleInputChange("address", e.target.value)}
                   placeholder="Enter complete address"
                   rows={3}
                 />
@@ -309,7 +341,7 @@ const branches = branchesData?.items || [];
                   <Input
                     id="city"
                     value={formData.city}
-                    onChange={(e) => handleInputChange('city', e.target.value)}
+                    onChange={(e) => handleInputChange("city", e.target.value)}
                     placeholder="e.g., Mumbai"
                   />
                 </div>
@@ -318,7 +350,7 @@ const branches = branchesData?.items || [];
                   <Input
                     id="state"
                     value={formData.state}
-                    onChange={(e) => handleInputChange('state', e.target.value)}
+                    onChange={(e) => handleInputChange("state", e.target.value)}
                     placeholder="e.g., Maharashtra"
                   />
                 </div>
@@ -327,12 +359,16 @@ const branches = branchesData?.items || [];
                   <Input
                     id="postal_code"
                     value={formData.postal_code}
-                    onChange={(e) => handleInputChange('postal_code', e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("postal_code", e.target.value)
+                    }
                     placeholder="e.g., 400001"
-                    className={errors.postal_code ? 'border-red-500' : ''}
+                    className={errors.postal_code ? "border-red-500" : ""}
                   />
                   {errors.postal_code && (
-                    <p className="text-sm text-red-600 mt-1">{errors.postal_code}</p>
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.postal_code}
+                    </p>
                   )}
                 </div>
               </div>
@@ -341,11 +377,13 @@ const branches = branchesData?.items || [];
                 <select
                   id="home_branch_id"
                   value={formData.home_branch_id}
-                  onChange={(e) => handleInputChange('home_branch_id', e.target.value)}
+                  onChange={(e) =>
+                    handleInputChange("home_branch_id", e.target.value)
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select Home Branch</option>
-                  {branches?.map(branch => (
+                  {branches?.map((branch) => (
                     <option key={branch.id} value={branch.id}>
                       {branch.name} ({branch.code})
                     </option>
@@ -374,9 +412,9 @@ const branches = branchesData?.items || [];
                     id="phone"
                     type="tel"
                     value={formData.phone}
-                    onChange={(e) => handleInputChange('phone', e.target.value)}
+                    onChange={(e) => handleInputChange("phone", e.target.value)}
                     placeholder="e.g., +91 22 1234 5678"
-                    className={errors.phone ? 'border-red-500' : ''}
+                    className={errors.phone ? "border-red-500" : ""}
                   />
                   {errors.phone && (
                     <p className="text-sm text-red-600 mt-1">{errors.phone}</p>
@@ -388,9 +426,9 @@ const branches = branchesData?.items || [];
                     id="email"
                     type="email"
                     value={formData.email}
-                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    onChange={(e) => handleInputChange("email", e.target.value)}
                     placeholder="e.g., contact@company.com"
-                    className={errors.email ? 'border-red-500' : ''}
+                    className={errors.email ? "border-red-500" : ""}
                   />
                   {errors.email && (
                     <p className="text-sm text-red-600 mt-1">{errors.email}</p>
@@ -417,12 +455,19 @@ const branches = branchesData?.items || [];
                   min="0"
                   step="100"
                   value={formData.credit_limit}
-                  onChange={(e) => handleInputChange('credit_limit', parseFloat(e.target.value) || 0)}
+                  onChange={(e) =>
+                    handleInputChange(
+                      "credit_limit",
+                      parseFloat(e.target.value) || 0
+                    )
+                  }
                   placeholder="e.g., 10000"
-                  className={errors.credit_limit ? 'border-red-500' : ''}
+                  className={errors.credit_limit ? "border-red-500" : ""}
                 />
                 {errors.credit_limit && (
-                  <p className="text-sm text-red-600 mt-1">{errors.credit_limit}</p>
+                  <p className="text-sm text-red-600 mt-1">
+                    {errors.credit_limit}
+                  </p>
                 )}
                 <p className="text-xs text-gray-500 mt-1">
                   Set 0 for no credit limit

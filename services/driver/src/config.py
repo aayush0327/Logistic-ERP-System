@@ -52,7 +52,7 @@ class Settings(BaseSettings):
 
     # Global JWT Configuration (shared across services)
     GLOBAL_JWT_SECRET: str = os.getenv(
-        "JWT_SECRET",
+        "GLOBAL_JWT_SECRET",
         "eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck"
     )
     GLOBAL_JWT_ALGORITHM: str = os.getenv("GLOBAL_JWT_ALGORITHM", "HS256")

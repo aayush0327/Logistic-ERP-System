@@ -30,6 +30,18 @@ export const baseQueryWithAuth = async (args: any, api: any, extraOptions: any) 
   // Run the base query
   const result = await baseQuery(args, api, extraOptions)
 
+  // Handle 404 for profile endpoints - treat as null data instead of error
+  if (result.error && result.error.status === 404) {
+    const url = typeof args === 'string' ? args : args.url
+    // Profile endpoints that should return null on 404
+    if (url.includes('/profiles/branch-managers/by-user/') ||
+        url.includes('/profiles/finance-managers/by-user/') ||
+        url.includes('/profiles/logistics-managers/by-user/') ||
+        url.includes('/profiles/drivers/by-user/')) {
+      return { data: null } as any
+    }
+  }
+
   // Handle authentication errors
   if (result.error && result.error.status === 401) {
     // Token is invalid or expired

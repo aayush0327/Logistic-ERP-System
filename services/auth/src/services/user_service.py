@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 from fastapi import HTTPException, status
 
 from ..database import User, Role, Permission, RefreshToken
@@ -22,8 +22,11 @@ from ..auth import (
 )
 from ..config_local import AuthSettings
 from .refresh_token_service import RefreshTokenService
+import httpx
+import logging
 
 settings = AuthSettings()
+logger = logging.getLogger(__name__)
 
 
 class UserService:
@@ -33,7 +36,7 @@ class UserService:
     async def get_by_id(db: AsyncSession, user_id: str) -> Optional[User]:
         """Get user by ID with relationships"""
         query = select(User).options(
-            selectinload(User.role).selectinload(Role.permissions),
+            joinedload(User.role).selectinload(Role.permissions),
             selectinload(User.tenant)
         ).where(User.id == user_id)
         result = await db.execute(query)
@@ -73,7 +76,7 @@ class UserService:
     ) -> Tuple[Optional[User], Optional[str]]:
         """Authenticate user with email and password"""
 
-        # Get user by email (email is unique across all tenants)
+        # Get user by email (email is unique per tenant)
         user = await UserService.get_by_email(db, login_data.email)
 
         if not user:
@@ -128,8 +131,8 @@ class UserService:
     @staticmethod
     async def create_user(db: AsyncSession, user_data: UserCreate) -> User:
         """Create a new user"""
-        # Check if user already exists
-        existing_user = await UserService.get_by_email(db, user_data.email, user_data.tenant_id)
+        # Check if user already exists globally (across all tenants)
+        existing_user = await UserService.get_by_email(db, user_data.email)
         if existing_user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -139,6 +142,81 @@ class UserService:
         # Hash password
         password_hash = get_password_hash(user_data.password)
 
+        # Determine the role_id to use
+        role_id = user_data.role_id
+
+        # If role_id is provided, validate it exists and belongs to the tenant
+        if role_id is not None and role_id > 0:
+            from sqlalchemy import select
+            role_query = select(Role).where(
+                Role.id == role_id
+            )
+            role_result = await db.execute(role_query)
+            role = role_result.scalar_one_or_none()
+
+            if not role:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Role with id {role_id} not found"
+                )
+
+            # Skip tenant validation for global roles (tenant_id = 550e8400-e29b-41d4-a716-446655440000)
+            # Global roles can be used by any tenant
+            GLOBAL_TENANT_ID = "550e8400-e29b-41d4-a716-446655440000"
+            if (user_data.tenant_id and
+                role.tenant_id != user_data.tenant_id and
+                role.tenant_id != GLOBAL_TENANT_ID):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Role does not belong to your tenant"
+                )
+        elif user_data.tenant_id and user_data.tenant_id != "":
+            # If no role_id provided, get the default "User" role for the tenant
+            from sqlalchemy import select
+            # Query for the "User" role (lowest privilege role) for the tenant
+            role_query = select(Role).where(
+                Role.name == "User",
+                Role.tenant_id == user_data.tenant_id
+            )
+            role_result = await db.execute(role_query)
+            role = role_result.scalar_one_or_none()
+
+            if not role:
+                # If no "User" role exists for this tenant, create default roles
+                print(f"Creating default roles for tenant: {user_data.tenant_id}")
+
+                default_roles = [
+                    {"name": "Admin", "description": "Organization administrator", "is_system": True},
+                    {"name": "Manager", "description": "Operations manager", "is_system": False},
+                    {"name": "User", "description": "Regular user", "is_system": False}
+                ]
+
+                user_role = None
+                for role_data in default_roles:
+                    new_role = Role(
+                        name=role_data["name"],
+                        description=role_data["description"],
+                        is_system=role_data["is_system"],
+                        tenant_id=user_data.tenant_id
+                    )
+                    db.add(new_role)
+
+                    # We need to flush to get the ID
+                    await db.flush()
+
+                    if role_data["name"] == "User":
+                        user_role = new_role
+
+                role_id = user_role.id if user_role else None
+                print(f"Created User role with ID: {role_id}")
+            else:
+                role_id = role.id
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="role_id is required for user creation"
+            )
+
         # Create user
         db_user = User(
             id=str(uuid.uuid4()),
@@ -147,7 +225,7 @@ class UserService:
             first_name=user_data.first_name,
             last_name=user_data.last_name,
             tenant_id=user_data.tenant_id,
-            role_id=user_data.role_id,
+            role_id=role_id,
             is_active=user_data.is_active,
             is_superuser=False,
             created_at=datetime.utcnow(),
@@ -190,6 +268,17 @@ class UserService:
         return user
 
     @staticmethod
+    async def get_users_by_tenant(db: AsyncSession, tenant_id: str) -> List[User]:
+        """Get all users for a specific tenant"""
+        query = select(User).options(
+            selectinload(User.role).selectinload(Role.permissions),
+            selectinload(User.tenant)
+        ).where(User.tenant_id == tenant_id)
+
+        result = await db.execute(query)
+        return result.scalars().all()
+
+    @staticmethod
     async def change_password(
         db: AsyncSession,
         user_id: str,
@@ -224,6 +313,7 @@ class UserService:
             "sub": user.id,
             "tenant_id": user.tenant_id or "",  # Ensure tenant_id is not null
             "role_id": user.role_id,
+            "role": user.role.name,
             "email": user.email,
             "is_superuser": user.is_superuser
         })
@@ -254,6 +344,8 @@ class UserService:
             "last_name": user.last_name or "",
             "tenant_id": user.tenant_id,
             "role_id": user.role_id,
+            "role_name": user.role.name if user.role else None,  # Consistent across tenants
+            "is_system_role": user.role.is_system if user.role else None,  # Whether this is a system role
             "is_active": user.is_active,
             "is_superuser": user.is_superuser,
             "permissions": permissions,
@@ -261,7 +353,8 @@ class UserService:
             "role": {
                 "id": user.role.id,
                 "name": user.role.name,
-                "description": user.role.description
+                "description": user.role.description,
+                "is_system": user.role.is_system
             } if user.role else None,
             "tenant": {
                 "id": user.tenant.id,
@@ -323,3 +416,105 @@ class UserService:
             permissions.append("superuser:access")
 
         return permissions
+
+    @staticmethod
+    async def delete_user(db: AsyncSession, user_id: str, auth_token: Optional[str] = None) -> bool:
+        """
+        Delete a user from auth database and notify company service
+
+        This is the source of truth for user deletion.
+        When a user is deleted from auth service, the company service
+        will also delete the corresponding employee profile.
+        """
+        # Get user first
+        user = await db.get(User, user_id)
+        if not user:
+            return False
+
+        # Delete all refresh tokens for this user first
+        from sqlalchemy import delete
+        await db.execute(
+            delete(RefreshToken).where(RefreshToken.user_id == user_id)
+        )
+        await db.commit()
+
+        # Delete the user
+        await db.delete(user)
+        await db.commit()
+
+        # Notify company service to delete employee profile
+        company_service_url = settings.COMPANY_SERVICE_URL
+        logger.info(f"Notifying company service at {company_service_url} to delete employee profile for user {user_id}")
+
+        if not auth_token:
+            logger.warning(f"No auth token available, cannot notify company service for user {user_id}")
+            return True
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                # First, get the employee profile ID by querying company service
+                search_url = f"{company_service_url}/users/"
+                logger.info(f"Querying company service: {search_url} with user_id={user_id}")
+
+                search_response = await client.get(
+                    search_url,
+                    headers={
+                        "Authorization": f"Bearer {auth_token}",
+                        "Content-Type": "application/json"
+                    },
+                    params={"user_id": user_id}
+                )
+
+                logger.info(f"Company service response status: {search_response.status_code}")
+
+                if search_response.status_code == 200:
+                    users_data = search_response.json()
+                    logger.info(f"Company service returned data: {users_data}")
+
+                    # users_data might be a list or a dict with 'items' key
+                    if isinstance(users_data, dict) and 'items' in users_data:
+                        users_list = users_data['items']
+                    elif isinstance(users_data, list):
+                        users_list = users_data
+                    else:
+                        users_list = []
+
+                    logger.info(f"Users list length: {len(users_list)}")
+
+                    # Find the employee profile with matching user_id
+                    employee_profile_id = None
+                    for user_item in users_list:
+                        logger.info(f"Checking user_item: user_id={user_item.get('user_id')}, id={user_item.get('id')}")
+                        if user_item.get('user_id') == user_id:
+                            employee_profile_id = user_item.get('id')
+                            logger.info(f"Found matching employee_profile_id: {employee_profile_id}")
+                            break
+
+                    if employee_profile_id:
+                        # Delete from company service using employee profile ID
+                        delete_url = f"{company_service_url}/users/{employee_profile_id}"
+                        logger.info(f"Deleting from company service: {delete_url}")
+
+                        delete_response = await client.delete(
+                            delete_url,
+                            headers={
+                                "Authorization": f"Bearer {auth_token}",
+                                "Content-Type": "application/json"
+                            }
+                        )
+
+                        logger.info(f"Delete response status: {delete_response.status_code}, body: {delete_response.text}")
+
+                        if delete_response.status_code == 200:
+                            logger.info(f"Successfully deleted employee profile {employee_profile_id} from company service")
+                        else:
+                            logger.error(f"Failed to delete employee profile from company service: {delete_response.status_code} - {delete_response.text}")
+                    else:
+                        logger.warning(f"No employee profile found for user_id {user_id}")
+                else:
+                    logger.error(f"Failed to query company service for user {user_id}: {search_response.status_code} - {search_response.text}")
+        except Exception as e:
+            logger.error(f"Error notifying company service for user deletion: {e}", exc_info=True)
+            # Don't fail the auth deletion if company service notification fails
+
+        return True

@@ -147,11 +147,14 @@ class OrderService:
                         return {
                             "id": str(product["id"]),
                             "name": product["name"],
-                            "code": product["code"],
+                            "code": product.get("code", ""),
                             "description": product.get("description", ""),
-                            "unit_price": float(product["unit_price"]),
-                            "weight": float(product.get("weight", 0)),
-                            "volume": float(product.get("volume", 0)),
+                            "unit_price": float(product.get("unit_price") or 0),
+                            "weight": float(product.get("weight") or 0),
+                            "volume": float(product.get("volume") or 0),
+                            "weight_type": product.get("weight_type", "fixed"),
+                            "fixed_weight": float(product.get("fixed_weight") or 0),
+                            "weight_unit": product.get("weight_unit", "kg"),
                             "unit": "pcs"  # Default unit, can be customized later
                         }
                     else:
@@ -225,20 +228,19 @@ class OrderService:
             # Process items and calculate totals
             order_items = []
             if order_data.items:
-                print(
-                    f"DEBUG: Processing {len(order_data.items)} items for order creation")
                 for i, item_data in enumerate(order_data.items):
-                    print(
-                        f"DEBUG: Processing item {i+1} - product_id: {item_data.product_id}")
                     # Fetch product details from product service
                     product = await self._fetch_product_details(item_data.product_id)
-                    print(f"DEBUG: Got product: {product['name']}")
+
+                    # Use user-entered weight if provided (for variable weight products),
+                    # otherwise use product weight (for fixed weight products)
+                    item_weight = item_data.weight if hasattr(item_data, 'weight') and item_data.weight and item_data.weight > 0 else product.get("weight", 0)
 
                     # Calculate item totals
                     item_total_price = product["unit_price"] * \
                         item_data.quantity
-                    item_total_weight = product["weight"] * item_data.quantity
-                    item_total_volume = product["volume"] * item_data.quantity
+                    item_total_weight = item_weight * item_data.quantity
+                    item_total_volume = product.get("volume", 0) * item_data.quantity
 
                     # Update order totals
                     total_weight += item_total_weight
@@ -256,7 +258,7 @@ class OrderService:
                         unit="pcs",  # Default unit since it's not in product schema
                         unit_price=product["unit_price"],
                         total_price=item_total_price,
-                        weight=product.get("weight", 0),
+                        weight=item_weight,  # Use the calculated item weight
                         volume=product.get("volume", 0),
                     )
                     order_items.append(order_item)

@@ -35,7 +35,7 @@ class Trip(Base):
     id = Column(String(50), primary_key=True, default=lambda: f"TRIP-{uuid.uuid4().hex[:8].upper()}")
     user_id = Column(String(50), nullable=False)
     company_id = Column(String(50), nullable=False)
-    branch = Column(String(100), nullable=False)
+    branch = Column(String(100), nullable=False)  # Contains branch ID (UUID)
     truck_plate = Column(String(20), nullable=False)
     truck_model = Column(String(100), nullable=False)
     truck_capacity = Column(Integer, nullable=False)

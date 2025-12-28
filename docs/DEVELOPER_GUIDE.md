@@ -1,6 +1,7 @@
-# Logistics ERP - Developer Guide
+`# Logistics ERP - Developer Guide
 
 ## Table of Contents
+
 1. [Architecture Overview](#architecture-overview)
 2. [File Structure](#file-structure)
 3. [Development Setup](#development-setup)
@@ -64,6 +65,7 @@ The Logistics ERP is a **multi-tenant microservices architecture** designed to h
 ### Key Technologies
 
 #### Backend Services
+
 - **FastAPI**: Modern, fast web framework for building APIs with Python
 - **SQLAlchemy**: ORM for database operations with async support
 - **Alembic**: Database migration tool
@@ -72,6 +74,7 @@ The Logistics ERP is a **multi-tenant microservices architecture** designed to h
 - **Kafka-Python**: Apache Kafka producer and consumer
 
 #### Infrastructure
+
 - **PostgreSQL**: Single instance with multiple databases for resource efficiency
   - Each service has its own database within the same PostgreSQL instance
   - Databases: auth_db, orders_db, wms_db, tms_db, billing_db
@@ -83,6 +86,7 @@ The Logistics ERP is a **multi-tenant microservices architecture** designed to h
 - **MinIO**: S3-compatible object storage for documents
 
 #### Observability
+
 - **Prometheus**: Metrics collection and alerting
 - **Grafana**: Metrics visualization dashboards
 - **Jaeger**: Distributed tracing for microservices
@@ -184,12 +188,14 @@ service-name/
 ### Prerequisites
 
 1. **Python 3.13+**
+
    ```bash
    # Verify installation
    python --version
    ```
 
 2. **Node.js 20+**
+
    ```bash
    # Verify installation
    node --version
@@ -197,6 +203,7 @@ service-name/
    ```
 
 3. **Docker & Docker Compose**
+
    ```bash
    # Verify installation
    docker --version
@@ -204,6 +211,7 @@ service-name/
    ```
 
 4. **PostgreSQL Client** (optional, for direct database access)
+
    ```bash
    # On Ubuntu/Debian
    sudo apt-get install postgresql-client
@@ -215,6 +223,7 @@ service-name/
 ### Manual Setup Process
 
 #### Step 1: Clone the Repository
+
 ```bash
 git clone https://github.com/your-org/logistics-erp.git
 cd logistics-erp
@@ -250,6 +259,7 @@ nano .env  # or use your favorite editor
 ```
 
 Key variables to configure:
+
 ```bash
 # Database
 POSTGRES_USER=your_db_user
@@ -278,6 +288,7 @@ docker-compose logs -f
 ```
 
 Expected services:
+
 - PostgreSQL (ports 5432-5437 for different databases)
 - Redis (port 6379)
 - Kafka (port 9092)
@@ -305,6 +316,7 @@ cd ../..
 #### Step 6: Run Services Individually
 
 **Terminal 1 - Auth Service (with auto-reload):**
+
 ```bash
 cd services/auth
 poetry run python -m src.main
@@ -315,6 +327,7 @@ poetry run uvicorn src.main:app --reload --host 0.0.0.0 --port 8001
 **Note**: The auth service Docker container is configured with auto-reload. When running with Docker Compose, code changes will automatically reload the service.
 
 **Terminal 2 - Frontend:**
+
 ```bash
 cd frontend
 npm install
@@ -322,6 +335,7 @@ npm run dev
 ```
 
 **Terminal 3 - Other Services:**
+
 ```bash
 cd services/orders  # or wms, tms, billing
 poetry run python -m src.main
@@ -369,6 +383,7 @@ docker-compose -f docker-compose.prod.yml up -d
 #### Step 4: Configure Load Balancer
 
 If using Nginx:
+
 ```nginx
 upstream api_gateway {
     server gateway:80;
@@ -421,20 +436,20 @@ metadata:
   namespace: logistics-erp
 spec:
   tls:
-  - hosts:
-    - api.your-domain.com
-    secretName: logistics-erp-tls
+    - hosts:
+        - api.your-domain.com
+      secretName: logistics-erp-tls
   rules:
-  - host: api.your-domain.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: gateway-service
-            port:
-              number: 80
+    - host: api.your-domain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway-service
+                port:
+                  number: 80
 ```
 
 ## Development Workflow
@@ -520,20 +535,22 @@ The authentication system provides secure access control with the following feat
 
 The system is initialized with the following default users:
 
-| Role | Email | Password | Tenant |
-|------|-------|----------|---------|
-| Super Admin | admin@example.com | admin123 | default-tenant |
-| Manager | manager@example.com | manager123 | default-tenant |
-| Employee | employee@example.com | employee123 | default-tenant |
+| Role        | Email                | Password    | Tenant         |
+| ----------- | -------------------- | ----------- | -------------- |
+| Super Admin | admin@example.com    | admin123    | default-tenant |
+| Manager     | manager@example.com  | manager123  | default-tenant |
+| Employee    | employee@example.com | employee123 | default-tenant |
 
 ### API Endpoints
 
 #### Authentication
+
 - `POST /api/v1/auth/login` - User login
 - `GET /api/v1/auth/me` - Get current user info
 - `POST /api/v1/auth/refresh` - Refresh access token
 
 #### User Management
+
 - `GET /api/v1/users` - List users (admin only)
 - `POST /api/v1/users` - Create new user (admin only)
 - `PUT /api/v1/users/{id}` - Update user (admin or owner)
@@ -551,6 +568,7 @@ The system is initialized with the following default users:
 ### Frontend Integration
 
 The frontend automatically handles:
+
 - Token storage in localStorage and cookies
 - Automatic token refresh on API calls
 - Redirects to login on authentication failure
@@ -588,6 +606,7 @@ open htmlcov/index.html
 ### Test Examples
 
 **Unit Test Example:**
+
 ```python
 # tests/unit/test_auth.py
 import pytest
@@ -602,6 +621,7 @@ def test_password_hashing():
 ```
 
 **Integration Test Example:**
+
 ```python
 # tests/integration/test_auth_api.py
 import pytest
@@ -624,6 +644,7 @@ async def test_login():
 ### Local Debugging
 
 **Using Python Debugger:**
+
 ```python
 # In your code
 import pdb; pdb.set_trace()
@@ -633,20 +654,21 @@ import ipdb; ipdb.set_trace()
 ```
 
 **VS Code Debug Configuration:**
+
 ```json
 // .vscode/launch.json
 {
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "name": "Python: FastAPI",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/services/auth/src/main.py",
-            "console": "integratedTerminal",
-            "justMyCode": true
-        }
-    ]
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: FastAPI",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/services/auth/src/main.py",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    }
+  ]
 }
 ```
 
@@ -698,6 +720,7 @@ http://localhost:16686
 
 **Problem**: Service can't connect to PostgreSQL
 **Solution**:
+
 ```bash
 # Check if database is running
 docker-compose ps postgres-auth
@@ -715,6 +738,7 @@ docker-compose up -d postgres-auth
 
 **Problem**: Messages not being published/consumed
 **Solution**:
+
 ```bash
 # Check Kafka logs
 docker-compose logs kafka
@@ -730,6 +754,7 @@ docker-compose exec kafka kafka-topics --create --topic orders --bootstrap-serve
 
 **Problem**: Cache not working
 **Solution**:
+
 ```bash
 # Test Redis connection
 docker-compose exec redis redis-cli ping
@@ -774,6 +799,7 @@ type(scope): brief description
 ```
 
 Types:
+
 - `feat`: New feature
 - `fix`: Bug fix
 - `docs`: Documentation
@@ -783,6 +809,7 @@ Types:
 - `chore`: Maintenance
 
 Examples:
+
 ```
 feat(auth): add multi-factor authentication
 fix(orders): resolve null reference in order creation

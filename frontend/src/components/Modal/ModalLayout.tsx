@@ -1,3 +1,5 @@
+"use client";
+
 import { ReactNode, useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -13,11 +15,11 @@ interface ModalLayoutProps {
 }
 
 const sizeClasses = {
-  sm: "max-w-md w-full md:w-auto",
-  md: "max-w-lg w-full md:w-auto",
-  lg: "max-w-2xl w-full md:w-auto",
-  xl: "max-w-4xl w-full md:w-auto",
-  full: "max-w-full mx-4",
+  sm: "max-w-md min-w-[90vw] md:min-w-[448px] w-full md:w-auto",
+  md: "max-w-lg min-w-[90vw] md:min-w-[512px] w-full md:w-auto",
+  lg: "max-w-2xl min-w-[90vw] md:min-w-[672px] w-full md:w-auto",
+  xl: "max-w-4xl min-w-[90vw] md:min-w-[768px] w-full md:w-auto",
+  full: "max-w-full w-full mx-4",
 };
 
 export function ModalLayout({

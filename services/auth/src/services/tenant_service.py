@@ -3,12 +3,229 @@ Tenant service for managing tenants/companies
 """
 from typing import Optional, List
 from datetime import datetime
+from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
 from sqlalchemy.orm import selectinload
 
-from ..database import Tenant, User
+from ..database import Tenant, User, Role, Permission, RolePermission
 from ..auth import get_password_hash
+
+
+async def create_default_roles_for_tenant(db: AsyncSession, tenant_id: str) -> dict:
+    """
+    Create default roles for a new tenant with appropriate permissions.
+
+    Args:
+        db: Database session
+        tenant_id: Tenant ID to create roles for
+
+    Returns:
+        Dictionary mapping role names to their IDs
+    """
+    from ..database import Permission
+
+    # Define default roles for a new tenant
+    default_roles = [
+        {
+            "name": "Admin",
+            "description": "Organization administrator with full access",
+            "is_system": True,
+            "permissions": [
+                # Orders - all permissions
+                "orders:create", "orders:read", "orders:read_all", "orders:update",
+                "orders:delete", "orders:cancel", "orders:status_update", "orders:priority_update",
+                "orders:approve_finance", "orders:approve_logistics", "orders:approve_any",
+                "orders:bulk_approve", "orders:financial_view", "orders:financial_edit",
+                "orders:payment_process", "orders:refund_process", "orders:logistics_view",
+                "orders:logistics_edit", "orders:shipment_create", "orders:tracking_update",
+                "orders:delivery_confirm", "orders:export", "orders:import",
+                "orders:split", "orders:reassign",
+                # Order documents
+                "order_documents:upload", "order_documents:read", "order_documents:read_all",
+                "order_documents:update", "order_documents:delete", "order_documents:verify",
+                "order_documents:download", "order_documents:create",
+                # Branches
+                "branches:create", "branches:read", "branches:read_all", "branches:update",
+                "branches:delete", "branches:manage_all", "branches:manage_own",
+                # Customers
+                "customers:create", "customers:read", "customers:read_all", "customers:update", "customers:delete",
+                # Products
+                "products:create", "products:read", "products:read_all", "products:update",
+                "products:delete", "products:stock_adjust", "products:pricing_update",
+                # Vehicles
+                "vehicles:create", "vehicles:read", "vehicles:read_all", "vehicles:update",
+                "vehicles:delete", "vehicles:assign", "vehicles:track", "vehicles:maintenance",
+                # Trips/TMS
+                "trips:create", "trips:read", "trips:read_all", "trips:update",
+                "trips:delete", "trips:assign", "trips:track",
+                # Resources
+                "resources:read", "resources:read_all",
+                # Drivers
+                "drivers:assign", "drivers:update",
+                # Driver service
+                "driver:read", "driver:read_all", "driver:update",
+                # Routes
+                "routes:create", "routes:optimize", "routes:update",
+                # Schedules
+                "schedules:read", "schedules:update",
+                # Billing
+                "billing:create", "billing:read", "billing:read_all", "billing:update", "billing:delete",
+                # Suppliers
+                "suppliers:create", "suppliers:read", "suppliers:read_all", "suppliers:update", "suppliers:delete",
+                # Shipping
+                "shipping:create", "shipping:read", "shipping:read_all", "shipping:update", "shipping:delete",
+                # Product categories
+                "product_categories:create", "product_categories:read", "product_categories:read_all",
+                "product_categories:update", "product_categories:delete",
+                # Reports
+                "reports:read", "reports:read_all", "reports:create", "reports:export",
+                # Company reports
+                "company_reports:read", "company_reports:read_all", "company_reports:export",
+                # Users
+                "users:create", "users:read", "users:read_all", "users:update", "users:delete",
+                "users:manage_all", "users:invite", "users:activate",
+                # Roles
+                "roles:create", "roles:read", "roles:update", "roles:delete", "roles:assign",
+                # Permissions
+                "permissions:read", "permissions:assign",
+                # Tenants
+                "tenants:read", "tenants:manage_own",
+                # Profiles
+                "profiles:read", "profiles:create", "profiles:update", "profiles:delete", "profiles:upload_avatar",
+                # Dashboard
+                "dashboard:read", "dashboard:read_all",
+                # Finance
+                "finance:read", "finance:approve", "finance:approve_bulk", "finance:reports", "finance:export",
+            ]
+        },
+        {
+            "name": "Branch Manager",
+            "description": "Manages branch operations and orders",
+            "is_system": False,
+            "permissions": [
+                "orders:create", "orders:read", "orders:read_all", "orders:update", "orders:delete",
+                "orders:cancel", "orders:status_update", "orders:priority_update", "orders:export",
+                "order_documents:upload", "order_documents:read", "order_documents:read_all",
+                "order_documents:update", "order_documents:delete", "order_documents:download",
+                "branches:read", "branches:read_all", "branches:update", "branches:manage_own",
+                "customers:create", "customers:read", "customers:read_all", "customers:update",
+                "vehicles:read", "vehicles:read_all", "vehicles:assign",
+                "company_reports:read", "company_reports:export",
+                "reports:read", "dashboard:read",
+                "finance:read", "finance:reports",
+            ]
+        },
+        {
+            "name": "Finance Manager",
+            "description": "Handles financial approvals and billing",
+            "is_system": False,
+            "permissions": [
+                "orders:read", "orders:read_all", "orders:update",
+                "orders:approve_finance", "orders:approve_any", "orders:bulk_approve",
+                "orders:financial_view", "orders:financial_edit",
+                "orders:payment_process", "orders:refund_process", "orders:export",
+                "order_documents:read", "order_documents:read_all", "order_documents:verify", "order_documents:download",
+                "billing:create", "billing:read", "billing:read_all", "billing:update", "billing:delete",
+                "company_reports:read", "company_reports:read_all", "company_reports:export",
+                "reports:read", "dashboard:read",
+                "finance:read", "finance:approve", "finance:approve_bulk", "finance:reports", "finance:export",
+            ]
+        },
+        {
+            "name": "Logistics Manager",
+            "description": "Manages logistics and transportation",
+            "is_system": False,
+            "permissions": [
+                "orders:read", "orders:read_all", "orders:update",
+                "orders:approve_logistics", "orders:approve_any", "orders:bulk_approve",
+                "orders:logistics_view", "orders:logistics_edit",
+                "orders:shipment_create", "orders:tracking_update", "orders:delivery_confirm",
+                "orders:status_update", "orders:export",
+                "order_documents:read", "order_documents:read_all", "order_documents:verify", "order_documents:download",
+                "trips:create", "trips:read", "trips:read_all", "trips:update", "trips:assign", "trips:track",
+                "orders:split", "orders:reassign",
+                "resources:read", "resources:read_all",
+                "drivers:assign", "drivers:update",
+                "driver:read", "driver:read_all", "driver:update",
+                "vehicles:read", "vehicles:read_all", "vehicles:assign", "vehicles:maintenance",
+                "routes:create", "routes:optimize", "routes:update",
+                "schedules:read", "schedules:update",
+                "shipping:create", "shipping:read", "shipping:read_all", "shipping:update",
+                "vehicles:track",
+                "branches:read", "branches:read_all",
+                "products:read", "products:read_all",
+                "customers:read", "customers:read_all",
+                "company_reports:read", "company_reports:read_all", "company_reports:export",
+                "reports:read", "dashboard:read",
+            ]
+        },
+        {
+            "name": "Driver",
+            "description": "Vehicle driver for deliveries",
+            "is_system": False,
+            "permissions": [
+                "orders:read", "orders:tracking_update", "orders:delivery_confirm", "orders:logistics_view",
+                "order_documents:read", "order_documents:download",
+                "vehicles:read",
+                "shipping:read", "shipping:update",
+                "driver:read", "driver:update",
+                "dashboard:read",
+            ]
+        },
+        {
+            "name": "User",
+            "description": "Regular user with basic access",
+            "is_system": False,
+            "permissions": [
+                "users:read_own", "users:update_own",
+                "orders:create", "orders:read", "orders:read_own", "orders:update_own", "orders:cancel",
+                "order_documents:read_own", "order_documents:upload", "order_documents:update_own",
+                "order_documents:delete_own", "order_documents:download",
+                "branches:read", "customers:read", "vehicles:read", "products:read", "product_categories:read",
+                "company_reports:read_own", "dashboard:read",
+                "finance:read",
+            ]
+        },
+    ]
+
+    role_id_map = {}
+
+    # Get all permissions from database
+    permissions_query = select(Permission)
+    permissions_result = await db.execute(permissions_query)
+    all_permissions = {f"{p.resource}:{p.action}": p.id for p in permissions_result.scalars()}
+
+    # Create each role with its permissions
+    for role_def in default_roles:
+        # Create role
+        role = Role(
+            name=role_def["name"],
+            description=role_def["description"],
+            is_system=role_def["is_system"],
+            tenant_id=tenant_id,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        db.add(role)
+        await db.flush()  # Get the role ID
+
+        role_id_map[role_def["name"]] = role.id
+
+        # Create role permissions
+        for perm_key in role_def["permissions"]:
+            if perm_key in all_permissions:
+                role_permission = RolePermission(
+                    id=str(uuid4()),
+                    role_id=role.id,
+                    permission_id=all_permissions[perm_key],
+                    created_at=datetime.utcnow()
+                )
+                db.add(role_permission)
+
+    await db.commit()
+
+    return role_id_map
 
 
 class TenantService:
@@ -16,10 +233,7 @@ class TenantService:
 
     @staticmethod
     async def create_tenant_with_admin(db: AsyncSession, name: str, domain: str, admin_data: dict) -> Tenant:
-        """Create a new tenant with admin user"""
-        from uuid import uuid4
-        from sqlalchemy import select
-
+        """Create a new tenant with admin user and default roles"""
         # Create tenant first
         tenant_id = str(uuid4())
         tenant = Tenant(
@@ -34,11 +248,16 @@ class TenantService:
         db.add(tenant)
         await db.flush()  # Get tenant ID without committing
 
-        # Use existing role ID 2 (Admin role) instead of creating a new one
-        # This maintains consistency across all tenants
-        ADMIN_ROLE_ID = 2  # Standard admin role ID
+        # Create default roles for this tenant (Admin, Branch Manager, Finance Manager, Logistics Manager, Driver, User)
+        role_id_map = await create_default_roles_for_tenant(db, tenant_id)
 
-        # Create admin user with role_id = 2
+        # Get the Admin role ID for this tenant
+        admin_role_id = role_id_map.get("Admin")
+
+        if not admin_role_id:
+            raise ValueError("Failed to create Admin role for tenant")
+
+        # Create admin user with the newly created Admin role
         admin_user = User(
             id=str(uuid4()),
             email=admin_data["email"].lower(),
@@ -48,7 +267,7 @@ class TenantService:
             is_active=True,
             is_superuser=False,  # Not system superuser
             tenant_id=tenant_id,
-            role_id=ADMIN_ROLE_ID,  # Use the standard admin role ID 2
+            role_id=admin_role_id,  # Use the Admin role created for this tenant
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
@@ -67,8 +286,6 @@ class TenantService:
     @staticmethod
     async def create_tenant(db: AsyncSession, name: str, domain: str, admin_data: dict) -> Tenant:
         """Create a new tenant with admin user (legacy method)"""
-        from uuid import uuid4
-
         # Create tenant
         tenant = Tenant(
             id=str(uuid4()),
@@ -78,11 +295,19 @@ class TenantService:
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
+        db.add(tenant)
+        await db.flush()
 
-        # Use existing role ID 2 (Admin role) instead of creating a new one
-        ADMIN_ROLE_ID = 2  # Standard admin role ID
+        # Create default roles for this tenant
+        role_id_map = await create_default_roles_for_tenant(db, tenant.id)
 
-        # Create admin user with role_id = 2
+        # Get the Admin role ID for this tenant
+        admin_role_id = role_id_map.get("Admin")
+
+        if not admin_role_id:
+            raise ValueError("Failed to create Admin role for tenant")
+
+        # Create admin user with the newly created Admin role
         admin_user = User(
             id=str(uuid4()),
             email=admin_data["email"].lower(),
@@ -92,7 +317,7 @@ class TenantService:
             is_active=True,
             is_superuser=False,  # Not system superuser
             tenant_id=tenant.id,
-            role_id=ADMIN_ROLE_ID,  # Use the standard admin role ID 2
+            role_id=admin_role_id,  # Use the Admin role created for this tenant
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
@@ -101,7 +326,6 @@ class TenantService:
         tenant.admin_id = admin_user.id
 
         # Add to database
-        db.add(tenant)
         db.add(admin_user)
 
         await db.commit()

@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Label } from '@/components/ui/Label';
-import { Textarea } from '@/components/ui/Textarea';
-import { Switch } from '@/components/ui/Switch';
-import { AppLayout } from '@/components/layout/AppLayout';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Label } from "@/components/ui/Label";
+import { Textarea } from "@/components/ui/Textarea";
+import { Switch } from "@/components/ui/Switch";
+import { AppLayout } from "@/components/layout/AppLayout";
 import {
   ArrowLeft,
   Save,
@@ -17,20 +17,22 @@ import {
   Tag,
   DollarSign,
   Box,
-  Building
-} from 'lucide-react';
+  Building,
+} from "lucide-react";
 import {
   useCreateProductMutation,
   useGetProductCategoriesQuery,
-  useGetBranchesQuery
-} from '@/services/api/companyApi';
-import { ProductCreate, ProductCategory } from '@/services/api/companyApi';
-import { toast } from 'react-hot-toast';
+  useGetBranchesQuery,
+} from "@/services/api/companyApi";
+import { ProductCreate, ProductCategory } from "@/services/api/companyApi";
+import { toast } from "react-hot-toast";
 
 export default function NewProductPage() {
   const router = useRouter();
   const { data: categoriesData } = useGetProductCategoriesQuery({});
-  const categories = Array.isArray(categoriesData) ? categoriesData : categoriesData?.items || [];
+  const categories = Array.isArray(categoriesData)
+    ? categoriesData
+    : categoriesData?.items || [];
   const { data: branches } = useGetBranchesQuery({});
   const [createProduct, { isLoading: isCreating }] = useCreateProductMutation();
 
@@ -38,9 +40,9 @@ export default function NewProductPage() {
     branch_ids: [],
     available_for_all_branches: true,
     category_id: undefined,
-    code: '',
-    name: '',
-    description: '',
+    code: "",
+    name: "",
+    description: "",
     unit_price: 1, // Default positive value
     special_price: 0,
     weight: 0,
@@ -52,39 +54,56 @@ export default function NewProductPage() {
     min_stock_level: 0,
     max_stock_level: 0,
     current_stock: 0,
-    is_active: true
+    is_active: true,
   } as ProductCreate);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [isAvailableForAllBranches, setIsAvailableForAllBranches] = useState(true);
+  const [isAvailableForAllBranches, setIsAvailableForAllBranches] =
+    useState(true);
   const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
     if (!formData.code?.trim()) {
-      newErrors.code = 'Product code is required';
+      newErrors.code = "Product code is required";
     }
     if (!formData.name?.trim()) {
-      newErrors.name = 'Product name is required';
+      newErrors.name = "Product name is required";
     }
     if (!formData.unit_price || formData.unit_price <= 0) {
-      newErrors.unit_price = 'Unit price must be positive';
+      newErrors.unit_price = "Unit price must be positive";
     }
-    if (formData.special_price && formData.special_price > 0 && formData.special_price <= 0) {
-      newErrors.special_price = 'Special price must be positive';
+    if (
+      formData.special_price &&
+      formData.special_price > 0 &&
+      formData.special_price <= 0
+    ) {
+      newErrors.special_price = "Special price must be positive";
     }
-    if (formData.min_stock_level !== undefined && formData.min_stock_level < 0) {
-      newErrors.min_stock_level = 'Min stock level must be non-negative';
+    if (
+      formData.min_stock_level !== undefined &&
+      formData.min_stock_level < 0
+    ) {
+      newErrors.min_stock_level = "Min stock level must be non-negative";
     }
-    if (formData.max_stock_level && formData.max_stock_level > 0 && formData.max_stock_level < 0) {
-      newErrors.max_stock_level = 'Max stock level must be positive';
+    if (
+      formData.max_stock_level &&
+      formData.max_stock_level > 0 &&
+      formData.max_stock_level < 0
+    ) {
+      newErrors.max_stock_level = "Max stock level must be positive";
     }
-    if (formData.max_stock_level && formData.min_stock_level !== undefined && formData.min_stock_level > formData.max_stock_level) {
-      newErrors.max_stock_level = 'Max stock level must be greater than min stock level';
+    if (
+      formData.max_stock_level &&
+      formData.min_stock_level !== undefined &&
+      formData.min_stock_level > formData.max_stock_level
+    ) {
+      newErrors.max_stock_level =
+        "Max stock level must be greater than min stock level";
     }
     if (formData.current_stock !== undefined && formData.current_stock < 0) {
-      newErrors.current_stock = 'Current stock must be non-negative';
+      newErrors.current_stock = "Current stock must be non-negative";
     }
 
     setErrors(newErrors);
@@ -95,7 +114,7 @@ export default function NewProductPage() {
     e.preventDefault();
 
     if (!validateForm()) {
-      toast.error('Please fix the errors in the form');
+      toast.error("Please fix the errors in the form");
       return;
     }
 
@@ -110,75 +129,96 @@ export default function NewProductPage() {
         is_active: formData.is_active,
         available_for_all_branches: isAvailableForAllBranches,
         // Only include optional fields if they have meaningful values
-        ...(!isAvailableForAllBranches && selectedBranches.length > 0 && { branch_ids: selectedBranches }),
+        ...(!isAvailableForAllBranches &&
+          selectedBranches.length > 0 && { branch_ids: selectedBranches }),
         ...(formData.category_id && { category_id: formData.category_id }),
         ...(formData.description && { description: formData.description }),
-        ...(formData.special_price && formData.special_price > 0 && { special_price: formData.special_price }),
-        ...(formData.weight && formData.weight > 0 && { weight: formData.weight }),
-        ...(formData.length && formData.length > 0 && { length: formData.length }),
+        ...(formData.special_price &&
+          formData.special_price > 0 && {
+            special_price: formData.special_price,
+          }),
+        ...(formData.weight &&
+          formData.weight > 0 && { weight: formData.weight }),
+        ...(formData.length &&
+          formData.length > 0 && { length: formData.length }),
         ...(formData.width && formData.width > 0 && { width: formData.width }),
-        ...(formData.height && formData.height > 0 && { height: formData.height }),
-        ...(formData.volume && formData.volume > 0 && { volume: formData.volume }),
-        ...(formData.max_stock_level && formData.max_stock_level > 0 && { max_stock_level: formData.max_stock_level }),
-        ...(formData.handling_requirements && formData.handling_requirements.length > 0 && {
-          handling_requirements: formData.handling_requirements
-        })
+        ...(formData.height &&
+          formData.height > 0 && { height: formData.height }),
+        ...(formData.volume &&
+          formData.volume > 0 && { volume: formData.volume }),
+        ...(formData.max_stock_level &&
+          formData.max_stock_level > 0 && {
+            max_stock_level: formData.max_stock_level,
+          }),
+        ...(formData.handling_requirements &&
+          formData.handling_requirements.length > 0 && {
+            handling_requirements: formData.handling_requirements,
+          }),
       };
 
-      console.log('Submitting product data:', submitData);
+      console.log("Submitting product data:", submitData);
 
-      const newProduct = await createProduct(submitData as ProductCreate).unwrap();
-      toast.success('Product created successfully');
+      const newProduct = await createProduct(
+        submitData as ProductCreate
+      ).unwrap();
+      toast.success("Product created successfully");
       router.push(`/masters/products/${newProduct.id}`);
     } catch (error: any) {
-      console.error('Product creation error:', error);
+      console.error("Product creation error:", error);
 
       // Show the actual backend error message directly in toast
-      const errorMessage = error?.data?.detail || error?.message || 'Failed to create product';
+      const errorMessage =
+        error?.data?.detail || error?.message || "Failed to create product";
 
       // Show the exact error message from backend in toast
       toast.error(errorMessage);
 
       // Also set field-specific error for common cases
-      if (typeof errorMessage === 'string') {
+      if (typeof errorMessage === "string") {
         const lowerMessage = errorMessage.toLowerCase();
 
-        if (lowerMessage.includes('product with this code already exists') || lowerMessage.includes('code already exists')) {
-          setErrors(prev => ({
+        if (
+          lowerMessage.includes("product with this code already exists") ||
+          lowerMessage.includes("code already exists")
+        ) {
+          setErrors((prev) => ({
             ...prev,
-            code: 'Product with this code already exists'
+            code: "Product with this code already exists",
           }));
-        } else if (lowerMessage.includes('name')) {
-          setErrors(prev => ({
+        } else if (lowerMessage.includes("name")) {
+          setErrors((prev) => ({
             ...prev,
-            name: 'Invalid format'
+            name: "Invalid format",
           }));
-        } else if (lowerMessage.includes('unit price')) {
-          setErrors(prev => ({
+        } else if (lowerMessage.includes("unit price")) {
+          setErrors((prev) => ({
             ...prev,
-            unit_price: 'Invalid price format'
+            unit_price: "Invalid price format",
           }));
-        } else if (lowerMessage.includes('category')) {
-          setErrors(prev => ({
+        } else if (lowerMessage.includes("category")) {
+          setErrors((prev) => ({
             ...prev,
-            category_id: 'Invalid category'
+            category_id: "Invalid category",
           }));
         }
       }
     }
   };
 
-  const handleInputChange = (field: string, value: string | boolean | number | string[]) => {
-    setFormData(prev => ({
+  const handleInputChange = (
+    field: string,
+    value: string | boolean | number | string[]
+  ) => {
+    setFormData((prev) => ({
       ...prev,
-      [field]: value
+      [field]: value,
     }));
 
     // Clear error for this field when user starts typing
     if (errors[field]) {
-      setErrors(prev => ({
+      setErrors((prev) => ({
         ...prev,
-        [field]: ''
+        [field]: "",
       }));
     }
   };
@@ -186,16 +226,23 @@ export default function NewProductPage() {
   const handleHandlingRequirementToggle = (requirement: string) => {
     const currentRequirements = formData.handling_requirements || [];
     const newRequirements = currentRequirements.includes(requirement)
-      ? currentRequirements.filter(r => r !== requirement)
+      ? currentRequirements.filter((r) => r !== requirement)
       : [...currentRequirements, requirement];
-    handleInputChange('handling_requirements', newRequirements);
+    handleInputChange("handling_requirements", newRequirements);
   };
 
-  const handlingOptions = ['fragile', 'hazardous', 'refrigerated', 'perishable', 'oversized', 'heavy'];
+  const handlingOptions = [
+    "fragile",
+    "hazardous",
+    "refrigerated",
+    "perishable",
+    "oversized",
+    "heavy",
+  ];
 
   return (
     <AppLayout>
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto inline space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
@@ -232,9 +279,11 @@ export default function NewProductPage() {
                   <Input
                     id="code"
                     value={formData.code}
-                    onChange={(e) => handleInputChange('code', e.target.value.toUpperCase())}
+                    onChange={(e) =>
+                      handleInputChange("code", e.target.value.toUpperCase())
+                    }
                     placeholder="e.g., PRD001"
-                    className={errors.code ? 'border-red-500' : ''}
+                    className={errors.code ? "border-red-500" : ""}
                   />
                   {errors.code && (
                     <p className="text-sm text-red-600 mt-1">{errors.code}</p>
@@ -245,9 +294,9 @@ export default function NewProductPage() {
                   <Input
                     id="name"
                     value={formData.name}
-                    onChange={(e) => handleInputChange('name', e.target.value)}
+                    onChange={(e) => handleInputChange("name", e.target.value)}
                     placeholder="e.g., Premium Package"
-                    className={errors.name ? 'border-red-500' : ''}
+                    className={errors.name ? "border-red-500" : ""}
                   />
                   {errors.name && (
                     <p className="text-sm text-red-600 mt-1">{errors.name}</p>
@@ -259,27 +308,38 @@ export default function NewProductPage() {
                 <select
                   id="category_id"
                   value={formData.category_id}
-                  onChange={(e) => handleInputChange('category_id', e.target.value)}
+                  onChange={(e) =>
+                    handleInputChange("category_id", e.target.value)
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select Category</option>
                   {categories?.map((category: ProductCategory) => (
-                    <option key={category.id} value={category.id}>{category.name}</option>
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
                   ))}
                 </select>
               </div>
               <div>
-                <Label className="text-sm font-medium text-gray-700 mb-3 block">Branch Availability</Label>
+                <Label className="text-sm font-medium text-gray-700 mb-3 block">
+                  Branch Availability
+                </Label>
                 <div className="space-y-3">
                   <div className="flex items-center space-x-3">
                     <input
                       type="checkbox"
                       id="available_for_all_branches"
                       checked={isAvailableForAllBranches}
-                      onChange={(e) => setIsAvailableForAllBranches(e.target.checked)}
+                      onChange={(e) =>
+                        setIsAvailableForAllBranches(e.target.checked)
+                      }
                       className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                     />
-                    <Label htmlFor="available_for_all_branches" className="text-sm font-medium text-gray-900">
+                    <Label
+                      htmlFor="available_for_all_branches"
+                      className="text-sm font-medium text-gray-900"
+                    >
                       Available for all branches
                     </Label>
                   </div>
@@ -291,21 +351,34 @@ export default function NewProductPage() {
                       </Label>
                       <div className="space-y-2 max-h-40 overflow-y-auto">
                         {branches?.items?.map((branch: any) => (
-                          <div key={branch.id} className="flex items-center space-x-2">
+                          <div
+                            key={branch.id}
+                            className="flex items-center space-x-2"
+                          >
                             <input
                               type="checkbox"
                               id={`branch_${branch.id}`}
                               checked={selectedBranches.includes(branch.id)}
                               onChange={(e) => {
                                 if (e.target.checked) {
-                                  setSelectedBranches([...selectedBranches, branch.id]);
+                                  setSelectedBranches([
+                                    ...selectedBranches,
+                                    branch.id,
+                                  ]);
                                 } else {
-                                  setSelectedBranches(selectedBranches.filter(id => id !== branch.id));
+                                  setSelectedBranches(
+                                    selectedBranches.filter(
+                                      (id) => id !== branch.id
+                                    )
+                                  );
                                 }
                               }}
                               className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                             />
-                            <Label htmlFor={`branch_${branch.id}`} className="text-sm text-gray-900">
+                            <Label
+                              htmlFor={`branch_${branch.id}`}
+                              className="text-sm text-gray-900"
+                            >
                               {branch.name} ({branch.code})
                             </Label>
                           </div>
@@ -325,7 +398,9 @@ export default function NewProductPage() {
                 <Textarea
                   id="description"
                   value={formData.description}
-                  onChange={(e) => handleInputChange('description', e.target.value)}
+                  onChange={(e) =>
+                    handleInputChange("description", e.target.value)
+                  }
                   placeholder="Enter product description"
                   rows={4}
                 />
@@ -333,7 +408,9 @@ export default function NewProductPage() {
               <div className="flex items-center space-x-3">
                 <Switch
                   checked={formData.is_active}
-                  onCheckedChange={(checked) => handleInputChange('is_active', checked)}
+                  onCheckedChange={(checked) =>
+                    handleInputChange("is_active", checked)
+                  }
                 />
                 <Label>Active Product</Label>
               </div>
@@ -360,13 +437,15 @@ export default function NewProductPage() {
                     value={formData.unit_price}
                     onChange={(e) => {
                       const value = parseFloat(e.target.value);
-                      handleInputChange('unit_price', isNaN(value) ? 0 : value);
+                      handleInputChange("unit_price", isNaN(value) ? 0 : value);
                     }}
                     placeholder="e.g., 99.99"
-                    className={errors.unit_price ? 'border-red-500' : ''}
+                    className={errors.unit_price ? "border-red-500" : ""}
                   />
                   {errors.unit_price && (
-                    <p className="text-sm text-red-600 mt-1">{errors.unit_price}</p>
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.unit_price}
+                    </p>
                   )}
                 </div>
                 <div>
@@ -376,20 +455,25 @@ export default function NewProductPage() {
                     type="number"
                     min="0"
                     step="0.01"
-                    value={formData.special_price ?? ''}
+                    value={formData.special_price ?? ""}
                     onChange={(e) => {
-                        if (e.target.value === '') {
-                          handleInputChange('special_price', undefined as any);
-                        } else {
-                          const value = parseFloat(e.target.value);
-                          handleInputChange('special_price', isNaN(value) ? 0 : value);
-                        }
-                      }}
+                      if (e.target.value === "") {
+                        handleInputChange("special_price", undefined as any);
+                      } else {
+                        const value = parseFloat(e.target.value);
+                        handleInputChange(
+                          "special_price",
+                          isNaN(value) ? 0 : value
+                        );
+                      }
+                    }}
                     placeholder="e.g., 79.99"
-                    className={errors.special_price ? 'border-red-500' : ''}
+                    className={errors.special_price ? "border-red-500" : ""}
                   />
                   {errors.special_price && (
-                    <p className="text-sm text-red-600 mt-1">{errors.special_price}</p>
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.special_price}
+                    </p>
                   )}
                   <p className="text-xs text-gray-500 mt-1">
                     Optional: For promotions or specific customers
@@ -416,15 +500,15 @@ export default function NewProductPage() {
                     type="number"
                     min="0"
                     step="0.1"
-                    value={formData.weight ?? ''}
+                    value={formData.weight ?? ""}
                     onChange={(e) => {
-                        if (e.target.value === '') {
-                          handleInputChange('weight', undefined as any);
-                        } else {
-                          const value = parseFloat(e.target.value);
-                          handleInputChange('weight', isNaN(value) ? 0 : value);
-                        }
-                      }}
+                      if (e.target.value === "") {
+                        handleInputChange("weight", undefined as any);
+                      } else {
+                        const value = parseFloat(e.target.value);
+                        handleInputChange("weight", isNaN(value) ? 0 : value);
+                      }
+                    }}
                     placeholder="e.g., 5.5"
                   />
                 </div>
@@ -435,15 +519,15 @@ export default function NewProductPage() {
                     type="number"
                     min="0"
                     step="0.001"
-                    value={formData.volume ?? ''}
+                    value={formData.volume ?? ""}
                     onChange={(e) => {
-                        if (e.target.value === '') {
-                          handleInputChange('volume', undefined as any);
-                        } else {
-                          const value = parseFloat(e.target.value);
-                          handleInputChange('volume', isNaN(value) ? 0 : value);
-                        }
-                      }}
+                      if (e.target.value === "") {
+                        handleInputChange("volume", undefined as any);
+                      } else {
+                        const value = parseFloat(e.target.value);
+                        handleInputChange("volume", isNaN(value) ? 0 : value);
+                      }
+                    }}
                     placeholder="e.g., 0.125"
                   />
                 </div>
@@ -456,15 +540,15 @@ export default function NewProductPage() {
                     type="number"
                     min="0"
                     step="0.1"
-                    value={formData.length ?? ''}
+                    value={formData.length ?? ""}
                     onChange={(e) => {
-                        if (e.target.value === '') {
-                          handleInputChange('length', undefined as any);
-                        } else {
-                          const value = parseFloat(e.target.value);
-                          handleInputChange('length', isNaN(value) ? 0 : value);
-                        }
-                      }}
+                      if (e.target.value === "") {
+                        handleInputChange("length", undefined as any);
+                      } else {
+                        const value = parseFloat(e.target.value);
+                        handleInputChange("length", isNaN(value) ? 0 : value);
+                      }
+                    }}
                     placeholder="e.g., 50"
                   />
                 </div>
@@ -475,15 +559,15 @@ export default function NewProductPage() {
                     type="number"
                     min="0"
                     step="0.1"
-                    value={formData.width ?? ''}
+                    value={formData.width ?? ""}
                     onChange={(e) => {
-                        if (e.target.value === '') {
-                          handleInputChange('width', undefined as any);
-                        } else {
-                          const value = parseFloat(e.target.value);
-                          handleInputChange('width', isNaN(value) ? 0 : value);
-                        }
-                      }}
+                      if (e.target.value === "") {
+                        handleInputChange("width", undefined as any);
+                      } else {
+                        const value = parseFloat(e.target.value);
+                        handleInputChange("width", isNaN(value) ? 0 : value);
+                      }
+                    }}
                     placeholder="e.g., 30"
                   />
                 </div>
@@ -494,31 +578,33 @@ export default function NewProductPage() {
                     type="number"
                     min="0"
                     step="0.1"
-                    value={formData.height ?? ''}
+                    value={formData.height ?? ""}
                     onChange={(e) => {
-                        if (e.target.value === '') {
-                          handleInputChange('height', undefined as any);
-                        } else {
-                          const value = parseFloat(e.target.value);
-                          handleInputChange('height', isNaN(value) ? 0 : value);
-                        }
-                      }}
+                      if (e.target.value === "") {
+                        handleInputChange("height", undefined as any);
+                      } else {
+                        const value = parseFloat(e.target.value);
+                        handleInputChange("height", isNaN(value) ? 0 : value);
+                      }
+                    }}
                     placeholder="e.g., 20"
                   />
                 </div>
               </div>
               <div>
-                <Label className="text-sm font-medium text-gray-700 mb-2 block">Handling Requirements</Label>
+                <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                  Handling Requirements
+                </Label>
                 <div className="flex flex-wrap gap-2">
-                  {handlingOptions.map(option => (
+                  {handlingOptions.map((option) => (
                     <button
                       key={option}
                       type="button"
                       onClick={() => handleHandlingRequirementToggle(option)}
                       className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
                         formData.handling_requirements?.includes(option)
-                          ? 'bg-blue-100 text-blue-700 border-2 border-blue-300'
-                          : 'bg-gray-100 text-gray-700 border-2 border-gray-300 hover:bg-gray-200'
+                          ? "bg-blue-100 text-blue-700 border-2 border-blue-300"
+                          : "bg-gray-100 text-gray-700 border-2 border-gray-300 hover:bg-gray-200"
                       }`}
                     >
                       {option}
@@ -547,14 +633,19 @@ export default function NewProductPage() {
                     min="0"
                     value={formData.current_stock}
                     onChange={(e) => {
-                        const value = parseInt(e.target.value);
-                        handleInputChange('current_stock', isNaN(value) ? 0 : value);
-                      }}
+                      const value = parseInt(e.target.value);
+                      handleInputChange(
+                        "current_stock",
+                        isNaN(value) ? 0 : value
+                      );
+                    }}
                     placeholder="e.g., 100"
-                    className={errors.current_stock ? 'border-red-500' : ''}
+                    className={errors.current_stock ? "border-red-500" : ""}
                   />
                   {errors.current_stock && (
-                    <p className="text-sm text-red-600 mt-1">{errors.current_stock}</p>
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.current_stock}
+                    </p>
                   )}
                 </div>
                 <div>
@@ -565,14 +656,19 @@ export default function NewProductPage() {
                     min="0"
                     value={formData.min_stock_level}
                     onChange={(e) => {
-                        const value = parseInt(e.target.value);
-                        handleInputChange('min_stock_level', isNaN(value) ? 0 : value);
-                      }}
+                      const value = parseInt(e.target.value);
+                      handleInputChange(
+                        "min_stock_level",
+                        isNaN(value) ? 0 : value
+                      );
+                    }}
                     placeholder="e.g., 20"
-                    className={errors.min_stock_level ? 'border-red-500' : ''}
+                    className={errors.min_stock_level ? "border-red-500" : ""}
                   />
                   {errors.min_stock_level && (
-                    <p className="text-sm text-red-600 mt-1">{errors.min_stock_level}</p>
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.min_stock_level}
+                    </p>
                   )}
                 </div>
                 <div>
@@ -583,14 +679,19 @@ export default function NewProductPage() {
                     min="0"
                     value={formData.max_stock_level}
                     onChange={(e) => {
-                        const value = parseInt(e.target.value);
-                        handleInputChange('max_stock_level', isNaN(value) ? 0 : value);
-                      }}
+                      const value = parseInt(e.target.value);
+                      handleInputChange(
+                        "max_stock_level",
+                        isNaN(value) ? 0 : value
+                      );
+                    }}
                     placeholder="e.g., 500"
-                    className={errors.max_stock_level ? 'border-red-500' : ''}
+                    className={errors.max_stock_level ? "border-red-500" : ""}
                   />
                   {errors.max_stock_level && (
-                    <p className="text-sm text-red-600 mt-1">{errors.max_stock_level}</p>
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.max_stock_level}
+                    </p>
                   )}
                 </div>
               </div>

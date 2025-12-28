@@ -12,18 +12,10 @@ import {
   useCreateOrderMutation,
   useGetBranchesQuery,
   useGetCustomersQuery,
-  useGetProductsQuery
+  useGetProductsQuery,
 } from "@/services/api/ordersApi";
-import {
-  Calendar,
-  Package,
-  Plus,
-  X,
-  Info,
-  User,
-  Weight,
-  Clock,
-} from "lucide-react";
+import { Package, Plus, X, Info, User, Weight, Clock } from "lucide-react";
+import { skipToken } from "@reduxjs/toolkit/query";
 
 // Form validation schema
 const orderFormSchema = z.object({
@@ -64,10 +56,12 @@ export function CreateOrderModal({
     handleSubmit,
     watch,
     setValue,
+    trigger,
     formState: { errors, isValid },
     reset,
   } = useForm<OrderFormData>({
     resolver: zodResolver(orderFormSchema),
+    mode: "onChange", // Enable validation on change
     defaultValues: {
       orderNumber: "",
       dueDays: 7,
@@ -88,15 +82,25 @@ export function CreateOrderModal({
   const selectedBranch = watch("branch");
   const orderItems = watch("orderItems");
 
-  // Fetch real data from APIs
-  const { data: branchesData, isLoading: branchesLoading } = useGetBranchesQuery();
-  const { data: customersData, isLoading: customersLoading } = useGetCustomersQuery(
-    selectedBranch ? { branch_id: selectedBranch } : {}
-  );
+  // Check if form has all required fields filled
+  const isFormValid = () => {
+    return selectedBranch &&
+           watch("customer") &&
+           watch("orderNumber") &&
+           orderItems.length > 0 &&
+           orderItems.every(item => item.productName && item.weight > 0 && item.quantity > 0);
+  };
 
-    const { data: productsData, isLoading: productsLoading } = useGetProductsQuery(
-    selectedBranch ? { branch_id: selectedBranch } : undefined
-  );
+  // Fetch real data from APIs
+  const { data: branchesData, isLoading: branchesLoading } =
+    useGetBranchesQuery();
+  const { data: customersData, isLoading: customersLoading } =
+    useGetCustomersQuery(selectedBranch ? { branch_id: selectedBranch } : {});
+
+  const { data: productsData, isLoading: productsLoading } =
+    useGetProductsQuery(
+      selectedBranch ? { branch_id: selectedBranch } : skipToken
+    );
   const [createOrder, { isLoading: isCreating }] = useCreateOrderMutation();
 
   const branches = branchesData || [];
@@ -137,12 +141,14 @@ export function CreateOrderModal({
     if (selectedBranch && selectedBranch !== branchId) {
       setValue("customer", "");
       // Reset all order items
-      setValue("orderItems", [{
-        id: "1",
-        productName: "",
-        weight: 0,
-        quantity: 1,
-      }]);
+      setValue("orderItems", [
+        {
+          id: "1",
+          productName: "",
+          weight: 0,
+          quantity: 1,
+        },
+      ]);
     }
     setShowBranchNote(true);
     setTimeout(() => setShowBranchNote(false), 3000); // Hide note after 3 seconds
@@ -155,14 +161,21 @@ export function CreateOrderModal({
       weight: 0,
       quantity: 1,
     };
-    setValue("orderItems", [...orderItems, newItem]);
+    setValue("orderItems", [...orderItems, newItem], {
+      shouldValidate: true,
+      shouldDirty: true,
+    });
   };
 
   const removeOrderItem = (id: string) => {
     if (orderItems.length > 1) {
       setValue(
         "orderItems",
-        orderItems.filter((item) => item.id !== id)
+        orderItems.filter((item) => item.id !== id),
+        {
+          shouldValidate: true,
+          shouldDirty: true,
+        }
       );
     }
   };
@@ -172,12 +185,13 @@ export function CreateOrderModal({
       if (item.id === id) {
         const updatedItem = { ...item, [field]: value };
 
-        // Auto-fill weight when product is selected
-        if (field === 'productName' && value) {
-          const product = products.find(p => p.name === value);
-          if (product && (product.weight || product.current_stock)) {
-            updatedItem.weight = product.weight || 1; // Default to 1kg if no weight
+        // Auto-fill weight when product is selected (only for fixed weight products)
+        if (field === "productName" && value) {
+          const product = products.find((p) => p.name === value);
+          if (product && product.weight_type === 'fixed' && product.weight) {
+            updatedItem.weight = product.weight; // Auto-fill only for fixed weight products
           }
+          // For variable weight products, leave weight empty so user can enter it
         }
 
         return updatedItem;
@@ -190,41 +204,57 @@ export function CreateOrderModal({
   const onSubmit = async (data: OrderFormData) => {
     try {
       // Calculate totals
-      const totalWeight = data.orderItems.reduce((sum, item) => sum + (item.weight * item.quantity), 0);
-      const packageCount = data.orderItems.reduce((sum, item) => sum + item.quantity, 0);
+      const totalWeight = data.orderItems.reduce(
+        (sum, item) => sum + item.weight * item.quantity,
+        0
+      );
+      const packageCount = data.orderItems.reduce(
+        (sum, item) => sum + item.quantity,
+        0
+      );
 
       // Prepare order items with product IDs
-      const items = data.orderItems.map(item => {
-        const product = products.find(p => p.name === item.productName || p.code === item.productName);
+      const items = data.orderItems.map((item) => {
+        const product = products.find(
+          (p) => p.name === item.productName || p.code === item.productName
+        );
+        // Use user-entered weight if provided (for variable weight products),
+        // otherwise fall back to product weight (for fixed weight products)
+        const itemWeight = item.weight !== undefined && item.weight > 0
+          ? item.weight
+          : (product?.weight || 0);
+
         return {
           product_id: product?.id || item.productName,
           quantity: item.quantity,
           unit_price: product?.unit_price || 0,
-          weight: item.weight || product?.weight || 0,
+          weight: itemWeight,
         };
       });
 
       // Create order data
       const orderData = {
         order_number: data.orderNumber,
-        tenant_id: 'default-tenant',
+        tenant_id: "default-tenant",
         customer_id: data.customer,
         branch_id: data.branch,
-        order_type: 'delivery' as const,
-        priority: 'normal' as const,
+        order_type: "delivery" as const,
+        priority: "normal" as const,
         total_weight: totalWeight,
         total_volume: totalWeight / 1000, // rough estimate
         package_count: packageCount,
         total_amount: 0, // Will be calculated based on items
-        payment_type: 'cod' as const,
+        payment_type: "cod" as const,
         pickup_date: new Date().toISOString(),
-        delivery_date: new Date(Date.now() + (data.dueDays * 24 * 60 * 60 * 1000)).toISOString(),
+        delivery_date: new Date(
+          Date.now() + data.dueDays * 24 * 60 * 60 * 1000
+        ).toISOString(),
         items: items,
         special_instructions: data.notes,
       };
 
       const createdOrder = await createOrder(orderData).unwrap();
-      toast.success('Order created successfully');
+      toast.success("Order created successfully");
 
       // Reset form and close modal
       reset();
@@ -235,8 +265,8 @@ export function CreateOrderModal({
         onSuccess(createdOrder);
       }
     } catch (error: any) {
-      console.error('Failed to create order:', error);
-      toast.error(error.message || 'Failed to create order');
+      console.error("Failed to create order:", error);
+      toast.error(error.message || "Failed to create order");
     }
   };
 
@@ -244,6 +274,13 @@ export function CreateOrderModal({
     reset();
     onClose();
   };
+
+  // Reset branch note when modal is closed
+  useEffect(() => {
+    if (!isOpen) {
+      setShowBranchNote(false);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -363,16 +400,18 @@ export function CreateOrderModal({
                     >
                       <option value="">Select Customer</option>
                       {customersLoading ? (
-                      <option disabled>Loading customers...</option>
-                    ) : customers.length === 0 ? (
-                      <option disabled>No customers available for this branch</option>
-                    ) : (
-                      customers.map((customer) => (
-                        <option key={customer.id} value={customer.id}>
-                          {customer.name}
+                        <option disabled>Loading customers...</option>
+                      ) : customers.length === 0 ? (
+                        <option disabled>
+                          No customers available for this branch
                         </option>
-                      ))
-                    )}
+                      ) : (
+                        customers.map((customer) => (
+                          <option key={customer.id} value={customer.id}>
+                            {customer.name}
+                          </option>
+                        ))
+                      )}
                     </select>
                     <User className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                   </div>
@@ -385,7 +424,8 @@ export function CreateOrderModal({
               )}
               {selectedBranch && (
                 <p className="text-xs text-gray-500 mt-1">
-                  Showing customers for {branches.find(b => b.id === selectedBranch)?.name}
+                  Showing customers for{" "}
+                  {branches.find((b) => b.id === selectedBranch)?.name}
                 </p>
               )}
             </div>
@@ -412,9 +452,15 @@ export function CreateOrderModal({
         </div>
 
         {/* Branch Note */}
-        {showBranchNote && (
+        <div
+          className={`transition-all duration-300 ease-in-out ${
+            showBranchNote
+              ? "opacity-100 max-h-24 mb-6"
+              : "opacity-0 max-h-0 overflow-hidden"
+          }`}
+        >
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
-            <Info className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+            <Info className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
             <p className="text-sm text-blue-800">
               <strong>Note:</strong> Order status is automatically managed. New
               orders start as Pending and will automatically update to Loading
@@ -422,7 +468,7 @@ export function CreateOrderModal({
               when complete.
             </p>
           </div>
-        )}
+        </div>
 
         {/* Order Items */}
         <div className="space-y-4 bg-white rounded-lg border border-gray-200 p-4">
@@ -486,9 +532,9 @@ export function CreateOrderModal({
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                 {/* Product Name */}
-                <div className="sm:col-span-2 lg:col-span-2">
+                <div className="sm:col-span-2">
                   <label
                     className={`mb-1 flex items-center gap-1 text-sm font-medium ${
                       selectedBranch ? "text-gray-700" : "text-gray-400"
@@ -517,7 +563,9 @@ export function CreateOrderModal({
                     {productsLoading ? (
                       <option disabled>Loading products...</option>
                     ) : products.length === 0 ? (
-                      <option disabled>No products available for this branch</option>
+                      <option disabled>
+                        No products available for this branch
+                      </option>
                     ) : (
                       products.map((product) => (
                         <option key={product.id} value={product.name}>
@@ -528,32 +576,41 @@ export function CreateOrderModal({
                   </select>
                 </div>
 
-                {/* Weight */}
+                {/* Weight - read-only for fixed weight products */}
                 <div>
                   <label
-                    className={`block text-sm font-medium mb-1 flex items-center gap-1 ${
+                    className={`text-sm font-medium mb-1 flex items-center gap-1 ${
                       selectedBranch ? "text-gray-700" : "text-gray-400"
                     }`}
                   >
                     <Weight className="w-4 h-4" />
                     Weight (kg) *
                   </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0.1"
-                    value={item.weight || ""}
-                    onChange={(e) =>
-                      updateOrderItem(item.id, "weight", Number(e.target.value))
-                    }
-                    disabled={!selectedBranch}
-                    className={`w-full px-3 py-2 rounded-lg border text-black placeholder-gray-400 transition-all duration-200 ease-in-out ${
-                      selectedBranch
-                        ? "border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/40 cursor-text"
-                        : "border-gray-200 bg-gray-100 cursor-not-allowed text-gray-500"
-                    }`}
-                    placeholder={selectedBranch ? "0.0" : "Select branch first"}
-                  />
+                  {(() => {
+                    const selectedProduct = products.find((p) => p.name === item.productName);
+                    const isFixedWeight = selectedProduct?.weight_type === 'fixed';
+                    return (
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.1"
+                        value={item.weight || ""}
+                        onChange={(e) =>
+                          updateOrderItem(item.id, "weight", Number(e.target.value))
+                        }
+                        disabled={!selectedBranch || isFixedWeight}
+                        readOnly={isFixedWeight}
+                        className={`w-full px-3 py-2 rounded-lg border text-black placeholder-gray-400 transition-all duration-200 ease-in-out ${
+                          selectedBranch
+                            ? isFixedWeight
+                              ? "border-gray-200 bg-gray-100 text-gray-600 cursor-not-allowed"
+                              : "border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/40 cursor-text"
+                            : "border-gray-200 bg-gray-100 cursor-not-allowed text-gray-500"
+                        }`}
+                        placeholder={selectedBranch ? "0.0" : "Select branch first"}
+                      />
+                    );
+                  })()}
                 </div>
 
                 {/* Quantity */}
@@ -586,27 +643,27 @@ export function CreateOrderModal({
                   />
                 </div>
 
-                {/* Total Weight (calculated) */}
+                {/* Total Weight (read-only display) */}
                 <div>
                   <label
                     className={`block text-sm font-medium mb-1 ${
                       selectedBranch ? "text-gray-700" : "text-gray-400"
                     }`}
                   >
-                    Total Weight (kg)
+                    Total (kg)
                   </label>
-                  <div
-                    className={`w-full px-3 py-2 rounded-lg border transition-all duration-200 ease-in-out ${
+                  <input
+                    type="text"
+                    value={calculateItemTotalWeight(item.weight || 0, item.quantity || 0).toFixed(1)}
+                    readOnly
+                    disabled={!selectedBranch}
+                    className={`w-full px-3 py-2 rounded-lg border text-black placeholder-gray-400 transition-all duration-200 ease-in-out ${
                       selectedBranch
-                        ? "border-gray-300 bg-gray-50 text-gray-900"
-                        : "border-gray-200 bg-gray-100 text-gray-500"
+                        ? "border-gray-200 bg-gray-50 text-gray-900 cursor-not-allowed font-semibold"
+                        : "border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed"
                     }`}
-                  >
-                    {calculateItemTotalWeight(
-                      item.weight || 0,
-                      item.quantity || 0
-                    ).toFixed(1)}
-                  </div>
+                    placeholder="0.0"
+                  />
                 </div>
               </div>
             </div>
@@ -615,28 +672,24 @@ export function CreateOrderModal({
           {/* Summary Section */}
           {selectedBranch && (
             <div className="border border-gray-200 rounded-lg p-4 bg-gradient-to-r from-blue-50 to-indigo-50">
-              <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                <Info className="w-4 h-4 text-blue-600" />
-                Order Summary
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="bg-white rounded-lg p-3 border border-gray-100">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Total Units:</span>
-                    <span className="text-lg font-bold text-blue-600">
-                      {calculateTotalUnits()}
-                    </span>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">Packages</div>
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div className="flex items-center gap-2">
+                  <Info className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-semibold text-gray-700">Order Summary</span>
                 </div>
-                <div className="bg-white rounded-lg p-3 border border-gray-100">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Total Weight:</span>
-                    <span className="text-lg font-bold text-green-600">
-                      {calculateTotalWeight().toFixed(1)}
+                <div className="flex items-center gap-6 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">Total Units:</span>
+                    <span className="text-base font-bold text-blue-600">
+                      {calculateTotalUnits()} Packages
                     </span>
                   </div>
-                  <div className="text-xs text-gray-500 mt-1">Kilograms</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">Total Weight:</span>
+                    <span className="text-base font-bold text-green-600">
+                      {calculateTotalWeight().toFixed(1)} kg
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -655,10 +708,19 @@ export function CreateOrderModal({
           </Button>
           <Button
             type="submit"
-            disabled={!isValid || !selectedBranch || isCreating || productsLoading || customersLoading}
+            disabled={
+              !isFormValid() ||
+              isCreating ||
+              productsLoading ||
+              customersLoading
+            }
             className="cursor-pointer w-full sm:w-auto order-1 sm:order-2 bg-[#1ab052] hover:bg-[#158842] disabled:opacity-50"
           >
-            {isCreating ? 'Creating...' : (productsLoading || customersLoading) ? 'Loading...' : 'Create Order'}
+            {isCreating
+              ? "Creating..."
+              : productsLoading || customersLoading
+              ? "Loading..."
+              : "Create Order"}
           </Button>
         </div>
       </form>

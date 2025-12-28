@@ -455,9 +455,143 @@ async def mark_order_delivered(
     db: AsyncSession = Depends(get_async_session)
 ):
     """Quick endpoint to mark an order as delivered"""
-    # First update to out-for-delivery, then to delivered
-    # This follows the proper status transition flow
-    from src.schemas import DeliveryStatus
+    # Helper function to update delivery status
+    async def update_delivery_status(new_status: str):
+        # Verify trip belongs to driver
+        trip_query = select(Trip).where(
+            and_(
+                Trip.id == trip_id,
+                Trip.driver_id == driver_id
+            )
+        )
+        if company_id:
+            trip_query = trip_query.where(Trip.company_id == company_id)
+
+        trip_result = await db.execute(trip_query)
+        trip = trip_result.scalar_one_or_none()
+
+        if not trip:
+            raise HTTPException(status_code=404, detail="Trip not found or not assigned to this driver")
+
+        # Get the order to update
+        order_query = select(TripOrder).where(
+            and_(
+                TripOrder.trip_id == trip_id,
+                TripOrder.order_id == order_id
+            )
+        )
+        if company_id:
+            order_query = order_query.where(TripOrder.company_id == company_id)
+
+        order_result = await db.execute(order_query)
+        order = order_result.scalar_one_or_none()
+
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found in this trip")
+
+        # Validate status transition
+        valid_transitions = {
+            'pending': ['out-for-delivery'],
+            'out-for-delivery': ['delivered', 'failed'],
+            'failed': ['out-for-delivery', 'returned'],
+            'returned': []
+        }
+
+        current_status = order.delivery_status or 'pending'
+
+        if new_status not in valid_transitions.get(current_status, []):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status transition from {current_status} to {new_status}"
+            )
+
+        # Check sequential delivery - all previous orders must be delivered
+        if new_status == 'out-for-delivery':
+            previous_orders_query = select(TripOrder).where(
+                and_(
+                    TripOrder.trip_id == trip_id,
+                    TripOrder.sequence_number < order.sequence_number,
+                    TripOrder.delivery_status != 'delivered'
+                )
+            )
+            if company_id:
+                previous_orders_query = previous_orders_query.where(TripOrder.company_id == company_id)
+
+            previous_result = await db.execute(previous_orders_query)
+            undelivered_previous = previous_result.scalar_one_or_none()
+
+            if undelivered_previous:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot start delivery for this order. Previous orders must be delivered first."
+                )
+
+        # Update order status
+        update_query = update(TripOrder).where(
+            and_(
+                TripOrder.trip_id == trip_id,
+                TripOrder.order_id == order_id
+            )
+        ).values(
+            delivery_status=new_status,
+            status='completed' if new_status == 'delivered' else 'on-route'
+        )
+
+        if company_id:
+            update_query = update_query.where(TripOrder.company_id == company_id)
+
+        await db.execute(update_query)
+
+        # If order is delivered, update trip capacity
+        if new_status == 'delivered':
+            new_capacity_used = max(0, (trip.capacity_used or 0) - order.weight)
+            trip_update_query = update(Trip).where(Trip.id == trip_id).values(
+                capacity_used=new_capacity_used
+            )
+            await db.execute(trip_update_query)
+
+            # Check if all orders are delivered
+            all_orders_query = select(func.count(TripOrder.id)).where(TripOrder.trip_id == trip_id)
+            if company_id:
+                all_orders_query = all_orders_query.where(TripOrder.company_id == company_id)
+
+            delivered_orders_query = select(func.count(TripOrder.id)).where(
+                and_(
+                    TripOrder.trip_id == trip_id,
+                    TripOrder.delivery_status == 'delivered'
+                )
+            )
+            if company_id:
+                delivered_orders_query = delivered_orders_query.where(TripOrder.company_id == company_id)
+
+            all_orders_result = await db.execute(all_orders_query)
+            delivered_orders_result = await db.execute(delivered_orders_query)
+
+            total_orders = all_orders_result.scalar()
+            delivered_count = delivered_orders_result.scalar()
+
+            if total_orders == delivered_count:
+                # Mark trip as completed
+                await db.execute(
+                    update(Trip).where(Trip.id == trip_id).values(status='completed')
+                )
+
+        # Log the action
+        audit_log = TMSAuditLog(
+            user_id=driver_id,
+            company_id=company_id or "company-001",
+            action=f"Updated order delivery status to {new_status}",
+            module="DRIVER",
+            record_id=order_id,
+            record_type="trip_order",
+            details=f"Driver {driver_id} updated order {order_id} in trip {trip_id}",
+            timestamp=datetime.utcnow()
+        )
+        db.add(audit_log)
+
+        await db.commit()
+
+        return {"message": f"Order {order_id} delivery status updated to {new_status}"}
 
     # Check if order is already out for delivery
     order_query = select(TripOrder).where(
@@ -480,12 +614,10 @@ async def mark_order_delivered(
 
     # If order is pending, first mark as out-for-delivery
     if order.delivery_status == 'pending' or order.delivery_status is None:
-        delivery_update = DeliveryUpdate(status='out-for-delivery')
-        await update_order_delivery_status(trip_id, order_id, delivery_update, driver_id, company_id, db)
+        await update_delivery_status('out-for-delivery')
 
     # Now mark as delivered
-    delivery_update = DeliveryUpdate(status='delivered')
-    response = await update_order_delivery_status(trip_id, order_id, delivery_update, driver_id, company_id, db)
+    response = await update_delivery_status('delivered')
     return response
 
 

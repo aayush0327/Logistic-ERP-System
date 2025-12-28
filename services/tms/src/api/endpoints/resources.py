@@ -21,15 +21,6 @@ logger = logging.getLogger(__name__)
 COMPANY_SERVICE_URL = "http://company-service:8002"
 
 
-
-# Mock drivers data - will be integrated with driver service later
-DRIVERS = [
-    Driver(id="DRV-001", name="Mike Johnson", phone="+201234567890", license="DL-001234", experience="5 years", status="active", currentTruck=None),
-    Driver(id="DRV-002", name="Sarah Ahmed", phone="+201112223333", license="DL-002345", experience="3 years", status="active", currentTruck=None),
-    Driver(id="DRV-003", name="Ali Hassan", phone="+201445556666", license="DL-003456", experience="7 years", status="active", currentTruck=None),
-    Driver(id="DRV-004", name="Mohamed Ali", phone="+201556667778", license="DL-004567", experience="4 years", status="active", currentTruck=None),
-]
-
 # Mock orders data - will be integrated with order service later
 ORDERS = [
     Order(
@@ -91,27 +82,72 @@ ORDERS = [
 async def get_trucks(
     request: Request,
     token_data: TokenData = Depends(
-        require_any_permission(["resources: read", "resources:read_all", "trips:read", "trips:read_all"])
+        require_any_permission(["resources:read", "resources:read_all", "trips:read", "trips:read_all"])
     ),
     tenant_id: str = Depends(get_current_tenant_id)
 ):
-    """Get all available trucks from Company service"""
+    """Get available trucks from Company service filtered by assigned branches
+
+    For Admin users: Returns ALL trucks for the tenant
+    For Logistics Managers: Returns trucks from assigned branches only
+    """
     # Get authorization header from the request and forward it
     headers = {}
     auth_header = request.headers.get("authorization")
     if auth_header:
         headers["Authorization"] = auth_header
 
-    async with AsyncClient(timeout=30.0) as client:
-        # Call Company service vehicles endpoint with status filter
-        response = await client.get(
-            f"{COMPANY_SERVICE_URL}/vehicles/",
-            params={
+    # Check if user is Admin
+    is_admin = token_data.role == "Admin" or token_data.is_super_user()
+    logger.info(f"Trucks access check - user_id: {token_data.user_id}, role: {token_data.role}, is_admin: {is_admin}")
+
+    # Determine parameters for vehicle query
+    if is_admin:
+        # Admin - get all trucks for tenant
+        params = {
+            "status": "available",
+            "is_active": True,
+            "per_page": 100,
+            "tenant_id": tenant_id
+        }
+    else:
+        # Non-admin - get only trucks from assigned branches
+        # First, get assigned branches for this user
+        async with AsyncClient(timeout=30.0) as client:
+            branches_response = await client.get(
+                f"{COMPANY_SERVICE_URL}/branches/my/assigned",
+                params={
+                    "is_active": True,
+                    "per_page": 100,
+                    "tenant_id": tenant_id
+                },
+                headers=headers
+            )
+
+            if branches_response.status_code != 200:
+                logger.error(f"Failed to fetch assigned branches: {branches_response.status_code}")
+                return []
+
+            branches_data = branches_response.json()
+            assigned_branch_ids = [branch["id"] for branch in branches_data.get("items", [])]
+
+            if not assigned_branch_ids:
+                logger.warning(f"No assigned branches found for user {token_data.user_id}")
+                return []
+
+            params = {
                 "status": "available",
                 "is_active": True,
                 "per_page": 100,
-                "tenant_id": tenant_id
-            },
+                "tenant_id": tenant_id,
+                "branch_id": assigned_branch_ids  # Pass multiple branch IDs
+            }
+            logger.info(f"Fetching trucks for assigned branch IDs: {assigned_branch_ids}")
+
+    async with AsyncClient(timeout=30.0) as client:
+        response = await client.get(
+            f"{COMPANY_SERVICE_URL}/vehicles/",
+            params=params,
             headers=headers
         )
 
@@ -148,26 +184,102 @@ async def get_trucks(
                 status="available"  # All vehicles from /available endpoint are available
             ))
 
+        logger.info(f"Returning {len(trucks)} trucks for user {token_data.user_id}")
         return trucks
 
 
 @router.get("/drivers", response_model=List[Driver])
 async def get_drivers(
+    request: Request,
     status: Optional[str] = Query(None, description="Filter by driver status"),
     token_data: TokenData = Depends(
         require_any_permission(["resources:read", "resources:read_all", "drivers:read", "drivers:read_all", "drivers:update"])
     ),
     tenant_id: str = Depends(get_current_tenant_id)
 ):
-    """Get all drivers with optional status filter"""
-    # In production, filter by tenant_id
-    drivers = DRIVERS
+    """Get drivers from Company service based on user role and assigned branches
 
-    # Filter by status if provided
-    if status:
-        drivers = [driver for driver in drivers if driver.status == status]
+    Fetches data from driver_profiles and employee_profiles tables via company service
 
-    return drivers
+    For Admin users: Returns ALL drivers for the tenant
+    For Logistics Managers: Returns drivers from assigned branches only
+
+    This uses the /profiles/drivers/my/assigned endpoint which:
+    - Returns all drivers for Admin users
+    - Returns drivers from assigned branches for regular users (like Logistics Managers)
+    """
+    # Log user info for debugging
+    logger.info(f"TMS RESOURCES - User: {token_data.user_id}, Role: {token_data.role}, Tenant: {tenant_id}")
+
+    # Get authorization header from the request and forward it
+    headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        headers["Authorization"] = auth_header
+        logger.info(f"TMS RESOURCES - Auth header found and will be forwarded to company service")
+    else:
+        logger.warning(f"TMS RESOURCES - No auth header found in request!")
+
+    async with AsyncClient(timeout=30.0) as client:
+        # Call Company service driver profiles assigned endpoint
+        # This endpoint joins driver_profiles with employee_profiles and branches
+        # It filters based on user role (Admin gets all, others get assigned branches)
+        params = {}
+
+        # Add status filter if provided
+        if status:
+            params["status"] = status
+
+        response = await client.get(
+            f"{COMPANY_SERVICE_URL}/profiles/drivers/my/assigned",
+            params=params,
+            headers=headers
+        )
+
+        logger.info(f"TMS RESOURCES - Company service response status: {response.status_code}")
+
+        if response.status_code != 200:
+            logger.error(f"Failed to fetch drivers from Company service: {response.status_code}")
+            logger.error(f"Response: {response.text}")
+            # Return empty list when company service is unavailable
+            return []
+
+        driver_profiles = response.json()
+        logger.info(f"TMS RESOURCES - Received {len(driver_profiles)} driver profiles from company service")
+
+        # Convert driver profiles to TMS Driver schema
+        drivers = []
+        for driver_profile in driver_profiles:
+            # Extract employee information from nested employee object
+            employee = driver_profile.get("employee")
+            if not employee:
+                logger.warning(f"Driver profile {driver_profile.get('id')} has no employee data, skipping")
+                continue
+
+            # Use full_name from employee, fallback to first_name
+            full_name = employee.get("full_name") or f"{employee.get('first_name', '')} {employee.get('last_name', '')}".strip()
+
+            # Map current_status from driver_profile to status for Driver schema
+            driver_status = driver_profile.get("current_status", "available")
+
+            logger.info(f"TMS RESOURCES - Processing driver: {full_name}, status={driver_status}, user_id={employee.get('user_id')}")
+
+            drivers.append(Driver(
+                id=driver_profile.get("id", ""),
+                name=full_name,
+                phone=employee.get("phone", ""),
+                license=driver_profile.get("license_number", ""),
+                experience=f"{driver_profile.get('experience_years', 0)} years",
+                status=driver_status,
+                currentTruck=None,  # Would need to be populated from active trip
+                branch_id=employee.get("branch_id"),  # Include branch_id for filtering
+                user_id=employee.get("user_id")  # Include user_id
+            ))
+
+        logger.info(f"TMS RESOURCES - Successfully returning {len(drivers)} drivers")
+        for driver in drivers:
+            logger.info(f"TMS RESOURCES - Driver: {driver.name}, status={driver.status}, user_id={driver.user_id}")
+        return drivers
 
 
 @router.get("/orders", response_model=List[dict])
@@ -249,7 +361,8 @@ async def get_orders(
                     "customerAddress": order.get("customer", {}).get("address", "Unknown Address") if order.get("customer") else "Unknown Address",
                     "status": order.get("status", "unknown"),
                     "total": order.get("total_amount", 0),
-                    "weight": sum(item.get("total_weight", 0) or 0 for item in order.get("items", [])),
+                    # Use order's total_weight directly, or sum item weights if not available
+                    "weight": order.get("total_weight", 0) or sum(item.get("weight", 0) or 0 for item in order.get("items", [])),
                     "volume": sum(item.get("volume", 0) or 0 for item in order.get("items", [])),
                     "date": date_obj,
                     "priority": order.get("priority", "medium"),
@@ -276,7 +389,7 @@ async def get_branches(
     ),
     tenant_id: str = Depends(get_current_tenant_id)
 ):
-    """Get all active branches from Company service"""
+    """Get branches assigned to the current user from Company service"""
     # Get authorization header from the request and forward it
     headers = {}
     auth_header = request.headers.get("authorization")
@@ -284,9 +397,9 @@ async def get_branches(
         headers["Authorization"] = auth_header
 
     async with AsyncClient(timeout=30.0) as client:
-        # Call Company service branches endpoint
+        # Call Company service branches endpoint - get assigned branches for user
         response = await client.get(
-            f"{COMPANY_SERVICE_URL}/branches/",
+            f"{COMPANY_SERVICE_URL}/branches/my/assigned",
             params={
                 "is_active": True,
                 "per_page": 100,

@@ -1,12 +1,14 @@
 """Trip API endpoints with reordering functionality"""
 
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.security import HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, update
 from datetime import date
+from httpx import AsyncClient
 import uuid
+import logging
 
 from src.database import get_db, Trip, TripOrder
 from src.schemas import (
@@ -31,6 +33,11 @@ router = APIRouter(
     tags=["trips"]
 )
 
+logger = logging.getLogger(__name__)
+
+# Company service URL
+COMPANY_SERVICE_URL = "http://company-service:8002"
+
 
 @router.get(
     "",
@@ -41,6 +48,7 @@ router = APIRouter(
     description="Retrieve a list of all trips with optional filtering"
 )
 async def get_trips(
+    request: Request,
     status: Optional[str] = Query(None, description="Filter by trip status"),
     branch: Optional[str] = Query(None, description="Filter by branch"),
     trip_date: Optional[date] = Query(None, description="Filter by trip date"),
@@ -53,8 +61,50 @@ async def get_trips(
     db: AsyncSession = Depends(get_db)
 ):
     """Get all trips with optional filters"""
+    # Get authorization header from the request and forward it
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
     # Build base query with tenant isolation
     query = select(Trip).where(Trip.company_id == tenant_id)
+
+    # Check if user is Super Admin or Admin - if not, filter by assigned branches
+    is_admin = token_data.role == "Admin" or token_data.is_super_user()
+    logger.info(f"Trips access check - user_id: {token_data.user_id}, role: {token_data.role}, is_super_user: {token_data.is_super_user()}, is_admin: {is_admin}")
+
+    if not is_admin:
+        # Fetch assigned branches for non-admin users
+        try:
+            async with AsyncClient(timeout=30.0) as client:
+                branches_response = await client.get(
+                    f"{COMPANY_SERVICE_URL}/branches/my/assigned",
+                    params={
+                        "is_active": True,
+                        "per_page": 100,
+                        "tenant_id": tenant_id
+                    },
+                    headers=auth_headers
+                )
+
+                if branches_response.status_code == 200:
+                    branches_data = branches_response.json()
+                    # Get branch IDs for filtering - Trip.branch contains the branch UUID
+                    assigned_branch_ids = [branch["id"] for branch in branches_data.get("items", [])]
+
+                    if assigned_branch_ids:
+                        # Filter trips by assigned branch IDs (Trip.branch contains UUID)
+                        query = query.where(Trip.branch.in_(assigned_branch_ids))
+                        logger.info(f"Filtering trips by assigned branch IDs: {assigned_branch_ids}")
+                    else:
+                        # No assigned branches - return empty result
+                        logger.warning(f"No assigned branches found for user {token_data.user_id}")
+                        return []
+                else:
+                    logger.error(f"Failed to fetch assigned branches: {branches_response.status_code}")
+        except Exception as e:
+            logger.error(f"Error fetching assigned branches: {str(e)}")
 
     # Apply additional filters
     if status:
@@ -156,19 +206,68 @@ async def get_trips(
 @router.get("/{trip_id}", response_model=TripWithOrders)
 async def get_trip(
     trip_id: str,
+    request: Request,
     token_data: TokenData = Depends(
         require_any_permission(["trips:read_all", "trips:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """Get trip by ID with associated orders"""
-    # Get trip
+    # Get authorization header from the request and forward it
+    auth_headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        auth_headers["Authorization"] = auth_header
+
+    # Check if user is Super Admin or Admin - if not, filter by assigned branches
+    is_admin = token_data.role == "Admin" or token_data.is_super_user()
+    logger.info(f"Trip access check - user_id: {token_data.user_id}, role: {token_data.role}, is_super_user: {token_data.is_super_user()}, is_admin: {is_admin}")
+
+    # Build base query
     query = select(Trip).where(
         and_(
             Trip.id == trip_id,
             Trip.company_id == tenant_id
         )
     )
+
+    # For non-admin users, verify the trip belongs to an assigned branch
+    if not is_admin:
+        try:
+            async with AsyncClient(timeout=30.0) as client:
+                branches_response = await client.get(
+                    f"{COMPANY_SERVICE_URL}/branches/my/assigned",
+                    params={
+                        "is_active": True,
+                        "per_page": 100,
+                        "tenant_id": tenant_id
+                    },
+                    headers=auth_headers
+                )
+
+                if branches_response.status_code == 200:
+                    branches_data = branches_response.json()
+                    # Get branch names since Trip.branch stores the branch name as a string
+                    assigned_branch_names = [branch["name"] for branch in branches_data.get("items", [])]
+                    assigned_branch_ids = [branch["id"] for branch in branches_data.get("items", [])]
+
+                    if assigned_branch_names:
+                        # Filter trips by assigned branch names
+                        query = query.where(Trip.branch.in_(assigned_branch_names))
+                        logger.info(f"Filtering trip by assigned branch names: {assigned_branch_names} (IDs: {assigned_branch_ids})")
+                    else:
+                        # No assigned branches - trip not accessible
+                        logger.warning(f"No assigned branches found for user {token_data.user_id}")
+                        raise HTTPException(status_code=403, detail="Trip not found or no access to assigned branches")
+                else:
+                    logger.error(f"Failed to fetch assigned branches: {branches_response.status_code}")
+                    raise HTTPException(status_code=403, detail="Failed to verify branch access")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error fetching assigned branches: {str(e)}")
+            raise HTTPException(status_code=403, detail="Failed to verify branch access")
+
     result = await db.execute(query)
     trip = result.scalar_one_or_none()
 
@@ -254,7 +353,7 @@ async def create_trip(
     trip = Trip(
         user_id=user_id,
         company_id=tenant_id,
-        branch=trip_data.branch,
+        branch=trip_data.branch,  # Contains branch UUID
         truck_plate=trip_data.truck_plate,
         truck_model=trip_data.truck_model,
         truck_capacity=trip_data.truck_capacity,

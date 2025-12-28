@@ -133,3 +133,6 @@ temp/
 #Turbo
 .turbo/
 
+#clude
+.claude/
+

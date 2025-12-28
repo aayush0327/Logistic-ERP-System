@@ -3,20 +3,28 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppSelector } from '@/store/hooks';
+import { getDefaultRoute, getUserRole } from '@/lib/roles';
 
 export default function Home() {
   const router = useRouter();
-  const { isAuthenticated, isLoading } = useAppSelector((state) => state.auth);
+  const { isAuthenticated, isLoading, user } = useAppSelector((state) => state.auth);
 
   useEffect(() => {
     // If not loading and not authenticated, redirect to login
     if (!isLoading && !isAuthenticated) {
       router.push('/login');
-    } else if (isAuthenticated) {
-      // If already authenticated, redirect to dashboard
-      router.push('/dashboard');
+    } else if (isAuthenticated && user) {
+      // If already authenticated, redirect based on user role using getUserRole
+      const userRole = getUserRole(user);
+      if (userRole) {
+        const defaultRoute = getDefaultRoute(userRole);
+        router.push(defaultRoute);
+      } else {
+        console.error('Unable to determine user role', user);
+        router.push('/login');
+      }
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [isLoading, isAuthenticated, user, router]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">

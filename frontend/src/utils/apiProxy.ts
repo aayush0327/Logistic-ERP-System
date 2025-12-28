@@ -54,6 +54,14 @@ export async function proxyRequest(
       body,
     })
 
+    // Handle 204 No Content responses (must be before JSON parsing)
+    if (response.status === 204) {
+      return new NextResponse(null, {
+        status: 204,
+        statusText: response.statusText,
+      })
+    }
+
     // Handle non-JSON responses
     const responseContentType = response.headers.get('content-type')
     if (!responseContentType || !responseContentType.includes('application/json')) {
@@ -150,11 +158,12 @@ export function createApiRoute(
   serviceUrl: string,
   path: string = ''
 ) {
-  return async (request: NextRequest, { params }: { params?: Record<string, string> } = {}) => {
+  return async (request: NextRequest, { params }: { params?: Promise<Record<string, string>> } = {}) => {
     // Extract route parameters from the path
     let finalPath = path
     if (params) {
-      Object.entries(params).forEach(([key, value]) => {
+      const resolvedParams = await params
+      Object.entries(resolvedParams).forEach(([key, value]) => {
         finalPath = finalPath.replace(`[${key}]`, value)
       })
     }

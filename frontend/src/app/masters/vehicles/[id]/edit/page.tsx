@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Label } from '@/components/ui/Label';
-import { Textarea } from '@/components/ui/Textarea';
-import { Switch } from '@/components/ui/Switch';
-import { AppLayout } from '@/components/layout/AppLayout';
+import { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Label } from "@/components/ui/Label";
+import { Textarea } from "@/components/ui/Textarea";
+import { Switch } from "@/components/ui/Switch";
+import { AppLayout } from "@/components/layout/AppLayout";
 import {
   ArrowLeft,
   Save,
@@ -16,16 +16,16 @@ import {
   Truck,
   Building,
   Calendar,
-  Wrench
-} from 'lucide-react';
+  Wrench,
+} from "lucide-react";
 import {
   useGetVehicleQuery,
   useUpdateVehicleMutation,
   useGetBranchesQuery,
-  useGetVehicleTypesQuery
-} from '@/services/api/companyApi';
-import { VehicleCreate } from '@/services/api/companyApi';
-import { toast } from 'react-hot-toast';
+  useGetVehicleTypesQuery,
+} from "@/services/api/companyApi";
+import { VehicleCreate } from "@/services/api/companyApi";
+import { toast } from "react-hot-toast";
 
 export default function EditVehiclePage() {
   const params = useParams();
@@ -38,18 +38,18 @@ export default function EditVehiclePage() {
   const [updateVehicle, { isLoading: isUpdating }] = useUpdateVehicleMutation();
 
   const [formData, setFormData] = useState<Partial<VehicleCreate>>({
-    branch_id: '',
-    plate_number: '',
-    make: '',
-    model: '',
+    branch_id: "",
+    plate_number: "",
+    make: "",
+    model: "",
     year: new Date().getFullYear(),
-    vehicle_type: '',
+    vehicle_type: "",
     capacity_weight: 0,
     capacity_volume: 0,
-    status: 'available',
-    last_maintenance: '',
-    next_maintenance: '',
-    is_active: true
+    status: "available",
+    last_maintenance: "",
+    next_maintenance: "",
+    is_active: true,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -57,18 +57,22 @@ export default function EditVehiclePage() {
   useEffect(() => {
     if (vehicle) {
       setFormData({
-        branch_id: vehicle.branch_id || '',
-        plate_number: vehicle.plate_number || '',
-        make: vehicle.make || '',
-        model: vehicle.model || '',
+        branch_id: vehicle.branch_id || "",
+        plate_number: vehicle.plate_number || "",
+        make: vehicle.make || "",
+        model: vehicle.model || "",
         year: vehicle.year || new Date().getFullYear(),
-        vehicle_type: vehicle.vehicle_type || '',
+        vehicle_type: vehicle.vehicle_type || "",
         capacity_weight: vehicle.capacity_weight || 0,
         capacity_volume: vehicle.capacity_volume || 0,
-        status: vehicle.status || 'available',
-        last_maintenance: vehicle.last_maintenance ? new Date(vehicle.last_maintenance).toISOString().split('T')[0] : '',
-        next_maintenance: vehicle.next_maintenance ? new Date(vehicle.next_maintenance).toISOString().split('T')[0] : '',
-        is_active: vehicle.is_active
+        status: vehicle.status || "available",
+        last_maintenance: vehicle.last_maintenance
+          ? new Date(vehicle.last_maintenance).toISOString().split("T")[0]
+          : "",
+        next_maintenance: vehicle.next_maintenance
+          ? new Date(vehicle.next_maintenance).toISOString().split("T")[0]
+          : "",
+        is_active: vehicle.is_active,
       });
     }
   }, [vehicle]);
@@ -77,25 +81,28 @@ export default function EditVehiclePage() {
     const newErrors: Record<string, string> = {};
 
     if (!formData.plate_number?.trim()) {
-      newErrors.plate_number = 'Plate number is required';
+      newErrors.plate_number = "Plate number is required";
     }
     if (!formData.make?.trim()) {
-      newErrors.make = 'Vehicle make is required';
+      newErrors.make = "Vehicle make is required";
     }
     if (!formData.model?.trim()) {
-      newErrors.model = 'Vehicle model is required';
+      newErrors.model = "Vehicle model is required";
     }
     if (!formData.vehicle_type) {
-      newErrors.vehicle_type = 'Vehicle type is required';
+      newErrors.vehicle_type = "Vehicle type is required";
     }
     if (formData.capacity_weight && formData.capacity_weight < 0) {
-      newErrors.capacity_weight = 'Weight capacity must be positive';
+      newErrors.capacity_weight = "Weight capacity must be positive";
     }
     if (formData.capacity_volume && formData.capacity_volume < 0) {
-      newErrors.capacity_volume = 'Volume capacity must be positive';
+      newErrors.capacity_volume = "Volume capacity must be positive";
     }
-    if (formData.year && (formData.year < 1900 || formData.year > new Date().getFullYear() + 1)) {
-      newErrors.year = 'Invalid year';
+    if (
+      formData.year &&
+      (formData.year < 1900 || formData.year > new Date().getFullYear() + 1)
+    ) {
+      newErrors.year = "Invalid year";
     }
 
     setErrors(newErrors);
@@ -106,7 +113,7 @@ export default function EditVehiclePage() {
     e.preventDefault();
 
     if (!validateForm()) {
-      toast.error('Please fix the errors in the form');
+      toast.error("Please fix the errors in the form");
       return;
     }
 
@@ -114,32 +121,35 @@ export default function EditVehiclePage() {
       const updateData = {
         ...formData,
         last_maintenance: formData.last_maintenance || undefined,
-        next_maintenance: formData.next_maintenance || undefined
+        next_maintenance: formData.next_maintenance || undefined,
       };
 
       await updateVehicle({
         id: vehicleId,
-        vehicle: updateData
+        vehicle: updateData,
       }).unwrap();
 
-      toast.success('Vehicle updated successfully');
+      toast.success("Vehicle updated successfully");
       router.push(`/masters/vehicles/${vehicleId}`);
     } catch (error: any) {
-      toast.error(error?.data?.message || 'Failed to update vehicle');
+      toast.error(error?.data?.message || "Failed to update vehicle");
     }
   };
 
-  const handleInputChange = (field: string, value: string | boolean | number) => {
-    setFormData(prev => ({
+  const handleInputChange = (
+    field: string,
+    value: string | boolean | number
+  ) => {
+    setFormData((prev) => ({
       ...prev,
-      [field]: value
+      [field]: value,
     }));
 
     // Clear error for this field when user starts typing
     if (errors[field]) {
-      setErrors(prev => ({
+      setErrors((prev) => ({
         ...prev,
-        [field]: ''
+        [field]: "",
       }));
     }
   };
@@ -150,7 +160,9 @@ export default function EditVehiclePage() {
         <div className="p-6">
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <h3 className="text-red-800 font-medium">Error loading vehicle</h3>
-            <p className="text-red-600 text-sm mt-1">The vehicle may not exist or you don't have permission to edit it</p>
+            <p className="text-red-600 text-sm mt-1">
+              The vehicle may not exist or you don't have permission to edit it
+            </p>
           </div>
         </div>
       </AppLayout>
@@ -165,7 +177,7 @@ export default function EditVehiclePage() {
             <div className="h-8 bg-gray-200 rounded w-1/3" />
             <div className="h-4 bg-gray-200 rounded w-1/2" />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-              {[1, 2, 3, 4].map(i => (
+              {[1, 2, 3, 4].map((i) => (
                 <div key={i} className="h-40 bg-gray-200 rounded" />
               ))}
             </div>
@@ -179,7 +191,7 @@ export default function EditVehiclePage() {
 
   return (
     <AppLayout>
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto inline space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
@@ -216,12 +228,19 @@ export default function EditVehiclePage() {
                   <Input
                     id="plate_number"
                     value={formData.plate_number}
-                    onChange={(e) => handleInputChange('plate_number', e.target.value.toUpperCase())}
+                    onChange={(e) =>
+                      handleInputChange(
+                        "plate_number",
+                        e.target.value.toUpperCase()
+                      )
+                    }
                     placeholder="e.g., MH-12-AB-1234"
-                    className={errors.plate_number ? 'border-red-500' : ''}
+                    className={errors.plate_number ? "border-red-500" : ""}
                   />
                   {errors.plate_number && (
-                    <p className="text-sm text-red-600 mt-1">{errors.plate_number}</p>
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.plate_number}
+                    </p>
                   )}
                 </div>
                 <div>
@@ -229,16 +248,22 @@ export default function EditVehiclePage() {
                   <select
                     id="vehicle_type"
                     value={formData.vehicle_type}
-                    onChange={(e) => handleInputChange('vehicle_type', e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("vehicle_type", e.target.value)
+                    }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Select Vehicle Type</option>
-                    {vehicleTypes?.map(type => (
-                      <option key={type} value={type}>{type.replace('_', ' ')}</option>
+                    {vehicleTypes?.map((type) => (
+                      <option key={type} value={type}>
+                        {type.replace("_", " ")}
+                      </option>
                     ))}
                   </select>
                   {errors.vehicle_type && (
-                    <p className="text-sm text-red-600 mt-1">{errors.vehicle_type}</p>
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.vehicle_type}
+                    </p>
                   )}
                 </div>
               </div>
@@ -248,9 +273,9 @@ export default function EditVehiclePage() {
                   <Input
                     id="make"
                     value={formData.make}
-                    onChange={(e) => handleInputChange('make', e.target.value)}
+                    onChange={(e) => handleInputChange("make", e.target.value)}
                     placeholder="e.g., Tata"
-                    className={errors.make ? 'border-red-500' : ''}
+                    className={errors.make ? "border-red-500" : ""}
                   />
                   {errors.make && (
                     <p className="text-sm text-red-600 mt-1">{errors.make}</p>
@@ -261,9 +286,9 @@ export default function EditVehiclePage() {
                   <Input
                     id="model"
                     value={formData.model}
-                    onChange={(e) => handleInputChange('model', e.target.value)}
+                    onChange={(e) => handleInputChange("model", e.target.value)}
                     placeholder="e.g., Ace"
-                    className={errors.model ? 'border-red-500' : ''}
+                    className={errors.model ? "border-red-500" : ""}
                   />
                   {errors.model && (
                     <p className="text-sm text-red-600 mt-1">{errors.model}</p>
@@ -277,8 +302,10 @@ export default function EditVehiclePage() {
                     min="1900"
                     max={new Date().getFullYear() + 1}
                     value={formData.year}
-                    onChange={(e) => handleInputChange('year', parseInt(e.target.value))}
-                    className={errors.year ? 'border-red-500' : ''}
+                    onChange={(e) =>
+                      handleInputChange("year", parseInt(e.target.value))
+                    }
+                    className={errors.year ? "border-red-500" : ""}
                   />
                   {errors.year && (
                     <p className="text-sm text-red-600 mt-1">{errors.year}</p>
@@ -291,7 +318,9 @@ export default function EditVehiclePage() {
                   <select
                     id="status"
                     value={formData.status}
-                    onChange={(e) => handleInputChange('status', e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("status", e.target.value)
+                    }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="available">Available</option>
@@ -305,7 +334,9 @@ export default function EditVehiclePage() {
                   <select
                     id="branch_id"
                     value={formData.branch_id}
-                    onChange={(e) => handleInputChange('branch_id', e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("branch_id", e.target.value)
+                    }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Select Branch</option>
@@ -320,7 +351,9 @@ export default function EditVehiclePage() {
               <div className="flex items-center space-x-3">
                 <Switch
                   checked={formData.is_active}
-                  onCheckedChange={(checked) => handleInputChange('is_active', checked)}
+                  onCheckedChange={(checked) =>
+                    handleInputChange("is_active", checked)
+                  }
                 />
                 <Label>Active Vehicle</Label>
               </div>
@@ -345,12 +378,19 @@ export default function EditVehiclePage() {
                     min="0"
                     step="10"
                     value={formData.capacity_weight}
-                    onChange={(e) => handleInputChange('capacity_weight', parseFloat(e.target.value) || 0)}
+                    onChange={(e) =>
+                      handleInputChange(
+                        "capacity_weight",
+                        parseFloat(e.target.value) || 0
+                      )
+                    }
                     placeholder="e.g., 1000"
-                    className={errors.capacity_weight ? 'border-red-500' : ''}
+                    className={errors.capacity_weight ? "border-red-500" : ""}
                   />
                   {errors.capacity_weight && (
-                    <p className="text-sm text-red-600 mt-1">{errors.capacity_weight}</p>
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.capacity_weight}
+                    </p>
                   )}
                 </div>
                 <div>
@@ -361,12 +401,19 @@ export default function EditVehiclePage() {
                     min="0"
                     step="0.1"
                     value={formData.capacity_volume}
-                    onChange={(e) => handleInputChange('capacity_volume', parseFloat(e.target.value) || 0)}
+                    onChange={(e) =>
+                      handleInputChange(
+                        "capacity_volume",
+                        parseFloat(e.target.value) || 0
+                      )
+                    }
                     placeholder="e.g., 5.5"
-                    className={errors.capacity_volume ? 'border-red-500' : ''}
+                    className={errors.capacity_volume ? "border-red-500" : ""}
                   />
                   {errors.capacity_volume && (
-                    <p className="text-sm text-red-600 mt-1">{errors.capacity_volume}</p>
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.capacity_volume}
+                    </p>
                   )}
                 </div>
               </div>
@@ -384,21 +431,29 @@ export default function EditVehiclePage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="last_maintenance">Last Maintenance Date</Label>
+                  <Label htmlFor="last_maintenance">
+                    Last Maintenance Date
+                  </Label>
                   <Input
                     id="last_maintenance"
                     type="date"
                     value={formData.last_maintenance}
-                    onChange={(e) => handleInputChange('last_maintenance', e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("last_maintenance", e.target.value)
+                    }
                   />
                 </div>
                 <div>
-                  <Label htmlFor="next_maintenance">Next Maintenance Date</Label>
+                  <Label htmlFor="next_maintenance">
+                    Next Maintenance Date
+                  </Label>
                   <Input
                     id="next_maintenance"
                     type="date"
                     value={formData.next_maintenance}
-                    onChange={(e) => handleInputChange('next_maintenance', e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("next_maintenance", e.target.value)
+                    }
                   />
                 </div>
               </div>

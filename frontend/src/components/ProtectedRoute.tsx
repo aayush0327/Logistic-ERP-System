@@ -1,22 +1,27 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useSelector, useDispatch } from 'react-redux';
-import { RootState, AppDispatch } from '@/store';
-import { getCurrentUserAsync } from '@/store/slices/auth.slice';
-import { Spinner } from '@/components/ui/Spinner';
-import { api } from '@/lib/api';
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useSelector, useDispatch } from "react-redux";
+import { RootState, AppDispatch } from "@/store";
+import { getCurrentUserAsync } from "@/store/slices/auth.slice";
+import { DashboardSkeleton } from "@/components/skeletons/DashboardSkeleton";
+import { api } from "@/lib/api";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requiredRole?: string[]; // Optional role-based protection
 }
 
-export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
+export function ProtectedRoute({
+  children,
+  requiredRole,
+}: ProtectedRouteProps) {
   const router = useRouter();
   const dispatch = useDispatch<AppDispatch>();
-  const { isAuthenticated, isLoading, user, token } = useSelector((state: RootState) => state.auth);
+  const { isAuthenticated, isLoading, user, token } = useSelector(
+    (state: RootState) => state.auth
+  );
   const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
@@ -27,9 +32,9 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
           await dispatch(getCurrentUserAsync()).unwrap();
         }
       } catch (error) {
-        console.error('Authentication check failed:', error);
+        console.error("Authentication check failed:", error);
         // If auth check fails, redirect to login
-        router.push('/login');
+        router.push("/login");
       } finally {
         setIsChecking(false);
       }
@@ -47,24 +52,18 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
 
     // Check role-based access if required
     if (requiredRole && requiredRole.length > 0 && user) {
-      const hasRequiredRole = requiredRole.includes(user.role?.name || '');
+      const userRoleName = user.role_name || user.role?.name || "";
+      const hasRequiredRole = requiredRole.includes(userRoleName);
       if (!hasRequiredRole) {
         // Redirect to unauthorized page or dashboard
-        router.push('/dashboard');
+        router.push("/dashboard");
       }
     }
   }, [isChecking, isLoading, isAuthenticated, user, requiredRole, router]);
 
-  // Show loading spinner while checking authentication
+  // Show skeleton while checking authentication
   if (isChecking || isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="flex flex-col items-center space-y-4">
-          <Spinner className="w-12 h-12 text-blue-600" />
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   // Show nothing if not authenticated (will redirect)
@@ -74,13 +73,18 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
 
   // Check role-based access
   if (requiredRole && requiredRole.length > 0 && user) {
-    const hasRequiredRole = requiredRole.includes(user.role?.name || '');
+    const userRoleName = user.role_name || user.role?.name || "";
+    const hasRequiredRole = requiredRole.includes(userRoleName);
     if (!hasRequiredRole) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
           <div className="text-center">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h1>
-            <p className="text-gray-600">You don't have permission to access this page.</p>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">
+              Access Denied
+            </h1>
+            <p className="text-gray-600">
+              You don't have permission to access this page.
+            </p>
           </div>
         </div>
       );

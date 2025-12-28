@@ -4,7 +4,7 @@ Order model definitions
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import (
-    String, Text, DateTime, Numeric, Integer, Boolean, ForeignKey, Enum
+    String, Text, DateTime, Numeric, Integer, Boolean, ForeignKey
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
@@ -81,15 +81,15 @@ class Order(Base):
     )
 
     # Order information
-    order_type: Mapped[OrderType] = mapped_column(
-        Enum(OrderType),
+    order_type: Mapped[str] = mapped_column(
+        String(20),
         nullable=False,
-        default=OrderType.DELIVERY
+        default="delivery"
     )
-    status: Mapped[OrderStatus] = mapped_column(
-        Enum(OrderStatus),
+    status: Mapped[str] = mapped_column(
+        String(50),
         nullable=False,
-        default=OrderStatus.DRAFT,
+        default="draft",
         index=True
     )
     priority: Mapped[str] = mapped_column(
@@ -132,8 +132,8 @@ class Order(Base):
         Numeric(12, 2),
         nullable=True
     )
-    payment_type: Mapped[Optional[PaymentType]] = mapped_column(
-        Enum(PaymentType),
+    payment_type: Mapped[Optional[str]] = mapped_column(
+        String(20),
         nullable=True
     )
 

@@ -26,6 +26,7 @@ class OrderItemCreateRequest(BaseModel):
     """Schema for creating an order item from API request (minimal fields)"""
     product_id: str
     quantity: int = Field(..., gt=0)
+    weight: Optional[float] = Field(None, ge=0)
 
 
 class OrderItemCreate(OrderItemBase):

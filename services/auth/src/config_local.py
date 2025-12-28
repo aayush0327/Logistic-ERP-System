@@ -117,6 +117,9 @@ class AuthSettings(Settings, LoggingMixin):
 
     # JWT - Inherits from parent Settings which uses global configuration
 
+    # Company service URL for inter-service communication
+    COMPANY_SERVICE_URL: str = os.getenv("COMPANY_SERVICE_URL", "http://localhost:8002")
+
     # Auth specific settings
     PASSWORD_MIN_LENGTH: int = 8
     PASSWORD_REQUIRE_UPPERCASE: bool = True
