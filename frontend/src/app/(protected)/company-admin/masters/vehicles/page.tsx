@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/Table";
+import { useOutsideClick } from "@/components/Hooks/useOutsideClick";
 import {
   Search,
   Plus,
@@ -34,6 +35,9 @@ import {
   PowerOff,
   Trash2,
   AlertCircle,
+  X,
+  ChevronDown,
+  GitBranch,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
@@ -61,6 +65,15 @@ export default function VehiclesPage() {
   const [page, setPage] = useState(1);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [vehicleToDelete, setVehicleToDelete] = useState<string | null>(null);
+  const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
+
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  useOutsideClick(filterRef, () => {
+    if (filterDropdownOpen) {
+      setFilterDropdownOpen(false);
+    }
+  });
 
   const { data: vehicleTypes } = useGetAllVehicleTypesQuery({
     is_active: true,
@@ -196,6 +209,54 @@ export default function VehiclesPage() {
     );
   };
 
+  const getBranchesDisplay = (vehicle: any) => {
+    // If available for all branches, show "All Branches"
+    if (vehicle.available_for_all_branches) {
+      return (
+        <div className="flex items-center text-sm text-gray-900">
+          <GitBranch className="w-3 h-3 mr-1 text-blue-500" />
+          <span className="font-medium">All Branches</span>
+        </div>
+      );
+    }
+
+    // Show assigned branches
+    const branches = vehicle.branches || [];
+    if (branches.length === 0) {
+      return (
+        <div className="flex items-center text-sm text-gray-400">
+          <GitBranch className="w-3 h-3 mr-1" />
+          <span>None</span>
+        </div>
+      );
+    }
+
+    // Show first 2 branches and count for remaining
+    const displayBranches = branches.slice(0, 2);
+    const remainingCount = branches.length - 2;
+
+    return (
+      <div className="space-y-1">
+        {displayBranches.map((vb: any) => (
+          <div
+            key={vb.branch.id}
+            className="flex items-center text-sm text-gray-900"
+          >
+            <GitBranch className="w-3 h-3 mr-1 text-blue-500 flex-shrink-0" />
+            <span className="truncate" title={vb.branch.name}>
+              {vb.branch.name}
+            </span>
+          </div>
+        ))}
+        {remainingCount > 0 && (
+          <div className="text-xs text-gray-500 ml-4">
+            +{remainingCount} more
+          </div>
+        )}
+      </div>
+    );
+  };
+
   if (error) {
     return (
       <div>
@@ -230,9 +291,6 @@ export default function VehiclesPage() {
               <h1 className="text-3xl font-bold text-gray-900">
                 Vehicle Management
               </h1>
-              <p className="text-gray-500 mt-2">
-                Manage your fleet of vehicles
-              </p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -248,155 +306,303 @@ export default function VehiclesPage() {
             </Button>
             <Button
               onClick={() => router.push("/company-admin/masters/vehicles/new")}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 px-3 md:px-4 py-3 bg-[#1f40ae] hover:bg-[#1f40ae] active:bg-[#1f40ae] text-white rounded-xl transition-all duration-200 hover:scale-[1.02] hover:shadow-lg shadow-md"
             >
               <Plus className="w-4 h-4" />
-              New Vehicle
+              <span className="text-sm md:text-base font-semibold hover:font-bold">
+                New Vehicle
+              </span>
             </Button>
           </div>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Total Vehicles</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {vehiclesList.length || 0}
-                  </p>
-                </div>
-                <Truck className="w-8 h-8 text-blue-600" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+          {/* Total Vehicles Card */}
+          <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#edf0f7] border-2 border-[#c4cde9]">
+            <div className="flex justify-between items-start">
+              <p className="text-sm md:text-base font-semibold text-black">
+                Total Vehicles
+              </p>
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <Truck className="w-5 h-5 md:w-6 md:h-6 text-blue-500" />
               </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Available</p>
-                  <p className="text-2xl font-bold text-green-600">
-                    {vehiclesList.filter((v: any) => v.status === "available")
-                      .length || 0}
-                  </p>
-                </div>
-                <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                  <div className="w-4 h-4 bg-green-600 rounded-full" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">On Trip</p>
-                  <p className="text-2xl font-bold text-blue-600">
-                    {vehiclesList.filter((v: any) => v.status === "on_trip")
-                      .length || 0}
-                  </p>
-                </div>
-                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                  <div className="w-4 h-4 bg-blue-600 rounded-full" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">In Maintenance</p>
-                  <p className="text-2xl font-bold text-orange-600">
-                    {vehiclesList.filter((v: any) => v.status === "maintenance")
-                      .length || 0}
-                  </p>
-                </div>
-                <Wrench className="w-8 h-8 text-orange-600" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Filters */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex flex-col lg:flex-row gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input
-                  placeholder="Search vehicles..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant={statusFilter === "all" ? "primary" : "outline"}
-                  size="sm"
-                  onClick={() => setStatusFilter("all")}
-                >
-                  All
-                </Button>
-                {statusOptions?.map((status) => (
-                  <Button
-                    key={status}
-                    variant={statusFilter === status ? "primary" : "outline"}
-                    size="sm"
-                    onClick={() => setStatusFilter(status)}
-                  >
-                    {status.replace("_", " ")}
-                  </Button>
-                ))}
-              </div>
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                className="px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">All Types</option>
-                {vehicleTypes?.map((type) => (
-                  <option key={type.id} value={type.id}>
-                    {type.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={branchFilter}
-                onChange={(e) => setBranchFilter(e.target.value)}
-                className="px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">All Branches</option>
-                {branches?.items?.map((branch: any) => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </option>
-                ))}
-              </select>
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex items-center gap-2"
-              >
-                <Download className="w-4 h-4" />
-                Export
-              </Button>
             </div>
-          </CardContent>
-        </Card>
+            <div className="flex items-end justify-between mt-3">
+              <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+                {isLoading ? "..." : vehiclesList.length || 0}
+              </p>
+            </div>
+          </div>
+
+          {/* Available Vehicles Card */}
+          <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#f0f7f0] border-2 border-[#c5edd6]">
+            <div className="flex justify-between items-start">
+              <p className="text-sm md:text-base font-semibold text-black">
+                Available
+              </p>
+              <div className="p-2 bg-emerald-100 rounded-lg">
+                <div className="w-5 h-5 md:w-6 md:h-6 bg-emerald-500 rounded-full" />
+              </div>
+            </div>
+            <div className="flex items-end justify-between mt-3">
+              <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+                {isLoading
+                  ? "..."
+                  : vehiclesList.filter((v: any) => v.status === "available")
+                      .length || 0}
+              </p>
+            </div>
+          </div>
+
+          {/* On Trip Vehicles Card */}
+          <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#f0f7fa] border-2 border-[#c0e5f7]">
+            <div className="flex justify-between items-start">
+              <p className="text-sm md:text-base font-semibold text-black">
+                On Trip
+              </p>
+              <div className="p-2 bg-sky-100 rounded-lg">
+                <div className="w-5 h-5 md:w-6 md:h-6 bg-sky-500 rounded-full" />
+              </div>
+            </div>
+            <div className="flex items-end justify-between mt-3">
+              <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+                {isLoading
+                  ? "..."
+                  : vehiclesList.filter((v: any) => v.status === "on_trip")
+                      .length || 0}
+              </p>
+            </div>
+          </div>
+
+          {/* In Maintenance Card */}
+          <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#fff8f0] border-2 border-[#f8e4c2]">
+            <div className="flex justify-between items-start">
+              <p className="text-sm md:text-base font-semibold text-black">
+                In Maintenance
+              </p>
+              <div className="p-2 bg-amber-100 rounded-lg">
+                <Wrench className="w-5 h-5 md:w-6 md:h-6 text-amber-500" />
+              </div>
+            </div>
+            <div className="flex items-end justify-between mt-3">
+              <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+                {isLoading
+                  ? "..."
+                  : vehiclesList.filter((v: any) => v.status === "maintenance")
+                      .length || 0}
+              </p>
+            </div>
+          </div>
+        </div>
 
         {/* Vehicles Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Vehicles</CardTitle>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <CardTitle>Vehicles</CardTitle>
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                {/* Search */}
+                <div className="relative flex-1 sm:flex-none">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <Input
+                    placeholder="Search vehicles..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 pr-4 py-2 w-full sm:w-64"
+                  />
+                </div>
+
+                {/* Filter Button with Dropdown */}
+                <div className="relative" ref={filterRef}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
+                    className="flex items-center gap-2"
+                  >
+                    <Filter className="w-4 h-4" />
+                    Filter
+                    <ChevronDown className="w-4 h-4" />
+                  </Button>
+
+                  {/* Filter Dropdown */}
+                  {filterDropdownOpen && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                      <div className="py-1">
+                        <button
+                          onClick={() => {
+                            setStatusFilter("all");
+                            setFilterDropdownOpen(false);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between text-black"
+                        >
+                          <span>All Vehicles</span>
+                          {statusFilter === "all" && (
+                            <span className="w-2 h-2 bg-blue-600 rounded-full" />
+                          )}
+                        </button>
+                        {statusOptions?.map((status) => (
+                          <button
+                            key={status}
+                            onClick={() => {
+                              setStatusFilter(status);
+                              setFilterDropdownOpen(false);
+                            }}
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between text-black"
+                          >
+                            <span>{status.replace("_", " ")}</span>
+                            {statusFilter === status && (
+                              <span className="w-2 h-2 bg-green-600 rounded-full" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Type Filter */}
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  <option value="all">All Types</option>
+                  {vehicleTypes?.map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.name}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Branch Filter */}
+                <select
+                  value={branchFilter}
+                  onChange={(e) => setBranchFilter(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  <option value="all">All Branches</option>
+                  {branches?.items?.map((branch: any) => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Export Button */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Export
+                </Button>
+              </div>
+            </div>
+
+            {/* Active Filter Chips */}
+            {statusFilter !== "all" && (
+              <div className="flex items-center gap-2 mt-3 flex-wrap">
+                <span className="text-sm text-gray-600">Active filters:</span>
+                <div className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+                  {statusFilter.replace("_", " ")}
+                  <button
+                    onClick={() => setStatusFilter("all")}
+                    className="ml-1 hover:bg-blue-200 rounded-full p-0.5"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Type Filter Chip */}
+            {typeFilter !== "all" && (
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <div className="inline-flex items-center gap-1 px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium">
+                  {vehicleTypes?.find((vt) => vt.id === typeFilter)?.name ||
+                    typeFilter}
+                  <button
+                    onClick={() => setTypeFilter("all")}
+                    className="ml-1 hover:bg-purple-200 rounded-full p-0.5"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Branch Filter Chip */}
+            {branchFilter !== "all" && (
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <div className="inline-flex items-center gap-1 px-3 py-1 bg-sky-100 text-sky-800 rounded-full text-sm font-medium">
+                  {branches?.items?.find((b: any) => b.id === branchFilter)
+                    ?.name || branchFilter}
+                  <button
+                    onClick={() => setBranchFilter("all")}
+                    className="ml-1 hover:bg-sky-200 rounded-full p-0.5"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            )}
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-              </div>
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="whitespace-nowrap">Plate Number</TableHead>
+                      <TableHead className="whitespace-nowrap">Make/Model</TableHead>
+                      <TableHead className="whitespace-nowrap">Type</TableHead>
+                      <TableHead className="whitespace-nowrap">Capacity</TableHead>
+                      <TableHead className="whitespace-nowrap">Branches</TableHead>
+                      <TableHead className="whitespace-nowrap">Status</TableHead>
+                      <TableHead className="whitespace-nowrap">Last Maintenance</TableHead>
+                      <TableHead className="text-right whitespace-nowrap">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Array.from({ length: 8 }).map((_, index) => (
+                      <TableRow key={index} className="animate-pulse">
+                        <TableCell className="font-medium">
+                          <div className="h-4 bg-gray-200 rounded w-20" />
+                        </TableCell>
+                        <TableCell>
+                          <div className="h-4 bg-gray-200 rounded w-32" />
+                        </TableCell>
+                        <TableCell>
+                          <div className="h-6 bg-gray-200 rounded w-20" />
+                        </TableCell>
+                        <TableCell>
+                          <div className="h-4 bg-gray-200 rounded w-16" />
+                        </TableCell>
+                        <TableCell>
+                          <div className="h-4 bg-gray-200 rounded w-24" />
+                        </TableCell>
+                        <TableCell>
+                          <div className="h-6 bg-gray-200 rounded w-20" />
+                        </TableCell>
+                        <TableCell>
+                          <div className="h-4 bg-gray-200 rounded w-20" />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <div className="h-8 w-8 bg-gray-200 rounded" />
+                            <div className="h-8 w-8 bg-gray-200 rounded" />
+                            <div className="h-8 w-8 bg-gray-200 rounded" />
+                            <div className="h-8 w-8 bg-gray-200 rounded" />
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </>
             ) : filteredVehicles.length === 0 ? (
               <div className="text-center py-8">
                 <Truck className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -430,14 +636,14 @@ export default function VehiclesPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Plate Number</TableHead>
-                      <TableHead>Make/Model</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Capacity</TableHead>
-                      <TableHead>Branch</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Last Maintenance</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead className="whitespace-nowrap">Plate Number</TableHead>
+                      <TableHead className="whitespace-nowrap">Make/Model</TableHead>
+                      <TableHead className="whitespace-nowrap">Type</TableHead>
+                      <TableHead className="whitespace-nowrap">Capacity</TableHead>
+                      <TableHead className="whitespace-nowrap">Branches</TableHead>
+                      <TableHead className="whitespace-nowrap">Status</TableHead>
+                      <TableHead className="whitespace-nowrap">Last Maintenance</TableHead>
+                      <TableHead className="text-right whitespace-nowrap">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -488,12 +694,7 @@ export default function VehiclesPage() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center text-sm text-gray-900">
-                            <Building className="w-3 h-3 mr-1" />
-                            {vehicle.branch?.name || "Not assigned"}
-                          </div>
-                        </TableCell>
+                        <TableCell>{getBranchesDisplay(vehicle)}</TableCell>
                         <TableCell>
                           {getStatusBadge(vehicle.status || "")}
                         </TableCell>
@@ -594,18 +795,14 @@ export default function VehiclesPage() {
                         disabled={page === 1}
                       >
                         <ChevronLeft className="w-4 h-4" />
-                        Previous
                       </Button>
-                      <span className="text-sm text-gray-600 px-2">
-                        Page {page}
-                      </span>
+                      <span className="text-sm text-gray-600 px-2">{page}</span>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => setPage(page + 1)}
                         disabled={filteredVehicles.length < 20}
                       >
-                        Next
                         <ChevronRight className="w-4 h-4" />
                       </Button>
                     </div>

@@ -39,6 +39,9 @@ export interface User {
     id: string;
     name: string;
     domain?: string;
+    settings?: string; // JSON string of tenant settings (currency, timezone)
+    is_active?: boolean;
+    created_at?: string;
   };
 }
 
@@ -535,14 +538,16 @@ export interface OrderAssignData {
   customer: string;
   customerAddress?: string;
   total: number;
-  weight: number;
-  volume: number;
+  weight: number;  // Now supports decimal values
+  volume: number;  // Now supports decimal values
   items: number;
   priority: string;
   address?: string;
   original_order_id?: string;
   original_items?: number;
-  original_weight?: number;
+  original_weight?: number;  // Now supports decimal values
+  items_json?: any[];  // For split/partial order assignments
+  remaining_items_json?: any[];  // For split/partial order assignments
 }
 
 // Trip API functions
@@ -755,4 +760,107 @@ export const driverAPI = {
       }),
     });
   },
+
+  // Pause trip (Under Maintenance)
+  async pauseTrip(
+    tripId: string,
+    reason: string,
+    note?: string
+  ) {
+    return fetchWithError(`${DRIVER_BASE}/trips/${tripId}/pause`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reason: reason,
+        note: note
+      }),
+    });
+  },
+
+  // Resume trip
+  async resumeTrip(
+    tripId: string,
+    note?: string
+  ) {
+    return fetchWithError(`${DRIVER_BASE}/trips/${tripId}/resume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        note: note
+      }),
+    });
+  },
 };
+
+// ============================================================================
+// Currency and Timezone API functions
+// ============================================================================
+
+export interface Currency {
+  code: string;
+  symbol: string;
+  name: string;
+  numeric_code?: string;
+  decimal_places: number;
+}
+
+export interface Timezone {
+  iana: string;
+  offset: string;
+  label: string;
+}
+
+export interface TimezoneGroup {
+  region: string;
+  timezones: Timezone[];
+}
+
+/**
+ * Fetch all supported currencies from the auth service
+ * Uses pycountry library backend to get 170+ ISO 4217 currencies
+ */
+export async function fetchCurrencies(): Promise<Currency[]> {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_AUTH_API_URL}/api/v1/currencies`);
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to fetch currencies");
+  }
+
+  return response.json();
+}
+
+/**
+ * Fetch all supported timezones from the auth service
+ * Uses pytz library backend to get 450+ IANA timezones
+ *
+ * @param grouped - If true, returns timezones grouped by region
+ */
+export async function fetchTimezones(grouped: boolean = false): Promise<Timezone[] | TimezoneGroup[]> {
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_AUTH_API_URL}/api/v1/timezones?grouped=${grouped}`
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to fetch timezones");
+  }
+
+  return response.json();
+}
+
+/**
+ * Fetch details for a specific timezone
+ */
+export async function fetchTimezone(timezoneIana: string): Promise<Timezone> {
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_AUTH_API_URL}/api/v1/timezones/${timezoneIana}`
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Failed to fetch timezone");
+  }
+
+  return response.json();
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/Table";
+import { useOutsideClick } from "@/components/Hooks/useOutsideClick";
 import {
   Search,
   Plus,
@@ -31,6 +32,9 @@ import {
   Power,
   PowerOff,
   Trash2,
+  Filter,
+  X,
+  ChevronDown,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
@@ -47,10 +51,12 @@ import {
   DialogTitle,
 } from "@/components/ui/Dialog";
 import { toast } from "react-hot-toast";
+import { CurrencyDisplay } from "@/components/CurrencyDisplay";
 
 export default function ProductsPage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [branchFilter, setBranchFilter] = useState<string>("all");
   const [stockFilter, setStockFilter] = useState<"all" | "low" | "normal">(
@@ -63,13 +69,21 @@ export default function ProductsPage() {
   const [page, setPage] = useState(1);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<string | null>(null);
+  const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
+
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  useOutsideClick(filterRef, () => {
+    if (filterDropdownOpen) {
+      setFilterDropdownOpen(false);
+    }
+  });
 
   const { data: categoriesData } = useGetProductCategoriesQuery({
     include_children: true,
   });
 
   const categories = categoriesData?.items || [];
-  console.log(categories, "categories");
   const { data: branches } = useGetBranchesQuery({});
 
   const {
@@ -85,6 +99,7 @@ export default function ProductsPage() {
     min_price: priceFilter.min,
     max_price: priceFilter.max,
     low_stock: stockFilter === "low",
+    is_active: statusFilter !== "all" ? statusFilter === "active" : undefined,
   });
 
   const [deleteProduct, { isLoading: isDeleting }] = useDeleteProductMutation();
@@ -160,14 +175,12 @@ export default function ProductsPage() {
 
   if (error) {
     return (
-      <div>
-        <div className="p-6">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <h3 className="text-red-800 font-medium">Error loading products</h3>
-            <p className="text-red-600 text-sm mt-1">
-              Please try refreshing the page
-            </p>
-          </div>
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <h3 className="text-red-800 font-medium">Error loading products</h3>
+          <p className="text-red-600 text-sm mt-1">
+            Please try refreshing the page
+          </p>
         </div>
       </div>
     );
@@ -191,9 +204,6 @@ export default function ProductsPage() {
             <h1 className="text-3xl font-bold text-gray-900">
               Product Management
             </h1>
-            <p className="text-gray-500 mt-2">
-              Manage your product catalog and inventory
-            </p>
           </div>
         </div>
         <div className="flex gap-3">
@@ -209,176 +219,272 @@ export default function ProductsPage() {
           </Button>
           <Button
             onClick={() => router.push("/company-admin/masters/products/new")}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 px-3 md:px-4 py-3 bg-[#1f40ae] hover:bg-[#1f40ae] active:bg-[#1f40ae] text-white rounded-xl transition-all duration-200 hover:scale-[1.02] hover:shadow-lg shadow-md"
           >
             <Plus className="w-4 h-4" />
-            New Product
+            <span className="text-sm md:text-base font-semibold hover:font-bold">
+              New Product
+            </span>
           </Button>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Total Products</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {products?.length || 0}
-                </p>
-              </div>
-              <Package className="w-8 h-8 text-blue-600" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+        {/* Total Products Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#edf0f7] border-2 border-[#c4cde9]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Total Products
+            </p>
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <Package className="w-5 h-5 md:w-6 md:h-6 text-blue-500" />
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Low Stock Items</p>
-                <p className="text-2xl font-bold text-red-600">
-                  {
-                    products.filter((p) => p.current_stock <= p.min_stock_level)
-                      .length
-                  }
-                </p>
-              </div>
-              <AlertTriangle className="w-8 h-8 text-red-600" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Categories</p>
-                <p className="text-2xl font-bold text-purple-600">
-                  {categories?.length || 0}
-                </p>
-              </div>
-              <Tag className="w-8 h-8 text-purple-600" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Total Value</p>
-                <p className="text-2xl font-bold text-green-600">
-                  $
-                  {products
-                    .reduce((sum, p) => sum + p.current_stock * p.unit_price, 0)
-                    .toLocaleString()}
-                </p>
-              </div>
-              <DollarSign className="w-8 h-8 text-green-600" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col lg:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <Input
-                placeholder="Search products..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Categories</option>
-              {categories?.map((category) => (
-                <option
-                  className="text-black"
-                  key={category.id}
-                  value={category.id}
-                >
-                  {category.name}
-                </option>
-              ))}
-            </select>
-            <select
-              value={branchFilter}
-              onChange={(e) => setBranchFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Branches</option>
-              {branches?.items?.map((branch: any) => (
-                <option
-                  className="text-black"
-                  key={branch.id}
-                  value={branch.id}
-                >
-                  {branch.name}
-                </option>
-              ))}
-            </select>
-            <select
-              value={stockFilter}
-              onChange={(e) =>
-                setStockFilter(e.target.value as "all" | "low" | "normal")
-              }
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option className="text-black" value="all">
-                All Stock Levels
-              </option>
-              <option className="text-black" value="low">
-                Low Stock Only
-              </option>
-              <option className="text-black" value="normal">
-                Normal Stock
-              </option>
-            </select>
-            <div className="flex items-center gap-2">
-              <Input
-                type="number"
-                placeholder="Min Price"
-                value={priceFilter.min || ""}
-                onChange={(e) => handlePriceFilterChange("min", e.target.value)}
-                className="w-32"
-              />
-              <Input
-                type="number"
-                placeholder="Max Price"
-                value={priceFilter.max || ""}
-                onChange={(e) => handlePriceFilterChange("max", e.target.value)}
-                className="w-32"
-              />
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex items-center gap-2"
-            >
-              <Download className="w-4 h-4" />
-              Export
-            </Button>
           </div>
-        </CardContent>
-      </Card>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {isLoading ? "..." : products?.length || 0}
+            </p>
+          </div>
+        </div>
+
+        {/* Active Products Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#f0f7f0] border-2 border-[#c5edd6]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Active Products
+            </p>
+            <div className="p-2 bg-emerald-100 rounded-lg">
+              <div className="w-5 h-5 md:w-6 md:h-6 bg-emerald-500 rounded-full" />
+            </div>
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {isLoading
+                ? "..."
+                : products.filter((p) => p.is_active).length}
+            </p>
+          </div>
+        </div>
+
+        {/* Low Stock Items Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#f0f7fa] border-2 border-[#c0e5f7]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Low Stock Items
+            </p>
+            <div className="p-2 bg-sky-100 rounded-lg">
+              <AlertTriangle className="w-5 h-5 md:w-6 md:h-6 text-sky-500" />
+            </div>
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {isLoading
+                ? "..."
+                : products.filter((p) => p.current_stock <= p.min_stock_level)
+                    .length}
+            </p>
+          </div>
+        </div>
+
+        {/* Categories Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#fff8f0] border-2 border-[#f8e4c2]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Categories
+            </p>
+            <div className="p-2 bg-amber-100 rounded-lg">
+              <Tag className="w-5 h-5 md:w-6 md:h-6 text-amber-500" />
+            </div>
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {isLoading ? "..." : categories?.length || 0}
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* Products Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Products</CardTitle>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <CardTitle>Products</CardTitle>
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              {/* Search */}
+              <div className="relative flex-1 sm:flex-none">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input
+                  placeholder="Search products..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 pr-4 py-2 w-full sm:w-64"
+                />
+              </div>
+
+              {/* Filter Button with Dropdown */}
+              <div className="relative" ref={filterRef}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
+                  className="flex items-center gap-2"
+                >
+                  <Filter className="w-4 h-4" />
+                  Filter
+                  <ChevronDown className="w-4 h-4" />
+                </Button>
+
+                {/* Filter Dropdown */}
+                {filterDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                    <div className="py-1">
+                      <button
+                        onClick={() => {
+                          setStatusFilter("all");
+                          setFilterDropdownOpen(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between text-black"
+                      >
+                        <span>All Products</span>
+                        {statusFilter === "all" && (
+                          <span className="w-2 h-2 bg-blue-600 rounded-full" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setStatusFilter("active");
+                          setFilterDropdownOpen(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between text-black"
+                      >
+                        <span>Active</span>
+                        {statusFilter === "active" && (
+                          <span className="w-2 h-2 bg-green-600 rounded-full" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setStatusFilter("inactive");
+                          setFilterDropdownOpen(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between text-black"
+                      >
+                        <span>Inactive</span>
+                        {statusFilter === "inactive" && (
+                          <span className="w-2 h-2 bg-gray-600 rounded-full" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Category Filter */}
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="all">All Categories</option>
+                {categories?.map((category) => (
+                  <option
+                    key={category.id}
+                    value={category.id}
+                  >
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+
+              {/* Export Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Export
+              </Button>
+            </div>
+          </div>
+
+          {/* Active Filter Chips */}
+          {statusFilter !== "all" && (
+            <div className="flex items-center gap-2 mt-3 flex-wrap">
+              <span className="text-sm text-gray-600">Active filters:</span>
+              <div className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+                {statusFilter === "active" ? "Active" : "Inactive"}
+                <button
+                  onClick={() => setStatusFilter("all")}
+                  className="ml-1 hover:bg-blue-200 rounded-full p-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-            </div>
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="whitespace-nowrap">Product Code</TableHead>
+                    <TableHead className="whitespace-nowrap">Name</TableHead>
+                    <TableHead className="whitespace-nowrap">Category</TableHead>
+                    <TableHead className="whitespace-nowrap">Weight</TableHead>
+                    <TableHead className="whitespace-nowrap">Branch</TableHead>
+                    <TableHead className="whitespace-nowrap">Unit Price</TableHead>
+                    <TableHead className="whitespace-nowrap">Stock Level</TableHead>
+                    <TableHead className="whitespace-nowrap">Status</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Array.from({ length: 8 }).map((_, index) => (
+                    <TableRow key={index} className="animate-pulse">
+                      <TableCell className="font-medium">
+                        <div className="h-4 bg-gray-200 rounded w-16" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-32" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-24" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-2">
+                          <div className="h-3 bg-gray-200 rounded w-16" />
+                          <div className="h-3 bg-gray-200 rounded w-20" />
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-28" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-16" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-6 bg-gray-200 rounded w-16" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <div className="h-8 w-8 bg-gray-200 rounded" />
+                          <div className="h-8 w-8 bg-gray-200 rounded" />
+                          <div className="h-8 w-8 bg-gray-200 rounded" />
+                          <div className="h-8 w-8 bg-gray-200 rounded" />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </>
           ) : products.length === 0 ? (
             <div className="text-center py-8">
               <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -390,8 +496,7 @@ export default function ProductsPage() {
                 categoryFilter !== "all" ||
                 branchFilter !== "all" ||
                 stockFilter !== "all" ||
-                priceFilter.min ||
-                priceFilter.max
+                statusFilter !== "all"
                   ? "Try adjusting your filters"
                   : "Get started by adding your first product"}
               </p>
@@ -399,8 +504,7 @@ export default function ProductsPage() {
                 categoryFilter === "all" &&
                 branchFilter === "all" &&
                 stockFilter === "all" &&
-                !priceFilter.min &&
-                !priceFilter.max && (
+                statusFilter === "all" && (
                   <Button
                     onClick={() =>
                       router.push("/company-admin/masters/products/new")
@@ -416,15 +520,15 @@ export default function ProductsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Product Code</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Weight</TableHead>
-                    <TableHead>Branch</TableHead>
-                    <TableHead>Unit Price</TableHead>
-                    <TableHead>Stock Level</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead className="whitespace-nowrap">Product Code</TableHead>
+                    <TableHead className="whitespace-nowrap">Name</TableHead>
+                    <TableHead className="whitespace-nowrap">Category</TableHead>
+                    <TableHead className="whitespace-nowrap">Weight</TableHead>
+                    <TableHead className="whitespace-nowrap">Branch</TableHead>
+                    <TableHead className="whitespace-nowrap">Unit Price</TableHead>
+                    <TableHead className="whitespace-nowrap">Stock Level</TableHead>
+                    <TableHead className="whitespace-nowrap">Status</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -505,11 +609,11 @@ export default function ProductsPage() {
                         <TableCell>
                           <div>
                             <p className="font-medium">
-                              ${product.unit_price.toFixed(2)}
+                              <CurrencyDisplay amount={product.unit_price} />
                             </p>
                             {product.special_price && (
                               <p className="text-sm text-green-600">
-                                ${product.special_price.toFixed(2)} (special)
+                                <CurrencyDisplay amount={product.special_price} /> (special)
                               </p>
                             )}
                           </div>
@@ -601,10 +705,9 @@ export default function ProductsPage() {
                       disabled={page === 1}
                     >
                       <ChevronLeft className="w-4 h-4" />
-                      Previous
                     </Button>
                     <span className="text-sm text-gray-600 px-2">
-                      Page {page}
+                      {page}
                     </span>
                     <Button
                       variant="outline"
@@ -612,7 +715,6 @@ export default function ProductsPage() {
                       onClick={() => setPage(page + 1)}
                       disabled={page >= totalPages}
                     >
-                      Next
                       <ChevronRight className="w-4 h-4" />
                     </Button>
                   </div>
@@ -630,29 +732,10 @@ export default function ProductsPage() {
             <DialogTitle>Confirm Delete</DialogTitle>
           </DialogHeader>
           <div className="py-4">
-            {productToDelete &&
-              (() => {
-                const product = products.find(
-                  (p: any) => p.id === productToDelete
-                );
-                return (
-                  <>
-                    <p className="text-sm text-gray-600">
-                      Are you sure you want to delete this product? This action
-                      cannot be undone.
-                    </p>
-                    <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                      <p className="text-sm font-medium text-gray-900">
-                        {product?.code}
-                      </p>
-                      <p className="text-sm text-gray-600">{product?.name}</p>
-                      <p className="text-sm text-gray-500 mt-1">
-                        ${product?.unit_price?.toFixed(2) || 0} per unit
-                      </p>
-                    </div>
-                  </>
-                );
-              })()}
+            <p className="text-sm text-gray-600">
+              Are you sure you want to delete this product? This action cannot
+              be undone.
+            </p>
           </div>
           <div className="flex justify-end space-x-2">
             <Button
@@ -668,7 +751,6 @@ export default function ProductsPage() {
               variant="primary"
               onClick={handleDelete}
               disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700"
             >
               {isDeleting ? "Deleting..." : "Delete"}
             </Button>

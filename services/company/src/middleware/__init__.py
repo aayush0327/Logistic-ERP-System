@@ -14,6 +14,7 @@ from .tenant import (
     BranchAccessMiddleware,
     CustomerAccessMiddleware,
 )
+from .tenant_status import CompanyTenantStatusMiddleware
 
 __all__ = [
     "AuthenticationMiddleware",
@@ -24,4 +25,5 @@ __all__ = [
     "TenantContextMiddleware",
     "BranchAccessMiddleware",
     "CustomerAccessMiddleware",
+    "CompanyTenantStatusMiddleware",
 ]

@@ -109,6 +109,13 @@ async def refresh_token(
             detail="User not found or inactive"
         )
 
+    # Check if tenant is active
+    if user.tenant_id and not user.tenant.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your company account has been deactivated. Please contact support."
+        )
+
     # Create new minimal access token
     access_token = create_access_token({
         "sub": user.id,

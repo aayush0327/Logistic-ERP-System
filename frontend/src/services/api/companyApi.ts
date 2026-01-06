@@ -193,6 +193,30 @@ export interface UserDocument {
   verified_by?: string
 }
 
+export interface AuditLog {
+  id: string
+  tenant_id: string
+  user_id: string
+  user_name: string | null
+  user_email: string | null
+  user_role: string | null
+  action: string
+  module: string
+  entity_type: string
+  entity_id: string
+  description: string
+  old_values: Record<string, any> | null
+  new_values: Record<string, any> | null
+  from_status: string | null
+  to_status: string | null
+  approval_status: string | null
+  reason: string | null
+  ip_address: string | null
+  user_agent: string | null
+  service_name: string | null
+  created_at: string
+}
+
 export interface Customer {
   id: string
   tenant_id: string
@@ -206,14 +230,20 @@ export interface Customer {
   state?: string
   postal_code?: string
   business_type?: string  // Deprecated - old enum
-  business_type_id?: string  // New foreign key to business_types table
+  business_type_id?: string  // Deprecated - single business type
+  business_type_ids?: string[]  // New - multiple business types
   credit_limit: number
   pricing_tier: string
   is_active: boolean
   created_at: string
   updated_at?: string
   home_branch?: Branch
-  business_type_relation?: BusinessTypeModel
+  business_type_relation?: BusinessTypeModel  // Deprecated - single business type
+  business_types?: BusinessTypeModel[]  // New - multiple business types
+  // Marketing person contact details
+  marketing_person_name?: string
+  marketing_person_phone?: string
+  marketing_person_email?: string
 }
 
 export interface Vehicle {
@@ -353,21 +383,30 @@ export interface CustomerCreate {
   state?: string
   postal_code?: string
   business_type?: string  // Deprecated - old enum
-  business_type_id?: string  // New foreign key to business_types table
+  business_type_id?: string  // Deprecated - single business type
+  business_type_ids?: string[]  // New - multiple business types
+  branch_ids?: string[]
+  available_for_all_branches?: boolean
   credit_limit?: number
   pricing_tier?: string
   is_active?: boolean
+  // Marketing person contact details
+  marketing_person_name?: string
+  marketing_person_phone?: string
+  marketing_person_email?: string
 }
 
 export interface VehicleCreate {
-  branch_id?: string
+  branch_ids?: string[]
   plate_number: string
   make?: string
   model?: string
   year?: number
   vehicle_type?: string
+  vehicle_type_id?:string
   capacity_weight?: number
   capacity_volume?: number
+  available_for_all_branches?:boolean
   status?: string
   last_maintenance?: string
   next_maintenance?: string
@@ -538,7 +577,7 @@ export interface UserProfileUpdate {
 export const companyApi = createApi({
   reducerPath: 'companyApi',
   baseQuery: baseQuery,
-  tagTypes: ['Branch', 'Customer', 'Vehicle', 'VehicleTypeModel', 'Product', 'ProductCategory', 'BusinessTypeModel', 'PricingRule', 'User', 'Role', 'UserProfile', 'UserDocument'],
+  tagTypes: ['Branch', 'Customer', 'Vehicle', 'VehicleTypeModel', 'Product', 'ProductCategory', 'BusinessTypeModel', 'PricingRule', 'User', 'Role', 'UserProfile', 'UserDocument', 'AuditLog'],
   endpoints: (builder) => ({
     // Branch endpoints
     getBranches: builder.query<{ items: Branch[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number; search?: string; is_active?: boolean }>({
@@ -1212,6 +1251,93 @@ export const companyApi = createApi({
       }),
       invalidatesTags: ['UserDocument'],
     }),
+
+    // Audit Logs endpoints
+    getAuditLogs: builder.query<{
+      items: AuditLog[];
+      total: number;
+      page: number;
+      per_page: number;
+      pages: number;
+    }, {
+      page?: number;
+      per_page?: number;
+      date_from?: string;
+      date_to?: string;
+      user_id?: string;
+      module?: string;
+      action?: string;
+      entity_type?: string;
+      entity_id?: string;
+    }>({
+      query: ({
+        page = 1,
+        per_page = 50,
+        date_from,
+        date_to,
+        user_id,
+        module,
+        action,
+        entity_type,
+        entity_id,
+      }) => {
+        const params = new URLSearchParams()
+        params.append('page', page.toString())
+        params.append('per_page', per_page.toString())
+        if (date_from) params.append('date_from', date_from)
+        if (date_to) params.append('date_to', date_to)
+        if (user_id) params.append('user_id', user_id)
+        if (module) params.append('module', module)
+        if (action) params.append('action', action)
+        if (entity_type) params.append('entity_type', entity_type)
+        if (entity_id) params.append('entity_id', entity_id)
+        return `audit/logs?${params}`
+      },
+      providesTags: ['AuditLog'],
+    }),
+    getAuditSummary: builder.query<{
+      total: number;
+      by_module: Array<{ module: string; count: number }>;
+      by_action: Array<{ action: string; count: number }>;
+      top_users: Array<{ user_id: string; user_name: string | null; count: number }>;
+    }, {
+      date_from?: string;
+      date_to?: string;
+    }>({
+      query: ({ date_from, date_to }) => {
+        const params = new URLSearchParams()
+        if (date_from) params.append('date_from', date_from)
+        if (date_to) params.append('date_to', date_to)
+        return `audit/logs/summary?${params}`
+      },
+      providesTags: ['AuditLog'],
+    }),
+    exportAuditLogs: builder.query<Blob, {
+      date_from?: string;
+      date_to?: string;
+      user_id?: string;
+      module?: string;
+      action?: string;
+      entity_type?: string;
+      entity_id?: string;
+    }>({
+      query: ({ date_from, date_to, user_id, module, action, entity_type, entity_id }) => {
+        const params = new URLSearchParams()
+        if (date_from) params.append('date_from', date_from)
+        if (date_to) params.append('date_to', date_to)
+        if (user_id) params.append('user_id', user_id)
+        if (module) params.append('module', module)
+        if (action) params.append('action', action)
+        if (entity_type) params.append('entity_type', entity_type)
+        if (entity_id) params.append('entity_id', entity_id)
+        return {
+          url: `audit/logs/export?${params}`,
+          method: 'GET',
+          responseHandler: (response) => response.blob(),
+        }
+      },
+      providesTags: ['AuditLog'],
+    }),
   }),
 })
 
@@ -1305,4 +1431,11 @@ export const {
   useUploadUserDocumentMutation,
   useVerifyUserDocumentMutation,
   useDeleteUserDocumentMutation,
+  // Audit Logs hooks
+  useGetAuditLogsQuery,
+  useLazyGetAuditLogsQuery,
+  useGetAuditSummaryQuery,
+  useLazyGetAuditSummaryQuery,
+  useExportAuditLogsQuery,
+  useLazyExportAuditLogsQuery,
 } = companyApi

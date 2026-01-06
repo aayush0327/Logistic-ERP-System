@@ -1,6 +1,7 @@
 """Pydantic schemas for Driver Service."""
 
 from datetime import datetime, date
+from decimal import Decimal
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
 from enum import Enum
@@ -11,6 +12,7 @@ class TripStatus(str, Enum):
     PLANNING = "planning"
     LOADING = "loading"
     ON_ROUTE = "on-route"
+    PAUSED = "paused"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
     TRUCK_MALFUNCTION = "truck-malfunction"
@@ -229,6 +231,17 @@ class ErrorResponse(BaseSchema):
     success: bool = False
     error: str
     detail: Optional[str] = None
+
+
+class TripPause(BaseSchema):
+    """Schema for pausing a trip."""
+    reason: str = Field(..., min_length=1, max_length=500, description="Reason for pause")
+    note: Optional[str] = Field(None, max_length=2000, description="Additional notes")
+
+
+class TripResume(BaseSchema):
+    """Schema for resuming a trip."""
+    note: Optional[str] = Field(None, max_length=2000, description="Resume notes")
 
 
 # Update forward references

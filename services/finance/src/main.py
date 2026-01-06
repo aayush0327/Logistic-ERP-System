@@ -139,16 +139,20 @@ app.add_middleware(
         "/docs",
         "/openapi.json",
         "/redoc",
-        "/favicon.ico"
+        "/favicon.ico",
+        "/api/v1/internal"  # Skip internal endpoints for inter-service communication
     ]
 )
 
 # Include API routers
-from src.api.endpoints import orders, approvals, reports
+from src.api.endpoints import orders, approvals, reports, tenant_cleanup
 
 app.include_router(orders.router, prefix="/api/v1/orders", tags=["orders"])
 app.include_router(approvals.router, prefix="/api/v1/approvals", tags=["approvals"])
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["reports"])
+
+# Internal endpoints for inter-service communication
+app.include_router(tenant_cleanup.router, prefix="/api/v1/internal", tags=["Internal"])
 
 
 @app.get("/")

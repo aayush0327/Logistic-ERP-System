@@ -338,9 +338,56 @@ export default function PricingPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-            </div>
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Rule Name</TableHead>
+                    <TableHead>Service Type</TableHead>
+                    <TableHead>Route</TableHead>
+                    <TableHead>Base Price</TableHead>
+                    <TableHead>Per KM</TableHead>
+                    <TableHead>Per KG</TableHead>
+                    <TableHead>Fuel Surcharge</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Array.from({ length: 6 }).map((_, index) => (
+                    <TableRow key={index} className="animate-pulse">
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-32" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-6 bg-gray-200 rounded w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-28" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-16" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-16" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-16" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-6 bg-gray-200 rounded w-16" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 w-4 bg-gray-200 rounded" />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </>
           ) : filteredRules.length === 0 ? (
             <div className="text-center py-8">
               <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />

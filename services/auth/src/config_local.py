@@ -138,6 +138,11 @@ class AuthSettings(Settings, LoggingMixin):
     OIDC_USERINFO_ENDPOINT: Optional[str] = os.getenv("OIDC_USERINFO_ENDPOINT")
     OIDC_JWKS_URI: Optional[str] = os.getenv("OIDC_JWKS_URI")
 
+    # Feature flags for currency and timezone
+    TIMEZONE_FEATURE_ENABLED: bool = os.getenv("TIMEZONE_FEATURE_ENABLED", "true").lower() == "true"
+    DEFAULT_TIMEZONE: str = os.getenv("DEFAULT_TIMEZONE", "Africa/Dar_es_Salaam")  # East Africa Time
+    DEFAULT_CURRENCY: str = os.getenv("DEFAULT_CURRENCY", "TZS")  # Tanzanian Shilling
+
     @property
     def auth_database_url(self) -> str:
         """Get auth service database URL"""

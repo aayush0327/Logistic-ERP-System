@@ -86,13 +86,9 @@ export async function GET(request: NextRequest) {
           });
         }
 
-        // Filter only available drivers without current truck assignment
-        const availableDrivers = data.filter(
-          (driver: any) => driver.status === 'available' && !driver.currentTruck
-        );
-        console.log("FRONTEND API - filtered drivers:", availableDrivers);
-        console.log("FRONTEND API - Available drivers count:", availableDrivers.length);
-        return NextResponse.json(availableDrivers);
+        // Return all drivers without filtering - let frontend handle status display
+        console.log("FRONTEND API - Returning all drivers:", data.length);
+        return NextResponse.json(data);
       } else {
         const errorText = await response.text();
         console.error("FRONTEND API - TMS service error:", response.status, errorText);
@@ -101,12 +97,9 @@ export async function GET(request: NextRequest) {
       console.warn('FRONTEND API - Resource service not available, using dummy data:', error);
     }
 
-    // Fallback to dummy data
-    const availableDrivers = dummyDrivers.filter(
-      driver => driver.status === 'available' && !driver.currentTruck
-    );
-    console.log("FRONTEND API - Using dummy drivers, count:", availableDrivers.length);
-    return NextResponse.json(availableDrivers);
+    // Fallback to dummy data - return all drivers
+    console.log("FRONTEND API - Using dummy drivers, count:", dummyDrivers.length);
+    return NextResponse.json(dummyDrivers);
 
   } catch (error) {
     console.error('FRONTEND API - Error fetching drivers:', error);

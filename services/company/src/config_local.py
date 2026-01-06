@@ -88,10 +88,10 @@ class CompanySettings(BaseSettings):
     # Rate Limiting
     RATE_LIMIT_ENABLED: bool = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
     RATE_LIMIT_REQUESTS_PER_MINUTE: int = int(
-        os.getenv("RATE_LIMIT_REQUESTS_PER_MINUTE", "60")
+        os.getenv("RATE_LIMIT_REQUESTS_PER_MINUTE", "300")  # Increased from 60 to 300 for inter-service calls
     )
     RATE_LIMIT_REQUESTS_PER_HOUR: int = int(
-        os.getenv("RATE_LIMIT_REQUESTS_PER_HOUR", "1000")
+        os.getenv("RATE_LIMIT_REQUESTS_PER_HOUR", "10000")  # Increased from 1000 to 10000
     )
 
     # Security Headers

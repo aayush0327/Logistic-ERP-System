@@ -86,6 +86,10 @@ class Permission(Enum):
     COMPANY_SETTINGS_UPDATE = "company:settings_update"
     COMPANY_INTEGRATIONS_MANAGE = "company:integrations_manage"
 
+    # Audit Logs
+    AUDIT_READ = "audit:read"
+    AUDIT_EXPORT = "audit:export"
+
 
 # Permission groups for easier management
 PERMISSION_GROUPS = {
@@ -189,6 +193,8 @@ ROLE_PERMISSIONS = {
             Permission.PRICING_RULES_READ.value,
             Permission.PRICING_RULES_UPDATE.value,
             Permission.PRICING_RULES_DELETE.value,
+            Permission.AUDIT_READ.value,
+            Permission.AUDIT_EXPORT.value,
         ]
     ),
 

@@ -10,7 +10,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.database import get_db, Branch, Customer, Vehicle, VehicleStatus
+from src.database import get_db, Branch, Customer, Vehicle, VehicleStatus, CustomerBranch, VehicleBranch
 from src.helpers import validate_branch_exists
 from src.schemas import (
     Branch as BranchSchema,
@@ -231,9 +231,6 @@ async def get_branch(
     query = select(Branch).where(
         Branch.id == branch_id,
         Branch.tenant_id == tenant_id
-    ).options(
-        selectinload(Branch.customers),
-        selectinload(Branch.vehicles)
     )
 
     result = await db.execute(query)
@@ -407,25 +404,31 @@ async def get_branch_metrics(
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
 
-    # Count customers for this branch using direct queries
-    customer_query = select(func.count()).select_from(Customer).where(
-        Customer.home_branch_id == branch_id,
+    # Count customers for this branch using junction table
+    customer_query = select(func.count()).select_from(Customer).join(
+        CustomerBranch, Customer.id == CustomerBranch.customer_id
+    ).where(
+        CustomerBranch.branch_id == branch_id,
         Customer.tenant_id == tenant_id
     )
     customer_result = await db.execute(customer_query)
     customer_count = customer_result.scalar() or 0
 
-    # Count vehicles for this branch
-    vehicle_query = select(func.count()).select_from(Vehicle).where(
-        Vehicle.branch_id == branch_id,
+    # Count vehicles for this branch using junction table
+    vehicle_query = select(func.count()).select_from(Vehicle).join(
+        VehicleBranch, Vehicle.id == VehicleBranch.vehicle_id
+    ).where(
+        VehicleBranch.branch_id == branch_id,
         Vehicle.tenant_id == tenant_id
     )
     vehicle_result = await db.execute(vehicle_query)
     vehicle_count = vehicle_result.scalar() or 0
 
-    # Count active vehicles for this branch
-    active_vehicle_query = select(func.count()).select_from(Vehicle).where(
-        Vehicle.branch_id == branch_id,
+    # Count active vehicles for this branch using junction table
+    active_vehicle_query = select(func.count()).select_from(Vehicle).join(
+        VehicleBranch, Vehicle.id == VehicleBranch.vehicle_id
+    ).where(
+        VehicleBranch.branch_id == branch_id,
         Vehicle.tenant_id == tenant_id,
         Vehicle.status == VehicleStatus.AVAILABLE
     )

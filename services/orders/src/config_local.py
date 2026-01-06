@@ -88,10 +88,10 @@ class OrdersSettings(BaseSettings):
     # Rate Limiting
     RATE_LIMIT_ENABLED: bool = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
     RATE_LIMIT_REQUESTS_PER_MINUTE: int = int(
-        os.getenv("RATE_LIMIT_REQUESTS_PER_MINUTE", "60")
+        os.getenv("RATE_LIMIT_REQUESTS_PER_MINUTE", "300")  # Increased from 60 to 300 for inter-service calls
     )
     RATE_LIMIT_REQUESTS_PER_HOUR: int = int(
-        os.getenv("RATE_LIMIT_REQUESTS_PER_HOUR", "1000")
+        os.getenv("RATE_LIMIT_REQUESTS_PER_HOUR", "10000")  # Increased from 1000 to 10000
     )
 
     # Security Headers
@@ -117,7 +117,25 @@ class OrdersSettings(BaseSettings):
 
     # File upload settings
     MAX_FILE_SIZE: int = int(os.getenv("MAX_FILE_SIZE", "10485760"))  # 10MB
+    ALLOWED_FILE_TYPES: List[str] = [
+        "application/pdf",
+        "image/jpeg",
+        "image/png",
+        "image/jpg",
+        "image/gif",
+        "image/webp",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ]
     UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "uploads")
+
+    # MinIO S3 settings
+    MINIO_ENDPOINT: str = os.getenv("MINIO_ENDPOINT", "minio:9000")
+    MINIO_PUBLIC_ENDPOINT: str = os.getenv("MINIO_PUBLIC_ENDPOINT", "localhost:9000")
+    MINIO_ROOT_USER: str = os.getenv("MINIO_ROOT_USER", "minioadmin")
+    MINIO_ROOT_PASSWORD: str = os.getenv("MINIO_ROOT_PASSWORD", "minioadmin")
+    MINIO_SECURE: bool = os.getenv("MINIO_SECURE", "false").lower() == "true"
+    MINIO_BUCKET: str = os.getenv("MINIO_BUCKET", "order-documents")
 
     # Service port
     PORT: int = int(os.getenv("PORT", "8003"))  # Changed to avoid conflict

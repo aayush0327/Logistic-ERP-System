@@ -8,7 +8,7 @@ import logging
 
 from src.config import settings
 from src.database import engine, Base
-from src.api.endpoints import trips, orders, resources
+from src.api.endpoints import trips, orders, resources, driver, tenant_cleanup
 from src.middleware import (
     AuthenticationMiddleware,
     TenantContextMiddleware,
@@ -17,7 +17,6 @@ from src.middleware import (
     AuditLoggingMiddleware,
     RateLimitMiddleware,
 )
-from src.api.endpoints import trips, orders, resources, driver
 
 # Configure logging
 logging.basicConfig(
@@ -168,6 +167,9 @@ app.include_router(trips.router, prefix="/api/v1/trips", tags=["trips"])
 app.include_router(orders.router, prefix="/api/v1/orders", tags=["orders"])
 app.include_router(resources.router, prefix="/api/v1/resources", tags=["resources"])
 app.include_router(driver.router, prefix="/api/v1/driver", tags=["driver"])
+
+# Internal endpoints for inter-service communication
+app.include_router(tenant_cleanup.router, prefix="/api/v1/internal", tags=["Internal"])
 
 
 @app.get("/")

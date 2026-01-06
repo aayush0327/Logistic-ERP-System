@@ -4,8 +4,22 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { FormError } from '@/components/ui/FormError'
 import { User as UserType, UserProfile, useUpdateUserMutation } from '@/services/api/companyApi'
 import { CheckCircle, User, Pencil, X, Save } from 'lucide-react'
+import {
+  phoneOptionalSchema,
+  bloodGroupSchema,
+  pinCodeOptionalSchema,
+  panSchema,
+  aadharSchema,
+  passportSchema,
+  bankAccountSchema,
+  ifscSchema,
+  validateField,
+  formatApiError,
+  emailSchema,
+} from '@/lib/validations'
 
 interface EmployeeProfileFormProps {
   user: UserType
@@ -48,6 +62,10 @@ export default function EmployeeProfileForm({
     bank_account_number: '',
     bank_ifsc: '',
   })
+
+  // Validation errors state
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [apiError, setApiError] = useState<string | null>(null)
 
   const [updateUser, { isLoading: isUpdating }] = useUpdateUserMutation()
 
@@ -94,12 +112,85 @@ export default function EmployeeProfileForm({
       ...prev,
       [field]: value
     }))
+    // Clear error for this field when user starts typing
+    if (errors[field]) {
+      setErrors(prev => {
+        const newErrors = { ...prev }
+        delete newErrors[field]
+        return newErrors
+      })
+    }
+    // Clear API error when user starts typing
+    if (apiError) {
+      setApiError(null)
+    }
+  }
+
+  // Validate form before submission
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {}
+
+    // Validate emergency contact number (optional phone format)
+    if (formData.emergency_contact_number) {
+      const phoneError = validateField(phoneOptionalSchema, formData.emergency_contact_number)
+      if (phoneError) newErrors.emergency_contact_number = phoneError
+    }
+
+    // Validate blood group (max 5 characters)
+    if (formData.blood_group) {
+      const bloodGroupError = validateField(bloodGroupSchema, formData.blood_group)
+      if (bloodGroupError) newErrors.blood_group = bloodGroupError
+    }
+
+    // Validate Aadhar number (optional, 12 digits)
+    if (formData.aadhar_number) {
+      const aadharError = validateField(aadharSchema, formData.aadhar_number)
+      if (aadharError) newErrors.aadhar_number = aadharError
+    }
+
+    // Validate PAN number (optional, proper format)
+    if (formData.pan_number) {
+      const panError = validateField(panSchema, formData.pan_number.toUpperCase())
+      if (panError) newErrors.pan_number = panError
+    }
+
+    // Validate passport number (optional)
+    if (formData.passport_number) {
+      const passportError = validateField(passportSchema, formData.passport_number.toUpperCase())
+      if (passportError) newErrors.passport_number = passportError
+    }
+
+    // Validate postal code (optional, 6 digits)
+    if (formData.postal_code) {
+      const pinCodeError = validateField(pinCodeOptionalSchema, formData.postal_code)
+      if (pinCodeError) newErrors.postal_code = pinCodeError
+    }
+
+    // Validate bank account number (optional)
+    if (formData.bank_account_number) {
+      const bankAccountError = validateField(bankAccountSchema, formData.bank_account_number)
+      if (bankAccountError) newErrors.bank_account_number = bankAccountError
+    }
+
+    // Validate IFSC code (optional)
+    if (formData.bank_ifsc) {
+      const ifscError = validateField(ifscSchema, formData.bank_ifsc.toUpperCase())
+      if (ifscError) newErrors.bank_ifsc = ifscError
+    }
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!isEditing) {
+      return
+    }
+
+    // Validate form before submission
+    if (!validateForm()) {
       return
     }
 
@@ -142,6 +233,8 @@ export default function EmployeeProfileForm({
       onSave()
     } catch (error) {
       console.error('Error saving profile:', error)
+      const errorMessage = formatApiError(error)
+      setApiError(errorMessage)
     }
   }
 
@@ -304,6 +397,13 @@ export default function EmployeeProfileForm({
   // EDIT MODE - Form inputs
   return (
     <form id="profile-form" onSubmit={handleSubmit} className="space-y-6">
+      {/* API Error Display */}
+      {apiError && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+          <p className="text-sm text-red-600">{apiError}</p>
+        </div>
+      )}
+
       {/* Personal Information */}
       <Card>
         <CardHeader>
@@ -384,7 +484,9 @@ export default function EmployeeProfileForm({
                 value={formData.blood_group}
                 onChange={(e) => handleInputChange('blood_group', e.target.value)}
                 placeholder="e.g., O+, A-, B+"
+                error={!!errors.blood_group}
               />
+              <FormError error={errors.blood_group} />
             </div>
           </div>
         </CardContent>
@@ -411,7 +513,9 @@ export default function EmployeeProfileForm({
                 value={formData.emergency_contact_number}
                 onChange={(e) => handleInputChange('emergency_contact_number', e.target.value)}
                 placeholder="Enter emergency contact number"
+                error={!!errors.emergency_contact_number}
               />
+              <FormError error={errors.emergency_contact_number} />
             </div>
           </div>
 
@@ -434,11 +538,15 @@ export default function EmployeeProfileForm({
                   onChange={(e) => handleInputChange('state', e.target.value)}
                   placeholder="State"
                 />
-                <Input
-                  value={formData.postal_code}
-                  onChange={(e) => handleInputChange('postal_code', e.target.value)}
-                  placeholder="Postal code"
-                />
+                <div>
+                  <Input
+                    value={formData.postal_code}
+                    onChange={(e) => handleInputChange('postal_code', e.target.value)}
+                    placeholder="Postal code"
+                    error={!!errors.postal_code}
+                  />
+                  <FormError error={errors.postal_code} />
+                </div>
                 <Input
                   value={formData.country}
                   onChange={(e) => handleInputChange('country', e.target.value)}
@@ -464,24 +572,30 @@ export default function EmployeeProfileForm({
                 onChange={(e) => handleInputChange('aadhar_number', e.target.value)}
                 placeholder="Enter Aadhar number"
                 maxLength={12}
+                error={!!errors.aadhar_number}
               />
+              <FormError error={errors.aadhar_number} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">PAN Number</label>
               <Input
                 value={formData.pan_number}
-                onChange={(e) => handleInputChange('pan_number', e.target.value)}
-                placeholder="Enter PAN number"
+                onChange={(e) => handleInputChange('pan_number', e.target.value.toUpperCase())}
+                placeholder="Enter PAN number (e.g., ABCDE1234F)"
                 maxLength={10}
+                error={!!errors.pan_number}
               />
+              <FormError error={errors.pan_number} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Passport Number</label>
               <Input
                 value={formData.passport_number}
-                onChange={(e) => handleInputChange('passport_number', e.target.value)}
+                onChange={(e) => handleInputChange('passport_number', e.target.value.toUpperCase())}
                 placeholder="Enter passport number"
+                error={!!errors.passport_number}
               />
+              <FormError error={errors.passport_number} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nationality</label>
@@ -516,16 +630,20 @@ export default function EmployeeProfileForm({
                 type="password"
                 value={formData.bank_account_number}
                 onChange={(e) => handleInputChange('bank_account_number', e.target.value)}
-                placeholder="Enter account number"
+                placeholder="Enter account number (9-18 digits)"
+                error={!!errors.bank_account_number}
               />
+              <FormError error={errors.bank_account_number} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">IFSC Code</label>
               <Input
                 value={formData.bank_ifsc}
-                onChange={(e) => handleInputChange('bank_ifsc', e.target.value)}
-                placeholder="Enter IFSC code"
+                onChange={(e) => handleInputChange('bank_ifsc', e.target.value.toUpperCase())}
+                placeholder="Enter IFSC code (e.g., SBIN0001234)"
+                error={!!errors.bank_ifsc}
               />
+              <FormError error={errors.bank_ifsc} />
             </div>
           </div>
         </CardContent>

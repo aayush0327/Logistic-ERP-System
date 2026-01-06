@@ -102,6 +102,16 @@ const authSlice = createSlice({
         state.user = action.payload.user;
         state.token = action.payload.token;
         state.error = null;
+
+        // Store tenant settings in localStorage for persistence across sessions
+        if (typeof window !== 'undefined' && action.payload.user?.tenant?.settings) {
+          try {
+            const tenantSettings = JSON.parse(action.payload.user.tenant.settings);
+            localStorage.setItem('tenantSettings', JSON.stringify(tenantSettings));
+          } catch (e) {
+            console.error('Failed to parse tenant settings:', e);
+          }
+        }
       })
       .addCase(loginAsync.rejected, (state, action) => {
         state.isLoading = false;
@@ -120,6 +130,16 @@ const authSlice = createSlice({
         state.isLoading = false;
         state.user = action.payload;
         state.isAuthenticated = true;
+
+        // Store tenant settings in localStorage if available
+        if (typeof window !== 'undefined' && action.payload?.tenant?.settings) {
+          try {
+            const tenantSettings = JSON.parse(action.payload.tenant.settings);
+            localStorage.setItem('tenantSettings', JSON.stringify(tenantSettings));
+          } catch (e) {
+            console.error('Failed to parse tenant settings:', e);
+          }
+        }
       })
       .addCase(getCurrentUserAsync.rejected, (state, action) => {
         state.isLoading = false;
@@ -141,6 +161,10 @@ const authSlice = createSlice({
         state.token = null;
         state.isAuthenticated = false;
         state.error = null;
+        // Clear tenant settings from localStorage
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('tenantSettings');
+        }
       });
   },
 });

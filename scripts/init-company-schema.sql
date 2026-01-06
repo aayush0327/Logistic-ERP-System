@@ -18,7 +18,7 @@ EXCEPTION
 END $$;
 
 DO $$ BEGIN
-    CREATE TYPE vehicle_status AS ENUM ('available', 'on_trip', 'maintenance', 'out_of_service');
+    CREATE TYPE vehicle_status AS ENUM ('available', 'assigned', 'on_trip', 'maintenance', 'out_of_service');
 EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;
@@ -33,7 +33,7 @@ END $$;
 CREATE TABLE IF NOT EXISTS branches (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id VARCHAR(255) NOT NULL,
-    code VARCHAR(20) UNIQUE NOT NULL,
+    code VARCHAR(20) NOT NULL,
     name VARCHAR(100) NOT NULL,
     address VARCHAR(500),
     city VARCHAR(100),
@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS branches (
     created_by VARCHAR(255),
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE
+    updated_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE(tenant_id, code)  -- Tenant-aware unique constraint
 );
 
 -- Add created_by column if it doesn't exist (for migrations)
@@ -63,8 +64,7 @@ END $$;
 CREATE TABLE IF NOT EXISTS customers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id VARCHAR(255) NOT NULL,
-    home_branch_id UUID REFERENCES branches(id) ON DELETE SET NULL,
-    code VARCHAR(20) UNIQUE NOT NULL,
+    code VARCHAR(20) NOT NULL,
     name VARCHAR(100) NOT NULL,
     phone VARCHAR(20),
     email VARCHAR(100),
@@ -76,16 +76,30 @@ CREATE TABLE IF NOT EXISTS customers (
     credit_limit DECIMAL(12,2) DEFAULT 0,
     pricing_tier VARCHAR(20) DEFAULT 'standard',
     is_active BOOLEAN DEFAULT true,
+    available_for_all_branches BOOLEAN DEFAULT true,
+    marketing_person_name VARCHAR(100),
+    marketing_person_phone VARCHAR(20),
+    marketing_person_email VARCHAR(100),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE
+    updated_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE(tenant_id, code)  -- Tenant-aware unique constraint
+);
+
+-- Junction table for customer-branch relationships (for customers not available in all branches)
+CREATE TABLE IF NOT EXISTS customer_branches (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    tenant_id VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(customer_id, branch_id)
 );
 
 -- Create vehicles table
 CREATE TABLE IF NOT EXISTS vehicles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id VARCHAR(255) NOT NULL,
-    branch_id UUID REFERENCES branches(id) ON DELETE SET NULL,
-    plate_number VARCHAR(20) UNIQUE NOT NULL,
+    plate_number VARCHAR(20) NOT NULL,
     make VARCHAR(50),
     model VARCHAR(50),
     year INTEGER,
@@ -96,8 +110,20 @@ CREATE TABLE IF NOT EXISTS vehicles (
     last_maintenance TIMESTAMP WITH TIME ZONE,
     next_maintenance TIMESTAMP WITH TIME ZONE,
     is_active BOOLEAN DEFAULT true,
+    available_for_all_branches BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE
+    updated_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE(tenant_id, plate_number)  -- Tenant-aware unique constraint
+);
+
+-- Junction table for vehicle-branch relationships (for vehicles not available in all branches)
+CREATE TABLE IF NOT EXISTS vehicle_branches (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    vehicle_id UUID NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+    branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    tenant_id VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(vehicle_id, branch_id)
 );
 
 -- Create product_categories table
@@ -117,7 +143,7 @@ CREATE TABLE IF NOT EXISTS products (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id VARCHAR(255) NOT NULL,
     category_id UUID REFERENCES product_categories(id) ON DELETE SET NULL,
-    code VARCHAR(50) UNIQUE NOT NULL,
+    code VARCHAR(50) NOT NULL,
     name VARCHAR(100) NOT NULL,
     description VARCHAR(500),
     unit_price DECIMAL(12,2) NOT NULL,
@@ -134,7 +160,8 @@ CREATE TABLE IF NOT EXISTS products (
     is_active BOOLEAN DEFAULT true,
     available_for_all_branches BOOLEAN DEFAULT true,  -- New field for branch availability
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE
+    updated_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE(tenant_id, code)  -- Tenant-aware unique constraint
 );
 
 -- Junction table for product-branch relationships (for products not available in all branches)
@@ -168,13 +195,14 @@ CREATE TABLE IF NOT EXISTS pricing_rules (
 CREATE TABLE IF NOT EXISTS service_zones (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id VARCHAR(255) NOT NULL,
-    code VARCHAR(20) UNIQUE NOT NULL,
+    code VARCHAR(20) NOT NULL,
     name VARCHAR(100) NOT NULL,
     description VARCHAR(500),
     coverage_areas JSONB,  -- List of postal codes or coordinates
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE
+    updated_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE(tenant_id, code)  -- Tenant-aware unique constraint
 );
 
 -- Create indexes for performance
@@ -182,9 +210,10 @@ CREATE INDEX IF NOT EXISTS idx_branches_tenant ON branches(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_customers_tenant ON customers(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_vehicles_tenant ON vehicles(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_branches_manager ON branches(manager_id);
-CREATE INDEX IF NOT EXISTS idx_customers_branch ON customers(home_branch_id);
 CREATE INDEX IF NOT EXISTS idx_customers_business_type ON customers(business_type);
-CREATE INDEX IF NOT EXISTS idx_vehicles_branch ON vehicles(branch_id);
+CREATE INDEX IF NOT EXISTS idx_vehicle_branches_vehicle_id ON vehicle_branches(vehicle_id);
+CREATE INDEX IF NOT EXISTS idx_vehicle_branches_branch_id ON vehicle_branches(branch_id);
+CREATE INDEX IF NOT EXISTS idx_vehicle_branches_tenant_id ON vehicle_branches(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_vehicles_status ON vehicles(status);
 CREATE INDEX IF NOT EXISTS idx_vehicles_type ON vehicles(vehicle_type);
 CREATE INDEX IF NOT EXISTS idx_pricing_tenant_zone ON pricing_rules(tenant_id, zone_origin, zone_destination);
@@ -195,6 +224,9 @@ CREATE INDEX IF NOT EXISTS idx_products_stock ON products(current_stock, min_sto
 CREATE INDEX idx_product_branches_product_id ON product_branches(product_id);
 CREATE INDEX idx_product_branches_branch_id ON product_branches(branch_id);
 CREATE INDEX idx_product_branches_tenant_id ON product_branches(tenant_id);
+CREATE INDEX idx_customer_branches_customer_id ON customer_branches(customer_id);
+CREATE INDEX idx_customer_branches_branch_id ON customer_branches(branch_id);
+CREATE INDEX idx_customer_branches_tenant_id ON customer_branches(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_product_categories_tenant ON product_categories(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_product_categories_parent ON product_categories(parent_id);
 CREATE INDEX IF NOT EXISTS idx_service_zones_tenant ON service_zones(tenant_id);
@@ -289,7 +321,7 @@ CREATE TABLE IF NOT EXISTS user_invitations (
     id VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
     tenant_id VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL,
-    invitation_token VARCHAR(255) UNIQUE NOT NULL,
+    invitation_token VARCHAR(255) UNIQUE NOT NULL,  -- Global uniqueness for security
     role_id VARCHAR(50),  -- Auth service role ID stored as string (no FK constraint)
     branch_id UUID REFERENCES branches(id) ON DELETE SET NULL,
     invited_by VARCHAR(255) NOT NULL,  -- User ID who sent the invitation
@@ -300,7 +332,8 @@ CREATE TABLE IF NOT EXISTS user_invitations (
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'expired', 'revoked')),
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE
+    updated_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE(tenant_id, email)  -- Tenant-aware unique constraint (allows same email across tenants)
 );
 
 -- Create employee_profiles table
@@ -308,8 +341,8 @@ CREATE TABLE IF NOT EXISTS user_invitations (
 CREATE TABLE IF NOT EXISTS employee_profiles (
     id VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
     tenant_id VARCHAR(255) NOT NULL,
-    user_id VARCHAR(255) NOT NULL UNIQUE,  -- Reference to auth service users table
-    employee_code VARCHAR(20) UNIQUE,
+    user_id VARCHAR(255) NOT NULL UNIQUE,  -- Reference to auth service users table (global uniqueness)
+    employee_code VARCHAR(20),
     role_id VARCHAR(50) NOT NULL,  -- Auth service role ID stored as string (no FK constraint)
     branch_id UUID REFERENCES branches(id),
     first_name VARCHAR(100),
@@ -339,7 +372,8 @@ CREATE TABLE IF NOT EXISTS employee_profiles (
     aadhar_number VARCHAR(20),
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE
+    updated_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE(tenant_id, employee_code)  -- Tenant-aware unique constraint
 );
 
 -- Create driver_profiles table (extends employee_profiles)
@@ -347,7 +381,7 @@ CREATE TABLE IF NOT EXISTS driver_profiles (
     id VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
     employee_profile_id VARCHAR(36) NOT NULL REFERENCES employee_profiles(id) ON DELETE CASCADE,
     tenant_id VARCHAR(255) NOT NULL,
-    license_number VARCHAR(50) UNIQUE NOT NULL,
+    license_number VARCHAR(50) NOT NULL,
     license_type VARCHAR(20) NOT NULL CHECK (license_type IN ('light_motor', 'heavy_motor', 'transport', 'goods')),
     license_expiry DATE NOT NULL,
     license_issuing_authority VARCHAR(100),
@@ -355,7 +389,7 @@ CREATE TABLE IF NOT EXISTS driver_profiles (
     badge_expiry DATE,
     experience_years INTEGER DEFAULT 0,
     preferred_vehicle_types JSONB,  -- Array of preferred vehicle types
-    current_status VARCHAR(20) DEFAULT 'available' CHECK (current_status IN ('available', 'on_trip', 'off_duty', 'on_leave', 'suspended')),
+    current_status VARCHAR(20) DEFAULT 'available' CHECK (current_status IN ('available', 'assigned', 'on_trip', 'off_duty', 'on_leave', 'suspended')),
     last_trip_date DATE,
     total_trips INTEGER DEFAULT 0,
     total_distance DECIMAL(12,2) DEFAULT 0,  -- Total kilometers driven
@@ -366,7 +400,8 @@ CREATE TABLE IF NOT EXISTS driver_profiles (
     police_verification_date DATE,
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE
+    updated_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE(tenant_id, license_number)  -- Tenant-aware unique constraint
 );
 
 -- Create finance_manager_profiles table (extends employee_profiles)
@@ -631,6 +666,35 @@ CREATE TRIGGER update_business_types_updated_at BEFORE UPDATE ON business_types
 
 -- Enable Row Level Security for business_types
 ALTER TABLE business_types ENABLE ROW LEVEL SECURITY;
+
+-- ================================================================================
+-- MIGRATION 017: Add customer_business_types junction table for multiple business types
+-- ================================================================================
+
+-- Create junction table for customer-business type relationships (many-to-many)
+CREATE TABLE IF NOT EXISTS customer_business_types (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    business_type_id UUID NOT NULL REFERENCES business_types(id) ON DELETE CASCADE,
+    tenant_id VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_by VARCHAR(255),
+    UNIQUE(customer_id, business_type_id)  -- Prevent duplicate relationships
+);
+
+-- Create indexes for customer_business_types table
+CREATE INDEX IF NOT EXISTS idx_customer_business_types_customer_id ON customer_business_types(customer_id);
+CREATE INDEX IF NOT EXISTS idx_customer_business_types_business_type_id ON customer_business_types(business_type_id);
+CREATE INDEX IF NOT EXISTS idx_customer_business_types_tenant_id ON customer_business_types(tenant_id);
+
+-- Add comments
+COMMENT ON TABLE customer_business_types IS 'Junction table for many-to-many relationship between customers and business types';
+COMMENT ON COLUMN customer_business_types.customer_id IS 'Reference to customers table';
+COMMENT ON COLUMN customer_business_types.business_type_id IS 'Reference to business_types table';
+COMMENT ON COLUMN customer_business_types.tenant_id IS 'Tenant ID for multi-tenancy';
+
+-- Enable Row Level Security for customer_business_types
+ALTER TABLE customer_business_types ENABLE ROW LEVEL SECURITY;
 
 -- ================================================================================
 -- MIGRATION 011: Add vehicle_types table for dynamic vehicle type management

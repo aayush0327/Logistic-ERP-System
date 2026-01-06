@@ -7,11 +7,11 @@ from datetime import datetime
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.database import get_db, Vehicle, Branch, VehicleTypeModel, VehicleType, VehicleStatus
+from src.database import get_db, Vehicle, Branch, VehicleTypeModel, VehicleType, VehicleStatus, VehicleBranch
 from src.helpers import validate_branch_exists
 from src.schemas import (
     Vehicle as VehicleSchema,
@@ -38,7 +38,6 @@ async def list_vehicles(
     search: Optional[str] = Query(None),
     vehicle_type: Optional[VehicleType] = Query(None),
     status: Optional[VehicleStatus] = Query(None),
-    branch_id: Optional[UUID] = Query(None),
     is_active: Optional[bool] = Query(None),
     token_data: TokenData = Depends(require_any_permission(["vehicles:read_all", "vehicles:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
@@ -69,9 +68,6 @@ async def list_vehicles(
     if status:
         query = query.where(Vehicle.status == status)
 
-    if branch_id:
-        query = query.where(Vehicle.branch_id == branch_id)
-
     if is_active is not None:
         query = query.where(Vehicle.is_active == is_active)
 
@@ -84,8 +80,11 @@ async def list_vehicles(
     offset = (page - 1) * per_page
     query = query.offset(offset).limit(per_page).order_by(Vehicle.plate_number)
 
-    # Include branch relationship and vehicle_type_relation
-    query = query.options(selectinload(Vehicle.branch), selectinload(Vehicle.vehicle_type_relation))
+    # Include vehicle type and branches relationships
+    query = query.options(
+        selectinload(Vehicle.vehicle_type_relation),
+        selectinload(Vehicle.branches).selectinload(VehicleBranch.branch)
+    )
 
     # Execute query
     result = await db.execute(query)
@@ -127,12 +126,12 @@ async def get_vehicle_status_options():
     """
     logger.info("Getting vehicle status options...")
     try:
-        status_options = ["available", "on_trip", "maintenance", "out_of_service"]
+        status_options = ["available", "assigned", "on_trip", "maintenance", "out_of_service"]
         logger.info(f"Returning status options: {status_options}")
         return status_options
     except Exception as e:
         logger.error(f"Error getting vehicle status options: {e}")
-        return ["available", "on_trip", "maintenance", "out_of_service"]
+        return ["available", "assigned", "on_trip", "maintenance", "out_of_service"]
 
 
 @router.get("/{vehicle_id}", response_model=VehicleSchema)
@@ -155,8 +154,8 @@ async def get_vehicle(
         Vehicle.id == vehicle_id,
         Vehicle.tenant_id == tenant_id
     ).options(
-        selectinload(Vehicle.branch),
-        selectinload(Vehicle.vehicle_type_relation)
+        selectinload(Vehicle.vehicle_type_relation),
+        selectinload(Vehicle.branches).selectinload(VehicleBranch.branch)
     )
 
     result = await db.execute(query)
@@ -195,28 +194,49 @@ async def create_vehicle(
             detail="Vehicle with this plate number already exists"
         )
 
-    # Validate branch if provided
-    if vehicle_data.branch_id:
-        try:
-            await validate_branch_exists(db, vehicle_data.branch_id, tenant_id)
-        except ValueError as e:
-            raise HTTPException(
-                status_code=400,
-                detail=str(e)
-            )
+    # Extract branch_ids from request data
+    branch_ids = vehicle_data.branch_ids if hasattr(vehicle_data, 'branch_ids') else None
 
-    # Create new vehicle
+    # Create new vehicle (excluding branch_ids as it's not a model field)
+    vehicle_data_dict = vehicle_data.model_dump(exclude={'branch_ids'})
     vehicle = Vehicle(
         tenant_id=tenant_id,
-        **vehicle_data.model_dump()
+        **vehicle_data_dict
     )
 
     db.add(vehicle)
     await db.commit()
     await db.refresh(vehicle)
 
-    # Load the branch and vehicle_type relationships for response
-    await db.refresh(vehicle, ["branch", "vehicle_type_relation"])
+    # Handle branch assignments if not available for all branches
+    if not vehicle.available_for_all_branches and branch_ids:
+        # Validate all branch IDs
+        for branch_id in branch_ids:
+            try:
+                await validate_branch_exists(db, branch_id, tenant_id)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+        # Create vehicle-branch relationships
+        for branch_id in branch_ids:
+            vehicle_branch = VehicleBranch(
+                vehicle_id=vehicle.id,
+                branch_id=branch_id,
+                tenant_id=tenant_id
+            )
+            db.add(vehicle_branch)
+        await db.commit()
+
+    # Load the vehicle_type and branches relationships for response
+    vehicle_with_relationships = await db.execute(
+        select(Vehicle)
+        .where(Vehicle.id == vehicle.id)
+        .options(
+            selectinload(Vehicle.vehicle_type_relation),
+            selectinload(Vehicle.branches).selectinload(VehicleBranch.branch)
+        )
+    )
+    vehicle = vehicle_with_relationships.scalar_one()
 
     return VehicleSchema.model_validate(vehicle)
 
@@ -240,33 +260,64 @@ async def update_vehicle(
     query = select(Vehicle).where(
         Vehicle.id == vehicle_id,
         Vehicle.tenant_id == tenant_id
-    ).options(selectinload(Vehicle.branch), selectinload(Vehicle.vehicle_type_relation))
+    ).options(
+        selectinload(Vehicle.vehicle_type_relation)
+    )
     result = await db.execute(query)
     vehicle = result.scalar_one_or_none()
 
     if not vehicle:
         raise HTTPException(status_code=404, detail="Vehicle not found")
 
-    # Validate branch if provided
-    if vehicle_data.branch_id:
-        try:
-            await validate_branch_exists(db, vehicle_data.branch_id, tenant_id)
-        except ValueError as e:
-            raise HTTPException(
-                status_code=400,
-                detail=str(e)
-            )
+    # Extract branch_ids from request data if present
+    update_data = vehicle_data.model_dump(exclude_unset=True, exclude={'branch_ids'})
+    branch_ids = vehicle_data.branch_ids if hasattr(vehicle_data, 'branch_ids') else None
+    available_for_all_branches = update_data.get('available_for_all_branches')
 
-    # Update vehicle
-    update_data = vehicle_data.model_dump(exclude_unset=True)
+    # Update vehicle fields
     for field, value in update_data.items():
         setattr(vehicle, field, value)
 
     await db.commit()
     await db.refresh(vehicle)
 
-    # Load the branch and vehicle_type relationships for response
-    await db.refresh(vehicle, ["branch", "vehicle_type_relation"])
+    # Handle branch assignments if available_for_all_branches is explicitly set or branch_ids is provided
+    if available_for_all_branches is not None or branch_ids is not None:
+        # Delete existing branch relationships
+        await db.execute(
+            delete(VehicleBranch).where(VehicleBranch.vehicle_id == vehicle_id)
+        )
+        await db.commit()
+
+        # If not available for all branches and branch_ids are provided, create new relationships
+        if not vehicle.available_for_all_branches and branch_ids:
+            # Validate all branch IDs
+            for branch_id in branch_ids:
+                try:
+                    await validate_branch_exists(db, branch_id, tenant_id)
+                except ValueError as e:
+                    raise HTTPException(status_code=400, detail=str(e))
+
+            # Create vehicle-branch relationships
+            for branch_id in branch_ids:
+                vehicle_branch = VehicleBranch(
+                    vehicle_id=vehicle.id,
+                    branch_id=branch_id,
+                    tenant_id=tenant_id
+                )
+                db.add(vehicle_branch)
+            await db.commit()
+
+    # Load the vehicle_type and branches relationships for response
+    vehicle_with_relationships = await db.execute(
+        select(Vehicle)
+        .where(Vehicle.id == vehicle.id)
+        .options(
+            selectinload(Vehicle.vehicle_type_relation),
+            selectinload(Vehicle.branches).selectinload(VehicleBranch.branch)
+        )
+    )
+    vehicle = vehicle_with_relationships.scalar_one()
 
     return VehicleSchema.model_validate(vehicle)
 
@@ -307,15 +358,16 @@ async def delete_vehicle(
 async def update_vehicle_status(
     vehicle_id: UUID,
     status: VehicleStatus,
-    token_data: TokenData = Depends(require_permissions(["vehicles:update"])),
+    token_data: TokenData = Depends(require_any_permission(["vehicles:update", "tms:status_update"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Update vehicle status
 
-    Requires:
+    Requires one of:
     - vehicles:update
+    - tms:status_update (special permission for TMS service to update status when trip completes)
     """
 
     # Get existing vehicle
@@ -345,8 +397,15 @@ async def update_vehicle_status(
     await db.commit()
     await db.refresh(vehicle)
 
-    # Load the branch relationship for response
-    await db.refresh(vehicle, ["branch"])
+    # Load the branches relationships for response
+    vehicle_with_relationships = await db.execute(
+        select(Vehicle)
+        .where(Vehicle.id == vehicle.id)
+        .options(
+            selectinload(Vehicle.branches).selectinload(VehicleBranch.branch)
+        )
+    )
+    vehicle = vehicle_with_relationships.scalar_one()
 
     return VehicleSchema.model_validate(vehicle)
 
@@ -356,7 +415,6 @@ async def get_available_vehicles(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     vehicle_type: Optional[VehicleType] = Query(None),
-    branch_id: Optional[UUID] = Query(None),
     token_data: TokenData = Depends(require_any_permission(["vehicles:read_all", "vehicles:read"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
@@ -380,9 +438,6 @@ async def get_available_vehicles(
     if vehicle_type:
         query = query.where(Vehicle.vehicle_type == vehicle_type)
 
-    if branch_id:
-        query = query.where(Vehicle.branch_id == branch_id)
-
     # Count total items
     count_query = select(func.count()).select_from(query.subquery())
     total_result = await db.execute(count_query)
@@ -392,8 +447,11 @@ async def get_available_vehicles(
     offset = (page - 1) * per_page
     query = query.offset(offset).limit(per_page).order_by(Vehicle.plate_number)
 
-    # Include branch relationship and vehicle_type_relation
-    query = query.options(selectinload(Vehicle.branch), selectinload(Vehicle.vehicle_type_relation))
+    # Include vehicle_type_relation and branches relationships
+    query = query.options(
+        selectinload(Vehicle.vehicle_type_relation),
+        selectinload(Vehicle.branches).selectinload(VehicleBranch.branch)
+    )
 
     # Execute query
     result = await db.execute(query)

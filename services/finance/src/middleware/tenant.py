@@ -28,6 +28,10 @@ class TenantIsolationMiddleware(BaseHTTPMiddleware):
             if request.url.path in skip_paths:
                 return await call_next(request)
 
+            # Skip internal endpoints (prefix match)
+            if request.url.path.startswith("/api/v1/internal"):
+                return await call_next(request)
+
             logger.error(f"Tenant ID missing for request: {request.url.path}")
             return JSONResponse(
                 status_code=401,

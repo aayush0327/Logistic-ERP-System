@@ -327,13 +327,19 @@ export default function NewUserPage() {
                 <select
                   id="auth_role_id"
                   {...register("auth_role_id", { valueAsNumber: true })}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  className={`w-full px-3 py-2 border text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                     errors.auth_role_id ? "border-red-500" : "border-gray-300"
                   }`}
                 >
-                  <option value={0}>Select Role</option>
+                  <option className="text-black" value={0}>
+                    Select Role
+                  </option>
                   {roles?.map((role) => (
-                    <option key={role.id} value={role.id}>
+                    <option
+                      className="text-black"
+                      key={role.id}
+                      value={role.id}
+                    >
                       {role.name}
                     </option>
                   ))}
@@ -355,7 +361,7 @@ export default function NewUserPage() {
                   return (
                     <label
                       key={branch.id}
-                      className={`flex items-center space-x-3 p-2 rounded cursor-pointer transition-colors ${
+                      className={`flex items-center text-black space-x-3 p-2 rounded cursor-pointer transition-colors ${
                         isSelected
                           ? "bg-blue-50 border border-blue-200"
                           : "hover:bg-gray-50"
@@ -460,6 +466,7 @@ export default function NewUserPage() {
             variant="outline"
             onClick={() => router.back()}
             disabled={isSubmitting}
+            className="bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium"
           >
             <X className="w-4 h-4 mr-2" />
             Cancel
@@ -467,7 +474,7 @@ export default function NewUserPage() {
           <Button
             type="submit"
             disabled={!isValid || isSubmitting}
-            className="min-w-[120px]"
+            className="min-w-[120px] bg-[#1F40AE] hover:bg-[#203BA0] active:bg-[#192F80] text-white px-4 py-2 rounded-lg font-medium"
           >
             {isSubmitting ? (
               <div className="flex items-center">

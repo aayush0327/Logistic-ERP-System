@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     TMS_API_URL: str = os.getenv("TMS_API_URL", "http://tms-service:8004")
     TMS_API_TIMEOUT: int = int(os.getenv("TMS_API_TIMEOUT", "30"))
 
+    # Orders Service Configuration
+    ORDERS_API_URL: str = os.getenv("ORDERS_API_URL", "http://orders-service:8003")
+    ORDERS_API_TIMEOUT: int = int(os.getenv("ORDERS_API_TIMEOUT", "30"))
+
+    # Company Service Configuration
+    COMPANY_API_URL: str = os.getenv("COMPANY_API_URL", "http://company-service:8002")
+    COMPANY_API_TIMEOUT: int = int(os.getenv("COMPANY_API_TIMEOUT", "30"))
+
     # Redis Configuration
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379")
 

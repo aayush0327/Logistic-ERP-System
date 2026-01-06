@@ -14,7 +14,7 @@ from starlette.requests import Request
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from jose import JWTError
 
-from src.api.endpoints import orders, order_documents, resources
+from src.api.endpoints import orders, order_documents, resources, tenant_cleanup
 from src.config_local import OrdersSettings
 from src.database import engine, Base
 from src.middleware import (
@@ -231,6 +231,13 @@ app.include_router(
     resources.router,
     prefix="/api/v1/resources",
     tags=["Resources"]
+)
+
+# Internal endpoints for inter-service communication
+app.include_router(
+    tenant_cleanup.router,
+    prefix="/api/v1/internal",
+    tags=["Internal"]
 )
 
 

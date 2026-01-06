@@ -23,6 +23,7 @@ import {
   UserX,
   Download,
   ArrowLeft,
+  PieChart,
 } from "lucide-react";
 
 export default function EmployeeProfilesPage() {
@@ -125,29 +126,27 @@ export default function EmployeeProfilesPage() {
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => router.back()}
+            onClick={() => router.push("/company-admin/masters/users")}
             className="flex items-center"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
+
           <div>
             <h1 className="text-3xl font-bold text-gray-900">
               Employee Profiles
             </h1>
-            <p className="text-gray-600 mt-1">
-              Manage employee profiles and track completion status
-            </p>
           </div>
         </div>
-        <div className="flex gap-3">
+        {/* <div className="flex gap-3">
           <Button variant="outline" className="flex items-center gap-2">
             <Filter className="w-4 h-4" />
             Advanced Filter
@@ -156,127 +155,104 @@ export default function EmployeeProfilesPage() {
             <Download className="w-4 h-4" />
             Export
           </Button>
-        </div>
+        </div> */}
       </div>
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">
-                  Total Employees
-                </p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {isLoadingStats ? "-" : filteredStats.total}
-                </p>
-              </div>
-              <Users className="w-8 h-8 text-blue-600" />
+      {/* Statistics Cards - Colored Div Style */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+        {/* Total Employees Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#edf0f7] border-2 border-[#c4cde9]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Total Employees
+            </p>
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <Users className="w-5 h-5 md:w-6 md:h-6 text-blue-500" />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {isLoadingStats ? "..." : filteredStats.total}
+            </p>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">
-                  Profiles Completed
-                </p>
-                <p className="text-2xl font-bold text-green-600">
-                  {isLoadingStats ? "-" : filteredStats.completed}
-                </p>
-              </div>
-              <UserCheck className="w-8 h-8 text-green-600" />
+        {/* Profiles Completed Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#f0f7f0] border-2 border-[#c5edd6]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Completed Profiles
+            </p>
+            <div className="p-2 bg-emerald-100 rounded-lg">
+              <UserCheck className="w-5 h-5 md:w-6 md:h-6 text-emerald-500" />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {isLoadingStats ? "..." : filteredStats.completed}
+            </p>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">
-                  Profiles Pending
-                </p>
-                <p className="text-2xl font-bold text-orange-600">
-                  {isLoadingStats ? "-" : filteredStats.pending}
-                </p>
-              </div>
-              <UserX className="w-8 h-8 text-orange-600" />
+        {/* Profiles Pending Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#f0f7fa] border-2 border-[#c0e5f7]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Pending Profiles
+            </p>
+            <div className="p-2 bg-sky-100 rounded-lg">
+              <UserX className="w-5 h-5 md:w-6 md:h-6 text-sky-500" />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {isLoadingStats ? "..." : filteredStats.pending}
+            </p>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">
-                  Completion Rate
-                </p>
-                <p className="text-2xl font-bold text-blue-600">
-                  {filteredStats.total > 0
-                    ? `${Math.round(
-                        (filteredStats.completed / filteredStats.total) * 100
-                      )}%`
-                    : "0%"}
-                </p>
-              </div>
-              <div className="relative w-8 h-8">
-                <svg className="w-8 h-8 transform -rotate-90">
-                  <circle
-                    cx="16"
-                    cy="16"
-                    r="12"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    fill="none"
-                    className="text-gray-200"
-                  />
-                  <circle
-                    cx="16"
-                    cy="16"
-                    r="12"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    fill="none"
-                    strokeDasharray={`${
-                      filteredStats.total > 0
-                        ? (filteredStats.completed / filteredStats.total) * 75.4
-                        : 0
-                    } 75.4`}
-                    className="text-blue-600"
-                  />
-                </svg>
-              </div>
+        {/* Completion Rate Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#fff8f0] border-2 border-[#f8e4c2]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Completion Rate
+            </p>
+            <div className="p-2 bg-amber-100 rounded-lg">
+              <PieChart className="w-5 h-5 md:w-6 md:h-6 text-amber-500" />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {filteredStats.total > 0
+                ? `${Math.round(
+                    (filteredStats.completed / filteredStats.total) * 100
+                  )}%`
+                : "0%"}
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Search and Filters */}
       <Card>
-        <CardContent className="p-6">
-          <div className="flex flex-col lg:flex-row gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <CardTitle>Employee Profiles</CardTitle>
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <div className="relative flex-1 sm:flex-none">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <Input
                   type="text"
-                  placeholder="Search by employee name, email, or role..."
+                  placeholder="Search by name, email, or role..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 pr-4 py-2 w-full sm:w-64"
                 />
               </div>
-            </div>
-            <div className="flex gap-3">
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value as any)}
-                className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               >
                 <option value="all">All Status</option>
                 <option value="completed">Completed</option>
@@ -284,7 +260,7 @@ export default function EmployeeProfilesPage() {
               </select>
             </div>
           </div>
-        </CardContent>
+        </CardHeader>
       </Card>
 
       {/* Role-wise User Lists */}

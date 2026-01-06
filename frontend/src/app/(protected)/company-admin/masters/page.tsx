@@ -93,14 +93,53 @@ export default function MastersPage() {
     },
   ];
 
+  const quickActions = [
+    {
+      title: "New Branch",
+      icon: Building,
+      href: "/company-admin/masters/branches/new",
+      isPrimary: true,
+    },
+    {
+      title: "New Customer",
+      icon: Users,
+      href: "/company-admin/masters/customers/new",
+      isPrimary: false,
+    },
+    {
+      title: "Add Vehicle",
+      icon: Truck,
+      href: "/company-admin/masters/vehicles/new",
+      isPrimary: false,
+    },
+    {
+      title: "New Product",
+      icon: Package,
+      href: "/company-admin/masters/products/new",
+      isPrimary: false,
+    },
+    {
+      title: "Add User",
+      icon: UserCheck,
+      href: "/company-admin/masters/users/new",
+      isPrimary: false,
+    },
+    {
+      title: "Configure",
+      icon: Settings,
+      href: "/company-admin/masters/pricing",
+      isPrimary: false,
+    },
+  ];
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Page Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Masters Management</h1>
-        <p className="text-gray-500 mt-2">
+        {/* <p className="text-gray-500 mt-2">
           Manage all master data and configurations for your logistics business
-        </p>
+        </p> */}
       </div>
 
       {/* Quick Stats */}
@@ -187,148 +226,60 @@ export default function MastersPage() {
       </div>
 
       {/* Quick Actions */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <div className="shrink-0 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">
           Quick Actions
         </h2>
-        <div className="grid grid-cols-2  md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {/* New Branch - Primary Button */}
-          <button
-            onClick={() => router.push("/company-admin/masters/branches/new")}
-            className="flex items-center cursor-pointer justify-center gap-2 px-3 md:px-4 py-3 bg-[#1f40ae] hover:bg-[#1f40ae] active:bg-[#1f40ae] text-white rounded-xl transition-all duration-200 hover:scale-[1.02] hover:shadow-lg shadow-md w-full"
-          >
-            <Building className="w-4 h-4" />
-            <span className="text-sm md:text-base font-semibold hover:font-bold">
-              New Branch
-            </span>
-          </button>
-
-          {/* New Customer */}
-          <button
-            onClick={() => router.push("/company-admin/masters/customers/new")}
-            className="flex items-center cursor-pointer justify-center gap-2 px-3 md:px-4 py-3 bg-white hover:bg-[#e9edfb] active:bg-[#F3F4F6] text-black border border-gray-300 hover:border-[#D1D5DB] rounded-xl transition-all duration-200 hover:scale-[1.02] hover:shadow-lg shadow-sm shadow-md w-full"
-          >
-            <Users className="w-4 h-4" />
-            <span className="text-sm md:text-base font-semibold hover:font-bold">
-              New Customer
-            </span>
-          </button>
-
-          {/* Add Vehicle */}
-          <button
-            onClick={() => router.push("/company-admin/masters/vehicles/new")}
-            className="flex items-center cursor-pointer justify-center gap-2 px-3 md:px-4 py-3 bg-white hover:bg-[#e9edfb] active:bg-[#F3F4F6] text-black border border-gray-300 hover:border-[#D1D5DB] rounded-xl transition-all duration-200 hover:scale-[1.02] hover:shadow-lg shadow-sm shadow-md w-full"
-          >
-            <Truck className="w-4 h-4" />
-            <span className="text-sm md:text-base font-semibold hover:font-bold">
-              Add Vehicle
-            </span>
-          </button>
-
-          {/* New Product */}
-          <button
-            onClick={() => router.push("/company-admin/masters/products/new")}
-            className="flex items-center cursor-pointer justify-center gap-2 px-3 md:px-4 py-3 bg-white hover:bg-[#e9edfb] active:bg-[#F3F4F6] text-black border border-gray-300 hover:border-[#D1D5DB] rounded-xl transition-all duration-200 hover:scale-[1.02] hover:shadow-lg shadow-sm shadow-md w-full"
-          >
-            <Package className="w-4 h-4" />
-            <span className="text-sm md:text-base font-semibold hover:font-bold">
-              New Product
-            </span>
-          </button>
-
-          {/* Add User */}
-          <button
-            onClick={() => router.push("/company-admin/masters/users/new")}
-            className="flex items-center cursor-pointer justify-center gap-2 px-3 md:px-4 py-3 bg-white hover:bg-[#e9edfb] active:bg-[#F3F4F6] text-black border border-gray-300 hover:border-[#D1D5DB] rounded-xl transition-all duration-200 hover:scale-[1.02] hover:shadow-lg shadow-sm shadow-md w-full"
-          >
-            <UserCheck className="w-4 h-4" />
-            <span className="text-sm md:text-base font-semibold hover:font-bold">
-              Add User
-            </span>
-          </button>
-
-          {/* Configure */}
-          <button
-            onClick={() => router.push("/company-admin/masters/pricing")}
-            className="flex items-center cursor-pointer justify-center gap-2 px-3 md:px-4 py-3 bg-white hover:bg-[#e9edfb] active:bg-[#F3F4F6] text-black border border-gray-300 hover:border-[#D1D5DB] rounded-xl transition-all duration-200 hover:scale-[1.02] hover:shadow-lg shadow-sm shadow-md w-full"
-          >
-            <Settings className="w-4 h-4" />
-            <span className="text-sm md:text-base font-semibold hover:font-bold">
-              Configure
-            </span>
-          </button>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          {quickActions.map((action) => (
+            <button
+              key={action.href}
+              onClick={() => router.push(action.href)}
+              className={`flex items-center cursor-pointer justify-center gap-2 px-3 md:px-4 py-3 rounded-xl transition-all duration-200 hover:scale-[1.02] hover:shadow-lg w-full ${
+                action.isPrimary
+                  ? "bg-[#1f40ae] hover:bg-[#1f40ae] active:bg-[#1f40ae] text-white shadow-md"
+                  : "bg-white hover:bg-[#e9edfb] active:bg-[#F3F4F6] text-black border border-gray-300 hover:border-[#D1D5DB] shadow-sm"
+              }`}
+            >
+              <action.icon className="w-4 h-4" />
+              <span className="text-sm md:text-base font-semibold hover:font-bold">
+                {action.title}
+              </span>
+            </button>
+          ))}
         </div>
       </div>
 
       {/* Modules Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {modules.map((module) => (
-          <Link key={module.href} href={module.href} className="group block">
-            <Card className="h-48 hover:shadow-lg transition-shadow duration-200">
-              <CardContent className="p-6 h-full">
-                <div className="flex flex-col h-full">
-                  <div className="flex items-center mb-4">
-                    <div className={`p-3 ${module.color} rounded-lg mr-4`}>
-                      <module.icon className="w-6 h-6 text-white" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600">
-                        {module.title}
-                      </h3>
-                    </div>
-                    <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-blue-600" />
+      <div>
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">
+          All Modules
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {modules.map((module) => (
+            <Link key={module.href} href={module.href} className="group block">
+              <div className="bg-white rounded-xl border-2 border-gray-200 p-5 shadow-sm hover:shadow-xl transition-shadow duration-300 h-full">
+                <div className="flex items-start gap-4">
+                  <div
+                    className={`p-3 ${module.color} rounded-xl group-hover:scale-110 transition-transform duration-200`}
+                  >
+                    <module.icon className="w-6 h-6 text-white" />
                   </div>
-                  <p className="text-gray-600 flex-1">{module.description}</p>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-base font-semibold text-gray-900 group-hover:text-[#1f40ae] transition-colors duration-200 mb-1">
+                      {module.title}
+                    </h3>
+                    <p className="text-sm text-gray-600 line-clamp-2">
+                      {module.description}
+                    </p>
+                  </div>
+                  <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-[#1f40ae] group-hover:translate-x-1 transition-all duration-200 flex-shrink-0 mt-1" />
                 </div>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
+              </div>
+            </Link>
+          ))}
+        </div>
       </div>
-
-      {/* Reports & Analytics */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <BarChart3 className="w-5 h-5 mr-2" />
-            Reports & Analytics
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Button
-              variant="outline"
-              className="flex items-center justify-center space-x-2 h-12"
-              onClick={() => router.push("/company-admin/masters/dashboard")}
-            >
-              <BarChart3 className="w-4 h-4" />
-              <span>Dashboard</span>
-            </Button>
-            <Button
-              variant="outline"
-              className="flex items-center justify-center space-x-2 h-12"
-              onClick={() => {
-                // Mock report generation
-                alert("Report generation feature coming soon!");
-              }}
-            >
-              <Settings className="w-4 h-4" />
-              <span>Generate Reports</span>
-            </Button>
-            <Button
-              variant="outline"
-              className="flex items-center justify-center space-x-2 h-12"
-              onClick={() => {
-                // Mock analytics view
-                alert("Detailed analytics coming soon!");
-              }}
-            >
-              <BarChart3 className="w-4 h-4" />
-              <span>View Analytics</span>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

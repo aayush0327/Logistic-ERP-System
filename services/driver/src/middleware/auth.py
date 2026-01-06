@@ -46,6 +46,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             "/redoc",
             "/favicon.ico",
             "/static",
+            "/api/v1/internal",  # Skip internal endpoints for inter-service communication
         ]
 
     async def dispatch(self, request: Request, call_next):

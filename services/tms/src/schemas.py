@@ -1,7 +1,7 @@
 """Pydantic schemas for TMS Service"""
 
 from datetime import datetime, date
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
 from enum import Enum
 
@@ -11,6 +11,7 @@ class TripStatus(str, Enum):
     PLANNING = "planning"
     LOADING = "loading"
     ON_ROUTE = "on-route"
+    PAUSED = "paused"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
     TRUCK_MALFUNCTION = "truck-malfunction"
@@ -21,6 +22,13 @@ class OrderStatus(str, Enum):
     LOADING = "loading"
     ON_ROUTE = "on-route"
     COMPLETED = "completed"
+
+
+class TmsOrderStatus(str, Enum):
+    """TMS-specific order status for tracking partial assignments"""
+    AVAILABLE = "available"
+    PARTIAL = "partial"
+    FULLY_ASSIGNED = "fully_assigned"
 
 
 class Priority(str, Enum):
@@ -71,12 +79,13 @@ class Order(BaseSchema):
     customerAddress: Optional[str] = None
     status: str
     total: float
-    weight: int
-    volume: int
+    weight: float  # Changed from int to float to support decimal weights
+    volume: float  # Changed from int to float to support decimal volumes
     date: date
     priority: Priority
     items: int
     address: Optional[str] = None
+    tms_order_status: Optional[str] = "available"
 
 
 # Branch Schema (dummy data)
@@ -99,8 +108,8 @@ class TripOrderCreate(BaseModel):
     customer_phone: Optional[str] = None
     product_name: Optional[str] = None
     total: float
-    weight: int
-    volume: int
+    weight: float  # Changed from int to float to support decimal weights
+    volume: float  # Changed from int to float to support decimal volumes
     items: int
     quantity: Optional[int] = 1
     priority: Priority
@@ -109,7 +118,9 @@ class TripOrderCreate(BaseModel):
     delivery_instructions: Optional[str] = None
     original_order_id: Optional[str] = None
     original_items: Optional[int] = None
-    original_weight: Optional[int] = None
+    original_weight: Optional[float] = None  # Changed from int to float
+    items_json: Optional[List[Dict[str, Any]]] = None
+    remaining_items_json: Optional[List[Dict[str, Any]]] = None
     # user_id and company_id are extracted from JWT token, not required in request
     user_id: Optional[str] = None
     company_id: Optional[str] = None
@@ -131,11 +142,16 @@ class TripOrderResponse(BaseSchema):
     customer_contact: Optional[str] = None
     customer_phone: Optional[str] = None
     product_name: Optional[str] = None
-    status: OrderStatus
+    trip_order_status: OrderStatus  # Renamed from 'status' - delivery progress status (assigned->loading->on-route->completed)
+    tms_order_status: Optional[str] = "available"
+    item_status: Optional[str] = "pending_to_assign"  # Item-level status tracking
     total: float
-    weight: int
-    volume: int
-    items: int
+    weight: float  # Changed from int to float to support decimal weights
+    volume: float  # Changed from int to float to support decimal volumes
+    items: int  # Number of items (count), kept as int for backward compatibility
+    items_data: Optional[List[Dict[str, Any]]] = None  # Items array with full product details
+    items_json: Optional[List[Dict[str, Any]]] = None
+    remaining_items_json: Optional[List[Dict[str, Any]]] = None
     quantity: int
     priority: Priority
     delivery_status: Optional[str] = "pending"
@@ -145,7 +161,7 @@ class TripOrderResponse(BaseSchema):
     delivery_instructions: Optional[str] = None
     original_order_id: Optional[str] = None
     original_items: Optional[int] = None
-    original_weight: Optional[int] = None
+    original_weight: Optional[float] = None  # Changed from int to float
     assigned_at: datetime
 
     model_config = ConfigDict(
@@ -300,8 +316,8 @@ class DriverOrderDetail(BaseModel):
     status: OrderStatus
     delivery_status: DeliveryStatus
     total: float = 0
-    weight: int = 0
-    volume: int = 0
+    weight: float = 0  # Changed from int to float
+    volume: float = 0  # Changed from int to float
     items: int = 0
     priority: Priority
     sequence_number: int
@@ -325,3 +341,20 @@ class DriverTripDetailResponse(BaseModel):
     orders: List[DriverOrderDetail]
     created_at: datetime
     updated_at: datetime
+    # Maintenance/pause fields
+    maintenance_note: Optional[str] = None
+    paused_at: Optional[datetime] = None
+    paused_reason: Optional[str] = None
+    resumed_at: Optional[datetime] = None
+
+
+# Pause/Resume Schemas
+class TripPause(BaseModel):
+    """Schema for pausing a trip"""
+    reason: str = Field(..., min_length=1, max_length=500, description="Reason for pause")
+    note: Optional[str] = Field(None, max_length=2000, description="Additional notes")
+
+
+class TripResume(BaseModel):
+    """Schema for resuming a trip"""
+    note: Optional[str] = Field(None, max_length=2000, description="Resume notes")

@@ -61,6 +61,80 @@ CREATE TABLE IF NOT EXISTS role_permissions (
         UNIQUE (role_id, permission_id)
 );
 
+-- Create audit_logs table for centralized audit tracking
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    tenant_id VARCHAR(255) NOT NULL,
+
+    -- User information
+    user_id VARCHAR(255) NOT NULL,
+    user_name VARCHAR(200),
+    user_email VARCHAR(255),
+    user_role VARCHAR(50),
+
+    -- Action details
+    action VARCHAR(50) NOT NULL,
+    module VARCHAR(50) NOT NULL,
+    entity_type VARCHAR(50) NOT NULL,
+    entity_id VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL,
+
+    -- Change tracking
+    old_values JSONB,
+    new_values JSONB,
+
+    -- Status change tracking
+    from_status VARCHAR(50),
+    to_status VARCHAR(50),
+
+    -- Approval tracking
+    approval_status VARCHAR(20),
+    reason TEXT,
+
+    -- Metadata
+    ip_address VARCHAR(50),
+    user_agent VARCHAR(500),
+    service_name VARCHAR(50),
+
+    -- Timestamp
+    created_at TIMESTAMP
+    WITH
+        TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+-- Create indexes for audit_logs performance
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_created ON audit_logs(tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_module_entity ON audit_logs(tenant_id, module, entity_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_user_created ON audit_logs(tenant_id, user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_entity_type_id ON audit_logs(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_module ON audit_logs(module);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+
+-- Add comments for audit_logs documentation
+COMMENT ON TABLE audit_logs IS 'Centralized audit log table for tracking all company operations';
+COMMENT ON COLUMN audit_logs.id IS 'Unique identifier for the audit log entry';
+COMMENT ON COLUMN audit_logs.tenant_id IS 'Tenant identifier for multi-tenancy';
+COMMENT ON COLUMN audit_logs.user_id IS 'ID of the user who performed the action';
+COMMENT ON COLUMN audit_logs.user_name IS 'Name of the user (denormalized for query performance)';
+COMMENT ON COLUMN audit_logs.user_email IS 'Email of the user (denormalized for query performance)';
+COMMENT ON COLUMN audit_logs.user_role IS 'Role of the user';
+COMMENT ON COLUMN audit_logs.action IS 'Action performed (create, update, delete, status_change, approve, reject, etc.)';
+COMMENT ON COLUMN audit_logs.module IS 'Module name (orders, trips, customers, vehicles, etc.)';
+COMMENT ON COLUMN audit_logs.entity_type IS 'Type of entity (order, trip, customer, etc.)';
+COMMENT ON COLUMN audit_logs.entity_id IS 'ID of the affected entity';
+COMMENT ON COLUMN audit_logs.description IS 'Human-readable description of the action';
+COMMENT ON COLUMN audit_logs.old_values IS 'Previous values (for updates)';
+COMMENT ON COLUMN audit_logs.new_values IS 'New values (for updates/creates)';
+COMMENT ON COLUMN audit_logs.from_status IS 'Previous status (for status changes)';
+COMMENT ON COLUMN audit_logs.to_status IS 'New status (for status changes)';
+COMMENT ON COLUMN audit_logs.approval_status IS 'approved/rejected (for approval actions)';
+COMMENT ON COLUMN audit_logs.reason IS 'Reason for rejection/cancellation';
+COMMENT ON COLUMN audit_logs.ip_address IS 'IP address of the user';
+COMMENT ON COLUMN audit_logs.user_agent IS 'Browser/client information';
+COMMENT ON COLUMN audit_logs.service_name IS 'Service that created this log (orders, tms, driver, etc.)';
+COMMENT ON COLUMN audit_logs.created_at IS 'Timestamp of the audit event';
+
 -- Create users table
 CREATE TABLE IF NOT EXISTS users (
     id VARCHAR(255) PRIMARY KEY DEFAULT uuid_generate_v4 (),
@@ -669,6 +743,16 @@ VALUES
     'track',
     'Track trip status'
 ),
+(
+    'trips',
+    'pause',
+    'Pause a trip due to maintenance or issues'
+),
+(
+    'trips',
+    'resume',
+    'Resume a paused trip'
+),
 -- Order specific permissions for TMS
 (
     'orders',
@@ -701,6 +785,21 @@ VALUES
     'drivers',
     'update',
     'Update driver information'
+),
+(
+    'drivers',
+    'read',
+    'Read driver information'
+),
+(
+    'drivers',
+    'read_all',
+    'Read all driver information'
+),
+(
+    'tms',
+    'status_update',
+    'Allow TMS service to update driver/vehicle status when trip completes'
 ),
 -- Driver Service permissions
 (
@@ -1218,7 +1317,18 @@ VALUES
 ),
 
 -- Superuser permission
-( 'superuser', 'access', 'Full system access' ) ON CONFLICT (resource, action) DO NOTHING;
+( 'superuser', 'access', 'Full system access' ),
+-- Audit Log permissions
+(
+    'audit',
+    'read',
+    'View audit logs'
+),
+(
+    'audit',
+    'export',
+    'Export audit logs'
+) ON CONFLICT (resource, action) DO NOTHING;
 
 -- Assign all permissions to super admin role (ID = 1)
 INSERT INTO
@@ -1288,7 +1398,7 @@ INSERT INTO role_permissions (role_id, permission_id, created_at)
 SELECT 2, p.id, NOW()
 FROM permissions p
 WHERE p.resource = 'trips'
-  AND p.action IN ('create', 'read', 'read_all', 'update', 'delete', 'assign', 'track')
+  AND p.action IN ('create', 'read', 'read_all', 'update', 'delete', 'assign', 'track', 'pause', 'resume')
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- Resource Management Permissions
@@ -1328,10 +1438,11 @@ INSERT INTO role_permissions (role_id, permission_id, created_at)
 SELECT 2, p.id, NOW()
 FROM permissions p
 WHERE p.resource IN ('users', 'roles', 'tenants', 'wms', 'billing', 'suppliers', 'shipping',
-                     'product_categories', 'dashboard', 'system', 'permissions', 'finance', 'profiles')
+                     'product_categories', 'dashboard', 'system', 'permissions', 'finance', 'profiles', 'audit')
   AND p.action IN ('create', 'read', 'read_all', 'update', 'delete', 'manage_all', 'manage_own',
                    'assign', 'admin', 'logs', 'backup', 'restore', 'read_own', 'update_own',
-                   'approve', 'approve_bulk', 'reports', 'export', 'invite', 'activate', 'upload_avatar')
+                   'approve', 'approve_bulk', 'reports', 'export', 'invite', 'activate', 'upload_avatar',
+                   'read', 'export')  -- Added audit:read and audit:export actions
   AND p.resource != 'orders'  -- Exclude orders as they are handled above
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
@@ -2301,6 +2412,26 @@ VALUES
             SELECT id
             FROM permissions
             WHERE
+                resource = 'trips'
+                AND action = 'pause'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'trips'
+                AND action = 'resume'
+        )
+    ),
+    (
+        5,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
                 resource = 'orders'
                 AND action = 'split'
         )
@@ -2759,6 +2890,27 @@ VALUES
                 AND action = 'update'
         )
     ),
+    -- Trips pause and resume permissions
+    (
+        6,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'trips'
+                AND action = 'pause'
+        )
+    ),
+    (
+        6,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'trips'
+                AND action = 'resume'
+        )
+    ),
     -- Dashboard
     (
         6,
@@ -2768,6 +2920,17 @@ VALUES
             WHERE
                 resource = 'dashboard'
                 AND action = 'read'
+        )
+    ),
+    -- TMS status update permission (for trip completion)
+    (
+        6,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'tms'
+                AND action = 'status_update'
         )
     ) ON CONFLICT (role_id, permission_id) DO NOTHING;
 

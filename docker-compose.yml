@@ -21,7 +21,7 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -41,7 +41,7 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -57,7 +57,7 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test: [ "CMD", "nc", "-z", "localhost", "2181" ]
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -83,7 +83,13 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test: [ "CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092" ]
+      test:
+        [
+          "CMD",
+          "kafka-broker-api-versions",
+          "--bootstrap-server",
+          "localhost:9092",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -118,7 +124,8 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test: [ "CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1" ]
+      test:
+        ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -170,13 +177,19 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BROWSER: "on"
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"
+      MINIO_API_CORS_ALLOW_METHODS: "GET, POST, PUT, DELETE, HEAD, OPTIONS"
+      MINIO_API_CORS_ALLOW_HEADERS: "*"
+      MINIO_API_CORS_EXPOSE_HEADERS: "*"
+      MINIO_API_CORS_MAX_AGE: "86400"
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
     networks:
       - logistics-network
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -192,7 +205,7 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -249,9 +262,9 @@ services:
     ports:
       - "9100:9100"
     command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
-      - '--no-collector.hwmon' # Disable hardware monitoring on Windows
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--no-collector.hwmon" # Disable hardware monitoring on Windows
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
@@ -343,8 +356,8 @@ services:
       - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml
       - alertmanager_data:/alertmanager
     command:
-      - '--config.file=/etc/alertmanager/alertmanager.yml'
-      - '--storage.path=/alertmanager'
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
     networks:
       - logistics-network
     restart: unless-stopped
@@ -401,6 +414,7 @@ services:
       - ./services/company/src:/app/src
       - ./services/company/pyproject.toml:/app/pyproject.toml
       - ./services/company/uv.lock:/app/uv.lock
+      - ./services/company/migrations:/app/migrations
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
@@ -452,7 +466,7 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8004/health" ]
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -526,7 +540,7 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8006/health" ]
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -565,7 +579,7 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8005/health" ]
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -580,7 +594,6 @@ volumes:
   prometheus_data:
   grafana_data:
   alertmanager_data:
-
 
 networks:
   logistics-network:

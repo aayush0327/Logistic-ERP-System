@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -17,6 +18,7 @@ import {
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { useAppSelector } from "@/store/hooks";
+import { useOutsideClick } from "@/components/Hooks/useOutsideClick";
 import { api } from "@/lib/api";
 import { showSuccessToast, showErrorToast } from "@/utils/toast";
 import {
@@ -36,6 +38,9 @@ import {
   Eye,
   EyeOff,
   Users,
+  X,
+  ChevronDown,
+  Filter,
 } from "lucide-react";
 
 // Type definitions for company data
@@ -58,6 +63,7 @@ interface Company {
 }
 
 export default function SuperAdmin() {
+  const router = useRouter();
   const { user } = useAppSelector((state) => state.auth);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -69,14 +75,6 @@ export default function SuperAdmin() {
     total_users: 0,
   });
   const [loading, setLoading] = useState(true);
-  const [companyForm, setCompanyForm] = useState({
-    name: "",
-    domain: "",
-    admin_email: "",
-    admin_first_name: "",
-    admin_last_name: "",
-    admin_password: "temp123456",
-  });
   const [showPassword, setShowPassword] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -89,6 +87,15 @@ export default function SuperAdmin() {
     last_name: "",
     password: "",
     new_password: "",
+  });
+  const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
+
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  useOutsideClick(filterRef, () => {
+    if (filterDropdownOpen) {
+      setFilterDropdownOpen(false);
+    }
   });
 
   // Fetch companies and stats on component mount
@@ -140,48 +147,6 @@ export default function SuperAdmin() {
       company.is_active === (statusFilter === "active");
     return matchesSearch && matchesStatus;
   });
-
-  const handleCreateCompany = async (formData: any) => {
-    try {
-      const response = await api.createCompanyWithAdmin(formData);
-      showSuccessToast("Company and admin created successfully!");
-      fetchCompaniesAndStats(); // Refresh data
-      return response;
-    } catch (error) {
-      console.error("Failed to create company:", error);
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to create company";
-      showErrorToast(errorMessage);
-      throw error;
-    }
-  };
-
-  const handleCompanyFormSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const data = {
-        name: companyForm.name,
-        domain: companyForm.domain,
-        admin: {
-          email: companyForm.admin_email,
-          first_name: companyForm.admin_first_name,
-          last_name: companyForm.admin_last_name,
-          password: companyForm.admin_password,
-        },
-      };
-      await handleCreateCompany(data);
-      setCompanyForm({
-        name: "",
-        domain: "",
-        admin_email: "",
-        admin_first_name: "",
-        admin_last_name: "",
-        admin_password: "temp123456",
-      });
-    } catch (error) {
-      // Error is already handled in handleCreateCompany
-    }
-  };
 
   const handleToggleCompanyStatus = async (
     tenantId: string,
@@ -320,75 +285,95 @@ export default function SuperAdmin() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">
-          Super Admin Dashboard
-        </h1>
-        <p className="text-gray-500 mt-2">
-          Manage all logistics companies and system-wide settings
-        </p>
+      <div className="flex justify-between items-start">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">
+            Super Admin Dashboard
+          </h1>
+          <p className="text-gray-500 mt-2">
+            Manage all logistics companies and system-wide settings
+          </p>
+        </div>
+        <Button
+          onClick={() => {
+            router.push("/super-admin/create-company");
+          }}
+          className="flex items-center gap-2 px-3 md:px-4 py-3 bg-[#1f40ae] hover:bg-[#1f40ae] active:bg-[#1f40ae] text-white rounded-xl transition-all duration-200 hover:scale-[1.02] hover:shadow-lg shadow-md cursor-pointer"
+        >
+          <Plus className="w-4 h-4" />
+          <span className="text-sm md:text-base font-semibold hover:font-bold">Create Company</span>
+        </Button>
       </div>
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="p-3 bg-blue-100 rounded-lg">
-                <Building2 className="w-6 h-6 text-blue-600" />
-              </div>
-              <div className="text-right">
-                <p className="text-3xl font-bold text-gray-900">
-                  {stats.total_companies}
-                </p>
-                <p className="text-sm text-gray-500">Total Companies</p>
-              </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+        {/* Total Companies Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#edf0f7] border-2 border-[#c4cde9]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Total Companies
+            </p>
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <Building2 className="w-5 h-5 md:w-6 md:h-6 text-blue-500" />
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="p-3 bg-green-100 rounded-lg">
-                <CheckCircle className="w-6 h-6 text-green-600" />
-              </div>
-              <div className="text-right">
-                <p className="text-3xl font-bold text-gray-900">
-                  {stats.active_companies}
-                </p>
-                <p className="text-sm text-gray-500">Active Companies</p>
-              </div>
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {loading ? "..." : stats.total_companies}
+            </p>
+          </div>
+        </div>
+
+        {/* Active Companies Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#f0f7f0] border-2 border-[#c5edd6]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Active Companies
+            </p>
+            <div className="p-2 bg-emerald-100 rounded-lg">
+              <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-emerald-500" />
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="p-3 bg-yellow-100 rounded-lg">
-                <Users className="w-6 h-6 text-yellow-600" />
-              </div>
-              <div className="text-right">
-                <p className="text-3xl font-bold text-gray-900">
-                  {(stats.total_users || 0).toLocaleString()}
-                </p>
-                <p className="text-sm text-gray-500">Total Users</p>
-              </div>
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {loading ? "..." : stats.active_companies}
+            </p>
+          </div>
+        </div>
+
+        {/* Total Users Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#f0f7fa] border-2 border-[#c0e5f7]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Total Users
+            </p>
+            <div className="p-2 bg-sky-100 rounded-lg">
+              <Users className="w-5 h-5 md:w-6 md:h-6 text-sky-500" />
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="p-3 bg-purple-100 rounded-lg">
-                <Settings className="w-6 h-6 text-purple-600" />
-              </div>
-              <div className="text-right">
-                <p className="text-3xl font-bold text-green-600">Active</p>
-                <p className="text-sm text-gray-500">System Health</p>
-              </div>
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {loading ? "..." : (stats.total_users || 0).toLocaleString()}
+            </p>
+          </div>
+        </div>
+
+        {/* System Health Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#fff8f0] border-2 border-[#f8e4c2]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              System Health
+            </p>
+            <div className="p-2 bg-amber-100 rounded-lg">
+              <Settings className="w-5 h-5 md:w-6 md:h-6 text-amber-500" />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-emerald-600 mb-2">
+              Active
+            </p>
+          </div>
+        </div>
       </div>
 
       <Tabs defaultValue="companies" className="w-full">
@@ -397,67 +382,103 @@ export default function SuperAdmin() {
             <Building2 className="w-4 h-4" />
             Manage Companies
           </TabsTrigger>
-          <TabsTrigger
-            value="create-company"
-            className="flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Create Company
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="companies">
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <CardTitle>All Companies</CardTitle>
-                <div className="flex gap-2">
-                  <Button variant="outline" className="flex items-center gap-2">
-                    <Plus className="w-4 h-4" />
-                    Create Company
-                  </Button>
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  {/* Search */}
+                  <div className="relative flex-1 sm:flex-none">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <Input
+                      type="text"
+                      placeholder="Search companies..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10 pr-4 py-2 w-full sm:w-64"
+                    />
+                  </div>
+
+                  {/* Filter Button with Dropdown */}
+                  <div className="relative" ref={filterRef}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
+                      className="flex items-center gap-2"
+                    >
+                      <Filter className="w-4 h-4" />
+                      Filter
+                      <ChevronDown className="w-4 h-4" />
+                    </Button>
+
+                    {/* Filter Dropdown */}
+                    {filterDropdownOpen && (
+                      <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                        <div className="py-1">
+                          <button
+                            onClick={() => {
+                              setStatusFilter("all");
+                              setFilterDropdownOpen(false);
+                            }}
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between text-black"
+                          >
+                            <span>All Companies</span>
+                            {statusFilter === "all" && (
+                              <span className="w-2 h-2 bg-blue-600 rounded-full" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setStatusFilter("active");
+                              setFilterDropdownOpen(false);
+                            }}
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between text-black"
+                          >
+                            <span>Active</span>
+                            {statusFilter === "active" && (
+                              <span className="w-2 h-2 bg-green-600 rounded-full" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setStatusFilter("disabled");
+                              setFilterDropdownOpen(false);
+                            }}
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between text-black"
+                          >
+                            <span>Disabled</span>
+                            {statusFilter === "disabled" && (
+                              <span className="w-2 h-2 bg-gray-600 rounded-full" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
+
+              {/* Active Filter Chips */}
+              {statusFilter !== "all" && (
+                <div className="flex items-center gap-2 mt-3 flex-wrap">
+                  <span className="text-sm text-gray-600">Active filters:</span>
+                  <div className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+                    {statusFilter === "active" ? "Active" : "Disabled"}
+                    <button
+                      onClick={() => setStatusFilter("all")}
+                      className="ml-1 hover:bg-blue-200 rounded-full p-0.5"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </CardHeader>
             <CardContent>
-              {/* Toolbar */}
-              <div className="flex flex-col sm:flex-row gap-4 mb-6">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  <Input
-                    type="text"
-                    placeholder="Search companies..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant={statusFilter === "all" ? "primary" : "outline"}
-                    size="sm"
-                    onClick={() => setStatusFilter("all")}
-                  >
-                    All ({companies.length})
-                  </Button>
-                  <Button
-                    variant={statusFilter === "active" ? "primary" : "outline"}
-                    size="sm"
-                    onClick={() => setStatusFilter("active")}
-                  >
-                    Active ({companies.filter((c) => c.is_active).length})
-                  </Button>
-                  <Button
-                    variant={
-                      statusFilter === "disabled" ? "primary" : "outline"
-                    }
-                    size="sm"
-                    onClick={() => setStatusFilter("disabled")}
-                  >
-                    Disabled ({companies.filter((c) => !c.is_active).length})
-                  </Button>
-                </div>
-              </div>
 
               {/* Companies Table */}
               {loading ? (
@@ -507,14 +528,14 @@ export default function SuperAdmin() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Company Name</TableHead>
-                      <TableHead>Domain</TableHead>
-                      <TableHead>Admin Details</TableHead>
-                      <TableHead className="text-center">Users</TableHead>
-                      <TableHead className="text-center">Orders</TableHead>
-                      <TableHead>Last Active</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
+                      <TableHead className="whitespace-nowrap">Company Name</TableHead>
+                      <TableHead className="whitespace-nowrap">Domain</TableHead>
+                      <TableHead className="whitespace-nowrap">Admin Details</TableHead>
+                      <TableHead className="text-center whitespace-nowrap">Users</TableHead>
+                      <TableHead className="text-center whitespace-nowrap">Orders</TableHead>
+                      <TableHead className="whitespace-nowrap">Last Active</TableHead>
+                      <TableHead className="whitespace-nowrap">Status</TableHead>
+                      <TableHead className="whitespace-nowrap">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -632,163 +653,6 @@ export default function SuperAdmin() {
                   </TableBody>
                 </Table>
               )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="create-company">
-          <Card>
-            <CardHeader>
-              <CardTitle>Create New Logistics Company</CardTitle>
-              <p className="text-sm text-gray-500">
-                Set up a new logistics company with admin credentials
-              </p>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleCompanyFormSubmit}>
-                <div className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <h3 className="text-lg font-medium text-gray-900 mb-4">
-                        Company Details
-                      </h3>
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Company Name
-                          </label>
-                          <Input
-                            type="text"
-                            placeholder="Enter company name"
-                            value={companyForm.name}
-                            onChange={(e) =>
-                              setCompanyForm({
-                                ...companyForm,
-                                name: e.target.value,
-                              })
-                            }
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Company Domain
-                          </label>
-                          <Input
-                            type="text"
-                            placeholder="company-name.logistic-erp.com"
-                            value={companyForm.domain}
-                            onChange={(e) =>
-                              setCompanyForm({
-                                ...companyForm,
-                                domain: e.target.value,
-                              })
-                            }
-                            required
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-medium text-gray-900 mb-4">
-                        Admin Account
-                      </h3>
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Admin Email
-                          </label>
-                          <Input
-                            type="email"
-                            placeholder="admin@company.com"
-                            value={companyForm.admin_email}
-                            onChange={(e) =>
-                              setCompanyForm({
-                                ...companyForm,
-                                admin_email: e.target.value,
-                              })
-                            }
-                            required
-                          />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              First Name
-                            </label>
-                            <Input
-                              type="text"
-                              placeholder="First name"
-                              value={companyForm.admin_first_name}
-                              onChange={(e) =>
-                                setCompanyForm({
-                                  ...companyForm,
-                                  admin_first_name: e.target.value,
-                                })
-                              }
-                              required
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Last Name
-                            </label>
-                            <Input
-                              type="text"
-                              placeholder="Last name"
-                              value={companyForm.admin_last_name}
-                              onChange={(e) =>
-                                setCompanyForm({
-                                  ...companyForm,
-                                  admin_last_name: e.target.value,
-                                })
-                              }
-                              required
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Initial Password
-                          </label>
-                          <div className="relative">
-                            <Input
-                              type={showPassword ? "text" : "password"}
-                              placeholder="Set initial password"
-                              value={companyForm.admin_password}
-                              onChange={(e) =>
-                                setCompanyForm({
-                                  ...companyForm,
-                                  admin_password: e.target.value,
-                                })
-                              }
-                              required
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="absolute right-2 top-1/2 transform -translate-y-1/2"
-                              onClick={() => setShowPassword(!showPassword)}
-                            >
-                              {showPassword ? (
-                                <EyeOff className="w-4 h-4" />
-                              ) : (
-                                <Eye className="w-4 h-4" />
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-6">
-                  <Button type="submit" className="w-full md:w-auto">
-                    Create Company with Admin
-                  </Button>
-                </div>
-              </form>
             </CardContent>
           </Card>
         </TabsContent>

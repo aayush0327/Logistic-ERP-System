@@ -12,9 +12,10 @@ from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTEN
 from starlette.requests import Request
 from starlette.responses import Response, JSONResponse
 
-from src.api.endpoints import auth, users, tenants, admin, permissions, roles
+from src.api.endpoints import auth, users, tenants, admin, permissions, roles, currencies, timezones
 from src.config_local import AuthSettings
 from src.database import engine, Base, AsyncSessionLocal
+from src.middleware.tenant_status import TenantStatusMiddleware
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -97,6 +98,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add tenant status validation middleware
+app.add_middleware(TenantStatusMiddleware)
 
 # Add metrics tracking middleware
 @app.middleware("http")
@@ -199,6 +203,18 @@ app.include_router(
     roles.router,
     prefix="/api/v1/roles",
     tags=["Roles"]
+)
+
+app.include_router(
+    currencies.router,
+    prefix="/api/v1",
+    tags=["Currencies"]
+)
+
+app.include_router(
+    timezones.router,
+    prefix="/api/v1",
+    tags=["Timezones"]
 )
 
 

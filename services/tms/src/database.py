@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime, date
-from sqlalchemy import Column, String, Integer, Float, DateTime, Date, Text, ForeignKey, CheckConstraint
+from sqlalchemy import Column, String, Integer, Float, DateTime, Date, Text, ForeignKey, CheckConstraint, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
@@ -44,7 +44,7 @@ class Trip(Base):
     driver_phone = Column(String(20), nullable=False)
     status = Column(
         String(50),
-        CheckConstraint("status IN ('planning', 'loading', 'on-route', 'completed', 'cancelled', 'truck-malfunction')", name="check_trip_status"),
+        CheckConstraint("status IN ('planning', 'loading', 'on-route', 'paused', 'completed', 'cancelled', 'truck-malfunction')", name="check_trip_status"),
         nullable=False,
         default="planning"
     )
@@ -57,6 +57,13 @@ class Trip(Base):
     capacity_used = Column(Integer, default=0)
     capacity_total = Column(Integer, nullable=False)
     trip_date = Column(Date, nullable=False)
+
+    # Maintenance/pause tracking
+    maintenance_note = Column(Text, nullable=True)
+    paused_at = Column(DateTime, nullable=True)
+    paused_reason = Column(String(500), nullable=True)
+    resumed_at = Column(DateTime, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -83,9 +90,19 @@ class TripOrder(Base):
         nullable=False,
         default="assigned"
     )
+    tms_order_status = Column(
+        String(50),
+        CheckConstraint("tms_order_status IN ('available', 'partial', 'fully_assigned')", name="check_tms_order_status"),
+        default="available"
+    )
+    item_status = Column(
+        String(50),
+        CheckConstraint("item_status IN ('pending_to_assign', 'planning', 'loading', 'on_route', 'delivered', 'failed', 'returned')", name="check_item_status"),
+        default="pending_to_assign"
+    )
     total = Column(Float, nullable=False)
-    weight = Column(Integer, nullable=False)
-    volume = Column(Integer, nullable=False)
+    weight = Column(Float, nullable=False)  # Changed from Integer to Float for decimal weights
+    volume = Column(Float, nullable=False)  # Changed from Integer to Float for decimal volumes
     items = Column(Integer, nullable=False)
     priority = Column(
         String(20),
@@ -102,7 +119,9 @@ class TripOrder(Base):
     assigned_at = Column(DateTime, default=datetime.utcnow)
     original_order_id = Column(String(50))  # For split orders
     original_items = Column(Integer)        # For split orders
-    original_weight = Column(Integer)       # For split orders
+    original_weight = Column(Float)         # For split orders (changed from Integer to Float)
+    items_json = Column(JSON)              # Store assigned items with quantities
+    remaining_items_json = Column(JSON)    # Store remaining items for partial assignments
 
     # Additional order details
     customer_contact = Column(String(200))

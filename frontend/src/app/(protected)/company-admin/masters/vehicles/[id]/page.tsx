@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table';
+import { CurrencyDisplay } from '@/components/CurrencyDisplay';
 import {
   ArrowLeft,
   Edit,
@@ -18,7 +19,8 @@ import {
   Info,
   BarChart3,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  GitBranch,
 } from 'lucide-react';
 import { useGetVehicleQuery } from '@/services/api/companyApi';
 
@@ -187,31 +189,43 @@ export default function VehicleDetailsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
-                <Building className="w-5 h-5 mr-2" />
-                Assignment
+                <GitBranch className="w-5 h-5 mr-2" />
+                Branch Assignment
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div>
-                <label className="text-sm font-medium text-gray-500">Assigned Branch</label>
-                <p className="text-gray-900">{vehicle.branch?.name || 'Not assigned'}</p>
-              </div>
-              {vehicle.branch && (
+              {vehicle.available_for_all_branches ? (
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Available Branches</label>
+                  <div className="flex items-center text-gray-900 mt-1">
+                    <GitBranch className="w-4 h-4 mr-2 text-blue-500" />
+                    <span className="font-medium">All Branches</span>
+                  </div>
+                </div>
+              ) : vehicle.branches && vehicle.branches.length > 0 ? (
                 <>
                   <div>
-                    <label className="text-sm font-medium text-gray-500">Branch Code</label>
-                    <p className="text-gray-900">{vehicle.branch.code}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-500">Location</label>
-                    <p className="text-gray-900">
-                      {vehicle.branch.city && vehicle.branch.state
-                        ? `${vehicle.branch.city}, ${vehicle.branch.state}`
-                        : 'N/A'
-                      }
-                    </p>
+                    <label className="text-sm font-medium text-gray-500">Assigned Branches</label>
+                    <div className="mt-2 space-y-2">
+                      {vehicle.branches.map((vb: any) => (
+                        <div key={vb.branch.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                          <div className="flex items-center">
+                            <GitBranch className="w-4 h-4 mr-2 text-blue-500" />
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">{vb.branch.name}</p>
+                              <p className="text-xs text-gray-500">{vb.branch.code}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </>
+              ) : (
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Assigned Branches</label>
+                  <p className="text-gray-400 mt-1">Not assigned to any branches</p>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -457,21 +471,21 @@ export default function VehicleDetailsPage() {
                       <TableCell>2023-12-15</TableCell>
                       <TableCell>Scheduled</TableCell>
                       <TableCell>Regular service - Oil change, filter replacement</TableCell>
-                      <TableCell>$250</TableCell>
+                      <TableCell><CurrencyDisplay amount={250} /></TableCell>
                       <TableCell>2024-03-15</TableCell>
                     </TableRow>
                     <TableRow>
                       <TableCell>2023-10-20</TableCell>
                       <TableCell>Repair</TableCell>
                       <TableCell>Brake pad replacement</TableCell>
-                      <TableCell>$450</TableCell>
+                      <TableCell><CurrencyDisplay amount={450} /></TableCell>
                       <TableCell>-</TableCell>
                     </TableRow>
                     <TableRow>
                       <TableCell>2023-08-10</TableCell>
                       <TableCell>Scheduled</TableCell>
                       <TableCell>Full service - Comprehensive check</TableCell>
-                      <TableCell>$600</TableCell>
+                      <TableCell><CurrencyDisplay amount={600} /></TableCell>
                       <TableCell>-</TableCell>
                     </TableRow>
                   </TableBody>
@@ -492,24 +506,24 @@ export default function VehicleDetailsPage() {
                     <div className="space-y-3">
                       <div className="flex justify-between">
                         <span className="text-gray-600">Fuel</span>
-                        <span className="font-medium">$1,200</span>
+                        <span className="font-medium"><CurrencyDisplay amount={1200} /></span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Maintenance</span>
-                        <span className="font-medium">$250</span>
+                        <span className="font-medium"><CurrencyDisplay amount={250} /></span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Insurance</span>
-                        <span className="font-medium">$300</span>
+                        <span className="font-medium"><CurrencyDisplay amount={300} /></span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Taxes & Fees</span>
-                        <span className="font-medium">$150</span>
+                        <span className="font-medium"><CurrencyDisplay amount={150} /></span>
                       </div>
                       <div className="pt-3 border-t">
                         <div className="flex justify-between font-semibold">
                           <span>Total</span>
-                          <span>$1,900</span>
+                          <span><CurrencyDisplay amount={1900} /></span>
                         </div>
                       </div>
                     </div>
@@ -520,7 +534,7 @@ export default function VehicleDetailsPage() {
                       <div>
                         <div className="flex justify-between text-sm mb-1">
                           <span className="text-gray-600">Revenue</span>
-                          <span className="font-medium">$8,500</span>
+                          <span className="font-medium"><CurrencyDisplay amount={8500} /></span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div className="bg-green-600 h-2 rounded-full" style={{ width: '100%' }}></div>
@@ -529,7 +543,7 @@ export default function VehicleDetailsPage() {
                       <div>
                         <div className="flex justify-between text-sm mb-1">
                           <span className="text-gray-600">Expenses</span>
-                          <span className="font-medium">$1,900</span>
+                          <span className="font-medium"><CurrencyDisplay amount={1900} /></span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div className="bg-red-600 h-2 rounded-full" style={{ width: '22%' }}></div>
@@ -538,7 +552,7 @@ export default function VehicleDetailsPage() {
                       <div className="pt-3">
                         <div className="flex justify-between font-semibold text-lg">
                           <span>Net Profit</span>
-                          <span className="text-green-600">$6,600</span>
+                          <span className="text-green-600"><CurrencyDisplay amount={6600} /></span>
                         </div>
                       </div>
                     </div>

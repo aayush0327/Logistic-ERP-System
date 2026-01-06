@@ -48,6 +48,12 @@ CREATE TABLE IF NOT EXISTS trip_orders (
     delivery_status VARCHAR(50) DEFAULT 'pending' CHECK (
         delivery_status IN ('pending', 'out-for-delivery', 'delivered', 'failed', 'returned')
     ),
+    tms_order_status VARCHAR(50) DEFAULT 'available' CHECK (
+        tms_order_status IN ('available', 'partial', 'fully_assigned')
+    ),
+    item_status VARCHAR(50) DEFAULT 'pending_to_assign' CHECK (
+        item_status IN ('pending_to_assign', 'planning', 'loading', 'on_route', 'delivered', 'failed', 'returned')
+    ),
     total DECIMAL(12,2) NOT NULL,
     weight INTEGER NOT NULL,
     volume INTEGER NOT NULL,
@@ -63,7 +69,9 @@ CREATE TABLE IF NOT EXISTS trip_orders (
     assigned_at TIMESTAMP DEFAULT NOW(),
     original_order_id VARCHAR(50), -- For split orders
     original_items INTEGER,        -- For split orders
-    original_weight INTEGER       -- For split orders
+    original_weight INTEGER,       -- For split orders
+    items_json JSONB,              -- Store assigned items with quantities and statuses
+    remaining_items_json JSONB     -- Store remaining items for partial assignments
 );
 
 -- Trip Routes Table (for delivery sequence)
@@ -104,6 +112,8 @@ CREATE INDEX IF NOT EXISTS idx_trips_company_id ON trips(company_id);
 CREATE INDEX IF NOT EXISTS idx_trips_user_company ON trips(user_id, company_id);
 CREATE INDEX IF NOT EXISTS idx_trip_orders_trip_id ON trip_orders(trip_id);
 CREATE INDEX IF NOT EXISTS idx_trip_orders_order_id ON trip_orders(order_id);
+CREATE INDEX IF NOT EXISTS idx_trip_orders_tms_status ON trip_orders(tms_order_status);
+CREATE INDEX IF NOT EXISTS idx_trip_orders_original_order_id ON trip_orders(original_order_id);
 CREATE INDEX IF NOT EXISTS idx_trip_orders_priority ON trip_orders(priority);
 CREATE INDEX IF NOT EXISTS idx_trip_orders_sequence ON trip_orders(trip_id, sequence_number);
 CREATE INDEX IF NOT EXISTS idx_trip_orders_user_id ON trip_orders(user_id);

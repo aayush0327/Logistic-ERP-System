@@ -19,6 +19,7 @@ class DocumentType(str, enum.Enum):
     INVOICE = "invoice"
     PACKING_LIST = "packing_list"
     DELIVERY_NOTE = "delivery_note"
+    DELIVERY_PROOF = "delivery_proof"
     PURCHASE_ORDER = "purchase_order"
     QUOTATION = "quotation"
     CONTRACT = "contract"
@@ -30,11 +31,11 @@ class OrderDocument(Base):
     """Order Document model"""
     __tablename__ = "order_documents"
 
-    # Primary key
-    id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True),
+    # Primary key - VARCHAR in database to match orders table
+    id: Mapped[str] = mapped_column(
+        String(255),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Foreign keys
@@ -50,9 +51,9 @@ class OrderDocument(Base):
         comment="User ID who uploaded the document"
     )
 
-    # Document details
-    document_type: Mapped[DocumentType] = mapped_column(
-        Enum(DocumentType),
+    # Document details - use VARCHAR to match database, not enum
+    document_type: Mapped[str] = mapped_column(
+        String(50),
         nullable=False
     )
     title: Mapped[str] = mapped_column(
@@ -94,8 +95,8 @@ class OrderDocument(Base):
         nullable=False,
         default=False
     )
-    verified_by: Mapped[Optional[UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    verified_by: Mapped[Optional[str]] = mapped_column(
+        String(255),
         nullable=True,
         comment="User ID who verified the document"
     )

@@ -12,6 +12,7 @@ import {
   TripCreateData,
 } from "@/lib/api";
 import { Driver, Trip } from "@/types";
+import { CurrencyDisplay } from "@/components/CurrencyDisplay";
 import {
   Truck,
   MapPin,
@@ -1623,7 +1624,9 @@ export default function Trips() {
                         </div>
                         <div className="text-right">
                           <span className="text-sm text-gray-500">{order.date}</span>
-                          <p className="text-lg font-semibold text-gray-900">₹{order.total.toLocaleString()}</p>
+                          <p className="text-lg font-semibold text-gray-900">
+                            <CurrencyDisplay amount={order.total} />
+                          </p>
                         </div>
                       </div>
 
@@ -2464,7 +2467,7 @@ export default function Trips() {
                         <div className="flex justify-between">
                           <span className="text-gray-600">Total Value:</span>
                           <span className="font-medium text-black">
-                            EGP {splitOrder.total.toLocaleString()}
+                            <CurrencyDisplay amount={splitOrder.total} />
                           </span>
                         </div>
                       </div>
@@ -2539,7 +2542,7 @@ export default function Trips() {
                                     {splitWeight} kg
                                   </p>
                                   <p className="font-medium text-black">
-                                    EGP {splitValue.toLocaleString()}
+                                    <CurrencyDisplay amount={splitValue} />
                                   </p>
                                 </div>
                                 <div className="bg-orange-50 p-3 rounded border border-orange-200">
@@ -2553,10 +2556,7 @@ export default function Trips() {
                                     {remainingWeight} kg
                                   </p>
                                   <p className="font-medium text-orange-600">
-                                    EGP{" "}
-                                    {(
-                                      splitOrder.total - splitValue
-                                    ).toLocaleString()}
+                                    <CurrencyDisplay amount={splitOrder.total - splitValue} />
                                   </p>
                                 </div>
                               </div>

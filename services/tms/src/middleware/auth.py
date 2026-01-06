@@ -47,6 +47,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             "/redoc",
             "/favicon.ico",
             "/static",
+            "/api/v1/internal",  # Skip internal endpoints for inter-service communication
         ]
 
     def _should_skip_path(self, path: str) -> bool:

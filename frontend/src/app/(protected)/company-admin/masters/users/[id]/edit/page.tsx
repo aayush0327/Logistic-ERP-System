@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -84,17 +84,24 @@ export default function EditUserPage() {
   });
 
   // Reset form when user data is loaded
-  if (user && !isDirty) {
-    reset({
-      email: user.email,
-      first_name: user.first_name,
-      last_name: user.last_name,
-      phone_number: user.phone_number || "",
-      role_id: typeof user.role_id === 'number' ? user.role_id : (user.role_id ? parseInt(user.role_id) : 0),
-      branch_id: user.branch_id || "",
-      is_active: user.is_active,
-    });
-  }
+  useEffect(() => {
+    if (user) {
+      reset({
+        email: user.email,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        phone_number: user.phone_number || "",
+        role_id:
+          typeof user.role_id === "number"
+            ? user.role_id
+            : user.role_id
+            ? parseInt(user.role_id)
+            : 0,
+        branch_id: user.branch_id || "",
+        is_active: user.is_active,
+      });
+    }
+  }, [user, reset]);
 
   const onSubmit = async (data: UserUpdateFormData) => {
     setIsSubmitting(true);
@@ -265,7 +272,7 @@ export default function EditUserPage() {
                 <select
                   id="role_id"
                   {...register("role_id", { valueAsNumber: true })}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  className={`w-full px-3 text-black py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                     errors.role_id ? "border-red-500" : "border-gray-300"
                   }`}
                 >
@@ -286,7 +293,7 @@ export default function EditUserPage() {
                 <select
                   id="branch_id"
                   {...register("branch_id")}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full text-black px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select Branch (Optional)</option>
                   {branches.map((branch) => (
@@ -362,6 +369,7 @@ export default function EditUserPage() {
               router.push(`/company-admin/masters/users/${userId}`)
             }
             disabled={isSubmitting}
+            className="bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium"
           >
             <X className="w-4 h-4 mr-2" />
             Cancel
@@ -369,7 +377,7 @@ export default function EditUserPage() {
           <Button
             type="submit"
             disabled={!isValid || !isDirty || isSubmitting}
-            className="min-w-[120px]"
+            className="min-w-[120px] bg-[#1F40AE] hover:bg-[#203BA0] active:bg-[#192F80] text-white px-4 py-2 rounded-lg font-medium"
           >
             {isSubmitting ? (
               <div className="flex items-center">

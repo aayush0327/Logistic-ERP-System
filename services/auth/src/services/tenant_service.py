@@ -4,12 +4,14 @@ Tenant service for managing tenants/companies
 from typing import Optional, List
 from datetime import datetime
 from uuid import uuid4
+import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
 from sqlalchemy.orm import selectinload
 
 from ..database import Tenant, User, Role, Permission, RolePermission
 from ..auth import get_password_hash
+from ..config_local import Settings
 
 
 async def create_default_roles_for_tenant(db: AsyncSession, tenant_id: str) -> dict:
@@ -97,6 +99,8 @@ async def create_default_roles_for_tenant(db: AsyncSession, tenant_id: str) -> d
                 "dashboard:read", "dashboard:read_all",
                 # Finance
                 "finance:read", "finance:approve", "finance:approve_bulk", "finance:reports", "finance:export",
+                # Audit
+                "audit:read", "audit:export",
             ]
         },
         {
@@ -232,14 +236,90 @@ class TenantService:
     """Service for tenant management operations"""
 
     @staticmethod
-    async def create_tenant_with_admin(db: AsyncSession, name: str, domain: str, admin_data: dict) -> Tenant:
-        """Create a new tenant with admin user and default roles"""
-        # Create tenant first
+    async def create_tenant_with_admin(
+        db: AsyncSession,
+        name: str,
+        domain: str,
+        admin_data: dict,
+        currency_code: str = None,
+        timezone_iana: str = None,
+        timezone_enabled: bool = True
+    ) -> Tenant:
+        """
+        Create a new tenant with admin user and default roles
+
+        Args:
+            db: Database session
+            name: Tenant name
+            domain: Tenant domain
+            admin_data: Admin user data
+            currency_code: ISO 4217 currency code (defaults to settings.DEFAULT_CURRENCY)
+            timezone_iana: IANA timezone identifier (defaults to settings.DEFAULT_TIMEZONE)
+            timezone_enabled: Whether timezone conversion is enabled
+        """
+        # Set defaults from settings
+        if currency_code is None:
+            currency_code = getattr(Settings, 'DEFAULT_CURRENCY', 'TZS')
+        if timezone_iana is None:
+            timezone_iana = getattr(Settings, 'DEFAULT_TIMEZONE', 'Africa/Dar_es_Salaam')
+
+        # Import pycountry to get currency symbol
+        try:
+            import pycountry
+
+            # Get currency symbol
+            currency_symbols = {
+                "TZS": "TSh", "KES": "KSh", "UGX": "USh", "RWF": "RF",
+                "USD": "$", "EUR": "€", "GBP": "£", "INR": "₹",
+                "JPY": "¥", "AED": "د.إ", "SAR": "ر.س", "EGP": "Egp"
+            }
+            symbol = currency_symbols.get(currency_code, currency_code)
+
+            # Get currency info
+            currency_obj = pycountry.currencies.get(alpha_3=currency_code)
+            currency_name = currency_obj.name if currency_obj else currency_code
+
+            # Build tenant settings JSON
+            tenant_settings = {
+                "currency": {
+                    "code": currency_code,
+                    "symbol": symbol,
+                    "name": currency_name,
+                    "position": "before" if currency_code in ["USD", "EUR", "GBP", "TZS", "KES", "INR"] else "after",
+                    "decimal_places": 0 if currency_code == "JPY" else 2,
+                    "thousands_separator": ",",
+                    "decimal_separator": "."
+                },
+                "timezone": {
+                    "iana": timezone_iana,
+                    "enabled": timezone_enabled
+                }
+            }
+        except ImportError:
+            # Fallback if pycountry not available
+            tenant_settings = {
+                "currency": {
+                    "code": currency_code,
+                    "symbol": currency_code,
+                    "name": currency_code,
+                    "position": "before",
+                    "decimal_places": 2,
+                    "thousands_separator": ",",
+                    "decimal_separator": "."
+                },
+                "timezone": {
+                    "iana": timezone_iana,
+                    "enabled": timezone_enabled
+                }
+            }
+
+        # Create tenant first with settings
         tenant_id = str(uuid4())
         tenant = Tenant(
             id=tenant_id,
             name=name,
             domain=domain,
+            settings=json.dumps(tenant_settings),
             is_active=False,  # Inactive by default until admin is created
             admin_id=None,  # Will be set after admin user is created
             created_at=datetime.utcnow(),
@@ -338,6 +418,18 @@ class TenantService:
         """Activate a tenant when admin is assigned"""
         query = update(Tenant).where(Tenant.id == tenant_id).values(
             is_active=True,
+            updated_at=datetime.utcnow()
+        )
+        result = await db.execute(query)
+        await db.commit()
+
+        return result.rowcount > 0
+
+    @staticmethod
+    async def deactivate_tenant(db: AsyncSession, tenant_id: str) -> bool:
+        """Deactivate a tenant"""
+        query = update(Tenant).where(Tenant.id == tenant_id).values(
+            is_active=False,
             updated_at=datetime.utcnow()
         )
         result = await db.execute(query)
@@ -462,33 +554,101 @@ class TenantService:
         return await TenantService.get_tenant_by_id(db, tenant_id)
 
     @staticmethod
-    async def delete_tenant(db: AsyncSession, tenant_id: str) -> bool:
-        """Delete a tenant (hard delete)"""
+    async def delete_tenant(db: AsyncSession, tenant_id: str, auth_token: str = None) -> bool:
+        """
+        Hard delete a tenant with cascade to all services
+        """
         from sqlalchemy import delete
-        from ..database import Role, RolePermission
+        from ..database import Role, RolePermission, RefreshToken
+        import httpx
+        import logging
 
-        # First delete all role permissions for roles in this tenant
-        delete_role_perms_query = delete(RolePermission).where(
-            RolePermission.role_id.in_(
-                select(Role.id).where(Role.tenant_id == tenant_id)
+        logger = logging.getLogger(__name__)
+
+        try:
+            # Step 1: Delete refresh tokens for users in this tenant
+            delete_refresh_tokens_query = delete(RefreshToken).where(
+                RefreshToken.user_id.in_(
+                    select(User.id).where(User.tenant_id == tenant_id)
+                )
             )
-        )
-        await db.execute(delete_role_perms_query)
+            await db.execute(delete_refresh_tokens_query)
 
-        # Delete ALL users for this tenant (including admin)
-        delete_users_query = delete(User).where(User.tenant_id == tenant_id)
-        await db.execute(delete_users_query)
+            # Step 2: Delete role permissions
+            delete_role_perms_query = delete(RolePermission).where(
+                RolePermission.role_id.in_(
+                    select(Role.id).where(Role.tenant_id == tenant_id)
+                )
+            )
+            await db.execute(delete_role_perms_query)
 
-        # Now delete all roles for this tenant (no users reference them anymore)
-        delete_roles_query = delete(Role).where(Role.tenant_id == tenant_id)
-        await db.execute(delete_roles_query)
+            # Step 3: Delete all users
+            delete_users_query = delete(User).where(User.tenant_id == tenant_id)
+            await db.execute(delete_users_query)
 
-        # Finally delete the tenant
-        delete_tenant_query = delete(Tenant).where(Tenant.id == tenant_id)
-        result = await db.execute(delete_tenant_query)
-        await db.commit()
+            # Step 4: Delete all roles
+            delete_roles_query = delete(Role).where(Role.tenant_id == tenant_id)
+            await db.execute(delete_roles_query)
 
-        return result.rowcount > 0
+            # Step 5: Commit the auth service deletions first
+            await db.commit()
+
+            # Step 6: Notify other services to delete their data BEFORE deleting tenant record
+            # This ensures other services can still reference the tenant_id
+            await TenantService._notify_services_of_deletion(tenant_id, auth_token)
+
+            # Step 7: Now delete the tenant record last
+            delete_tenant_query = delete(Tenant).where(Tenant.id == tenant_id)
+            result = await db.execute(delete_tenant_query)
+            await db.commit()
+
+            return result.rowcount > 0
+
+        except Exception as e:
+            logger.error(f"Error deleting tenant {tenant_id}: {e}")
+            await db.rollback()
+            raise
+
+    @staticmethod
+    async def _notify_services_of_deletion(tenant_id: str, auth_token: str = None):
+        """
+        Notify all other services to delete data for this tenant
+        """
+        import httpx
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        services = [
+            {"name": "company", "url": "http://company-service:8002"},
+            {"name": "orders", "url": "http://orders-service:8003"},
+            {"name": "tms", "url": "http://tms-service:8004"},
+            {"name": "finance", "url": "http://finance-service:8005"},
+            {"name": "driver", "url": "http://driver-service:8006"},
+        ]
+
+        headers = {"Content-Type": "application/json"}
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
+
+        for service in services:
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.delete(
+                        f"{service['url']}/api/v1/internal/tenant/{tenant_id}",
+                        headers=headers
+                    )
+
+                    if response.status_code == 200:
+                        logger.info(f"Successfully deleted from {service['name']} service")
+                    else:
+                        logger.error(
+                            f"Failed to delete from {service['name']} service: "
+                            f"{response.status_code}"
+                        )
+            except Exception as e:
+                logger.error(f"Error notifying {service['name']} service: {e}")
+                # Continue with other services even if one fails
 
     @staticmethod
     async def get_tenant_stats(db: AsyncSession, tenant_id: str) -> dict:

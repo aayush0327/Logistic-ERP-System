@@ -48,11 +48,15 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
             "/metrics",
             "/docs",
             "/redoc",
-            "/openapi.json"
+            "/openapi.json",
         ]
 
-        # Skip authentication for public paths
+        # Skip authentication for public paths (exact match)
         if request.url.path in public_paths:
+            return await call_next(request)
+
+        # Skip internal endpoints (prefix match)
+        if request.url.path.startswith("/api/v1/internal"):
             return await call_next(request)
 
         try:

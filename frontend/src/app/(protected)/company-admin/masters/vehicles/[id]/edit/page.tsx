@@ -16,6 +16,7 @@ import {
   Building,
   Calendar,
   Wrench,
+  GitBranch,
 } from "lucide-react";
 import {
   useGetVehicleQuery,
@@ -37,7 +38,8 @@ export default function EditVehiclePage() {
   const [updateVehicle, { isLoading: isUpdating }] = useUpdateVehicleMutation();
 
   const [formData, setFormData] = useState<Partial<VehicleCreate>>({
-    branch_id: "",
+    branch_ids: [],
+    available_for_all_branches: true,
     plate_number: "",
     make: "",
     model: "",
@@ -52,11 +54,17 @@ export default function EditVehiclePage() {
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isAvailableForAllBranches, setIsAvailableForAllBranches] = useState(true);
+  const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
 
   useEffect(() => {
     if (vehicle) {
+      // Extract branch IDs from vehicle.branches relationship
+      const branchIds = vehicle.branches?.map((vb: any) => vb.branch.id) || [];
+
       setFormData({
-        branch_id: vehicle.branch_id || "",
+        branch_ids: branchIds,
+        available_for_all_branches: vehicle.available_for_all_branches ?? true,
         plate_number: vehicle.plate_number || "",
         make: vehicle.make || "",
         model: vehicle.model || "",
@@ -73,6 +81,9 @@ export default function EditVehiclePage() {
           : "",
         is_active: vehicle.is_active,
       });
+
+      setIsAvailableForAllBranches(vehicle.available_for_all_branches ?? true);
+      setSelectedBranches(branchIds);
     }
   }, [vehicle]);
 
@@ -104,6 +115,11 @@ export default function EditVehiclePage() {
       newErrors.year = "Invalid year";
     }
 
+    // Validate branches if not available for all
+    if (!isAvailableForAllBranches && selectedBranches.length === 0) {
+      newErrors.branches = "Please select at least one branch";
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -121,6 +137,8 @@ export default function EditVehiclePage() {
         ...formData,
         last_maintenance: formData.last_maintenance || undefined,
         next_maintenance: formData.next_maintenance || undefined,
+        available_for_all_branches: isAvailableForAllBranches,
+        branch_ids: isAvailableForAllBranches ? [] : selectedBranches,
       };
 
       await updateVehicle({
@@ -336,29 +354,87 @@ export default function EditVehiclePage() {
                     </option>
                   </select>
                 </div>
-                <div>
-                  <Label htmlFor="branch_id">Assigned Branch</Label>
-                  <select
-                    id="branch_id"
-                    value={formData.branch_id}
-                    onChange={(e) =>
-                      handleInputChange("branch_id", e.target.value)
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Select Branch</option>
-                    {branches?.items?.map((branch: any) => (
-                      <option
-                        className="text-black"
-                        key={branch.id}
-                        value={branch.id}
-                      >
-                        {branch.name} ({branch.code})
-                      </option>
-                    ))}
-                  </select>
+              </div>
+
+              {/* Branch Availability - Same pattern as customers */}
+              <div>
+                <Label className="text-sm font-medium text-gray-700 mb-3 block">
+                  Branch Availability
+                </Label>
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      id="available_for_all_branches"
+                      checked={isAvailableForAllBranches}
+                      onChange={(e) =>
+                        setIsAvailableForAllBranches(e.target.checked)
+                      }
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <Label
+                      htmlFor="available_for_all_branches"
+                      className="text-sm font-medium text-gray-900"
+                    >
+                      Available for all branches
+                    </Label>
+                  </div>
+
+                  {!isAvailableForAllBranches && (
+                    <div className="mt-3 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                      <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                        Select specific branches:
+                      </Label>
+                      <div className="space-y-2 max-h-40 overflow-y-auto">
+                        {branches?.items?.map((branch: any) => (
+                          <div
+                            key={branch.id}
+                            className="flex items-center space-x-2"
+                          >
+                            <input
+                              type="checkbox"
+                              id={`branch_${branch.id}`}
+                              checked={selectedBranches.includes(branch.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedBranches([
+                                    ...selectedBranches,
+                                    branch.id,
+                                  ]);
+                                } else {
+                                  setSelectedBranches(
+                                    selectedBranches.filter(
+                                      (id) => id !== branch.id
+                                    )
+                                  );
+                                }
+                              }}
+                              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                            <Label
+                              htmlFor={`branch_${branch.id}`}
+                              className="text-sm text-gray-900"
+                            >
+                              {branch.name} ({branch.code})
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                      {selectedBranches.length === 0 && (
+                        <p className="text-xs text-amber-600 mt-2">
+                          Please select at least one branch
+                        </p>
+                      )}
+                      {errors.branches && (
+                        <p className="text-sm text-red-600 mt-2">
+                          {errors.branches}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
+
               <div className="flex items-center space-x-3">
                 <Switch
                   checked={formData.is_active}

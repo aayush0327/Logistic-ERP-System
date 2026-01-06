@@ -32,7 +32,7 @@ class TenantIsolationMiddleware(BaseHTTPMiddleware):
             HTTP response
         """
 
-        # Skip tenant isolation for health checks and docs
+        # Skip tenant isolation for health checks, docs, and internal endpoints
         skip_paths = [
             "/",
             "/health",
@@ -44,8 +44,14 @@ class TenantIsolationMiddleware(BaseHTTPMiddleware):
             "/favicon.ico",
         ]
 
+        # Check exact match first
         if request.url.path in skip_paths:
             logger.info(f"TMS Tenant Isolation Middleware: Skipping tenant check for {request.url.path}")
+            return await call_next(request)
+
+        # Skip internal endpoints (prefix match)
+        if request.url.path.startswith("/api/v1/internal"):
+            logger.info(f"TMS Tenant Isolation Middleware: Skipping tenant check for internal endpoint {request.url.path}")
             return await call_next(request)
 
         # Check if request is authenticated (has user context from authentication middleware)

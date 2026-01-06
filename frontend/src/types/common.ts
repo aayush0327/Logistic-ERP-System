@@ -15,6 +15,8 @@ export interface OrderAssignData {
   original_order_id?: string;
   original_items?: number;
   original_weight?: number;
+  items_json?: any[];
+  remaining_items_json?: any[];
 }
 
 export interface Driver {
@@ -54,6 +56,33 @@ export interface TripOrder {
   priority: string;
   items: number;
   weight: number;
+  items_data?: OrderItem[];
+  items_count?: number;
+  customerAddress?: string;
+  address?: string;
+  total?: number;
+  volume?: number;
+  status?: string;
+  delivery_status?: string;
+  sequence_number?: number;
+}
+
+export interface OrderItem {
+  id: string;
+  product_id: string;
+  product_name: string;
+  product_code?: string;
+  description?: string;
+  quantity: number;
+  unit: string;
+  unit_price?: number;
+  total_price?: number;
+  weight?: number;
+  total_weight?: number;
+  volume?: number;
+  weight_type?: string;
+  fixed_weight?: number;
+  weight_unit?: string;
 }
 
 export interface getProductCategoryResponse{

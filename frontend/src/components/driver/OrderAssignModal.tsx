@@ -7,6 +7,7 @@ import { X, Package } from "lucide-react";
 import { Trip, OrderAssignData } from "@/types/common";
 import { tmsAPI } from "@/lib/api";
 import { useOutsideClick } from "@/components/Hooks/useOutsideClick";
+import { CurrencyDisplay } from "@/components/CurrencyDisplay";
 
 interface OrderAssignModalProps {
   isOpen: boolean;
@@ -564,7 +565,7 @@ export default function OrderAssignModal({
                   <div className="flex justify-between">
                     <span className="text-gray-600">Total Value:</span>
                     <span className="font-medium text-black">
-                      EGP {splitOrder.total.toLocaleString()}
+                      <CurrencyDisplay amount={splitOrder.total} />
                     </span>
                   </div>
                 </div>
@@ -626,7 +627,7 @@ export default function OrderAssignModal({
                               {splitWeight} kg
                             </p>
                             <p className="font-medium text-black">
-                              EGP {splitValue.toLocaleString()}
+                              <CurrencyDisplay amount={splitValue} />
                             </p>
                           </div>
                           <div className="bg-orange-50 p-3 rounded border border-orange-200">
@@ -638,8 +639,7 @@ export default function OrderAssignModal({
                               {remainingWeight} kg
                             </p>
                             <p className="font-medium text-orange-600">
-                              EGP{" "}
-                              {(splitOrder.total - splitValue).toLocaleString()}
+                              <CurrencyDisplay amount={splitOrder.total - splitValue} />
                             </p>
                           </div>
                         </div>

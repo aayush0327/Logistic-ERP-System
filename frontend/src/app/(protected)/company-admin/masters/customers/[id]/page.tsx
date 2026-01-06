@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/Table";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { CurrencyDisplay } from "@/components/CurrencyDisplay";
 import {
   ArrowLeft,
   Edit,
@@ -30,6 +31,7 @@ import {
   BarChart3,
   FileText,
   AlertTriangle,
+  Megaphone,
 } from "lucide-react";
 import { useGetCustomerQuery } from "@/services/api/companyApi";
 
@@ -80,7 +82,33 @@ export default function CustomerDetailsPage() {
   );
 
   const getBusinessTypeBadge = (customer: any) => {
-    // Use business_type_relation (new) if available, fallback to business_type (old enum)
+    // Use business_types (new multiple) if available, fallback to business_type_relation (single), then business_type (old enum)
+    const businessTypes = customer.business_types || [];
+
+    if (businessTypes.length > 0) {
+      // Display all business types as badges
+      const colors: Record<string, "default" | "success" | "warning" | "danger" | "info"> = {
+        individual: "default",
+        small_business: "info",
+        corporate: "success",
+        government: "warning",
+      };
+
+      return (
+        <div className="space-y-1">
+          {businessTypes.map((bt: any) => {
+            const badgeColor = colors[bt.code] || "info";
+            return (
+              <Badge key={bt.id} variant={badgeColor}>
+                {bt.name}
+              </Badge>
+            );
+          })}
+        </div>
+      );
+    }
+
+    // Fallback to old single business type display
     const businessTypeName = customer.business_type_relation?.name ||
       customer.business_type?.replace("_", " ") ||
       "N/A";
@@ -146,7 +174,7 @@ export default function CustomerDetailsPage() {
       </div>
 
       {/* Customer Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
@@ -194,14 +222,6 @@ export default function CustomerDetailsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div>
-              <label className="text-sm font-medium text-gray-500">
-                Home Branch
-              </label>
-              <p className="text-gray-900">
-                {customer.home_branch?.name || "Not assigned"}
-              </p>
-            </div>
             <div>
               <label className="text-sm font-medium text-gray-500">
                 Address
@@ -257,7 +277,7 @@ export default function CustomerDetailsPage() {
                 Credit Limit
               </label>
               <p className="text-lg font-bold text-gray-900">
-                ${customer.credit_limit.toLocaleString()}
+                <CurrencyDisplay amount={customer.credit_limit} />
               </p>
             </div>
             <div>
@@ -265,7 +285,7 @@ export default function CustomerDetailsPage() {
                 Available Credit
               </label>
               <p className="text-lg font-bold text-green-600">
-                ${(customer.credit_limit * 0.7).toLocaleString()}
+                <CurrencyDisplay amount={customer.credit_limit * 0.7} />
               </p>
             </div>
             <div className="pt-2">
@@ -277,6 +297,37 @@ export default function CustomerDetailsPage() {
               </div>
               <p className="text-xs text-gray-500 mt-1">30% utilized</p>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Megaphone className="w-5 h-5 mr-2" />
+              Marketing Contact
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {customer.marketing_person_name || customer.marketing_person_phone || customer.marketing_person_email ? (
+              <>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Name</label>
+                  <p className="text-gray-900">{customer.marketing_person_name || "N/A"}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Phone</label>
+                  <p className="text-gray-900">{customer.marketing_person_phone || "N/A"}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Email</label>
+                  <p className="text-gray-900">{customer.marketing_person_email || "N/A"}</p>
+                </div>
+              </>
+            ) : (
+              <div>
+                <p className="text-sm text-gray-500">No marketing contact assigned</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -299,7 +350,7 @@ export default function CustomerDetailsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Total Spent</p>
-                <p className="text-2xl font-bold text-gray-900">$45,230</p>
+                <p className="text-2xl font-bold text-gray-900"><CurrencyDisplay amount={45230} /></p>
               </div>
               <DollarSign className="w-8 h-8 text-green-600" />
             </div>
@@ -310,7 +361,7 @@ export default function CustomerDetailsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Avg Order Value</p>
-                <p className="text-2xl font-bold text-gray-900">$290</p>
+                <p className="text-2xl font-bold text-gray-900"><CurrencyDisplay amount={290} /></p>
               </div>
               <BarChart3 className="w-8 h-8 text-purple-600" />
             </div>
@@ -360,13 +411,13 @@ export default function CustomerDetailsPage() {
                     <span className="text-sm text-gray-600">
                       This Month Revenue
                     </span>
-                    <span className="text-lg font-semibold">$3,480</span>
+                    <span className="text-lg font-semibold"><CurrencyDisplay amount={3480} /></span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                     <span className="text-sm text-gray-600">
                       Pending Payments
                     </span>
-                    <span className="text-lg font-semibold">$1,250</span>
+                    <span className="text-lg font-semibold"><CurrencyDisplay amount={1250} /></span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                     <span className="text-sm text-gray-600">
@@ -451,7 +502,7 @@ export default function CustomerDetailsPage() {
                     <TableCell>Express</TableCell>
                     <TableCell>Mumbai</TableCell>
                     <TableCell>Pune</TableCell>
-                    <TableCell>$450</TableCell>
+                    <TableCell><CurrencyDisplay amount={450} /></TableCell>
                     <TableCell>
                       <Badge variant="success">Delivered</Badge>
                     </TableCell>
@@ -462,7 +513,7 @@ export default function CustomerDetailsPage() {
                     <TableCell>Standard</TableCell>
                     <TableCell>Mumbai</TableCell>
                     <TableCell>Delhi</TableCell>
-                    <TableCell>$780</TableCell>
+                    <TableCell><CurrencyDisplay amount={780} /></TableCell>
                     <TableCell>
                       <Badge variant="info">In Transit</Badge>
                     </TableCell>
@@ -473,7 +524,7 @@ export default function CustomerDetailsPage() {
                     <TableCell>Freight</TableCell>
                     <TableCell>Pune</TableCell>
                     <TableCell>Bangalore</TableCell>
-                    <TableCell>$1,200</TableCell>
+                    <TableCell><CurrencyDisplay amount={1200} /></TableCell>
                     <TableCell>
                       <Badge variant="warning">Pending</Badge>
                     </TableCell>
@@ -506,7 +557,7 @@ export default function CustomerDetailsPage() {
                     <TableCell className="font-medium">INV-2024-001</TableCell>
                     <TableCell>2024-01-01</TableCell>
                     <TableCell>2024-01-31</TableCell>
-                    <TableCell>$2,340</TableCell>
+                    <TableCell><CurrencyDisplay amount={2340} /></TableCell>
                     <TableCell>
                       <Badge variant="success">Paid</Badge>
                     </TableCell>
@@ -520,7 +571,7 @@ export default function CustomerDetailsPage() {
                     <TableCell className="font-medium">INV-2024-002</TableCell>
                     <TableCell>2024-01-15</TableCell>
                     <TableCell>2024-02-15</TableCell>
-                    <TableCell>$1,890</TableCell>
+                    <TableCell><CurrencyDisplay amount={1890} /></TableCell>
                     <TableCell>
                       <Badge variant="warning">Due Soon</Badge>
                     </TableCell>
@@ -534,7 +585,7 @@ export default function CustomerDetailsPage() {
                     <TableCell className="font-medium">INV-2024-003</TableCell>
                     <TableCell>2024-01-20</TableCell>
                     <TableCell>2024-02-20</TableCell>
-                    <TableCell>$3,450</TableCell>
+                    <TableCell><CurrencyDisplay amount={3450} /></TableCell>
                     <TableCell>
                       <Badge variant="info">Sent</Badge>
                     </TableCell>

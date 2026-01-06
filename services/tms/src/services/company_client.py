@@ -156,6 +156,81 @@ class CompanyServiceClient:
             logger.error(f"Error fetching vehicles for branch {branch_id}: {e}")
             return []
 
+    async def get_vehicle_id_by_plate(self, truck_plate: str, tenant_id: str = "default-tenant", auth_token: Optional[str] = None) -> Optional[str]:
+        """Get vehicle ID by plate number"""
+        try:
+            headers = {}
+            if auth_token:
+                headers["Authorization"] = f"Bearer {auth_token}"
+
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(
+                    f"{self.base_url}/vehicles/",
+                    params={"plate_number": truck_plate, "tenant_id": tenant_id, "per_page": 1},
+                    headers=headers
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    vehicles = data.get("items", [])
+                    if vehicles:
+                        return str(vehicles[0]["id"])
+                return None
+        except Exception as e:
+            logger.error(f"Error getting vehicle ID by plate: {e}")
+            return None
+
+    async def update_vehicle_status(self, vehicle_id: str, status: str = "available", tenant_id: str = "default-tenant", auth_token: Optional[str] = None) -> bool:
+        """Update vehicle status to available or unavailable"""
+        try:
+            headers = {}
+            if auth_token:
+                headers["Authorization"] = f"Bearer {auth_token}"
+
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.put(
+                    f"{self.base_url}/vehicles/{vehicle_id}/status",
+                    params={"status": status, "tenant_id": tenant_id},
+                    headers=headers
+                )
+
+                if response.status_code == 200:
+                    logger.info(f"Successfully updated vehicle {vehicle_id} status to {status}")
+                    return True
+                else:
+                    logger.error(f"Failed to update vehicle status: {response.status_code} - {response.text}")
+                    return False
+
+        except Exception as e:
+            logger.error(f"Error updating vehicle {vehicle_id} status: {e}")
+            return False
+
+    async def update_driver_status(self, driver_id: str, status: str = "available", tenant_id: str = "default-tenant", auth_token: Optional[str] = None) -> bool:
+        """Update driver current_status using the dedicated status endpoint"""
+        try:
+            headers = {}
+            if auth_token:
+                headers["Authorization"] = f"Bearer {auth_token}"
+
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                # Use the dedicated driver status endpoint (requires tms:status_update permission)
+                response = await client.put(
+                    f"{self.base_url}/profiles/drivers/{driver_id}/status",
+                    params={"status": status, "tenant_id": tenant_id},
+                    headers=headers
+                )
+
+                if response.status_code == 200:
+                    logger.info(f"Successfully updated driver {driver_id} status to {status}")
+                    return True
+                else:
+                    logger.error(f"Failed to update driver status: {response.status_code} - {response.text}")
+                    return False
+
+        except Exception as e:
+            logger.error(f"Error updating driver {driver_id} status: {e}")
+            return False
+
 
 # Create a singleton instance
 company_client = CompanyServiceClient()

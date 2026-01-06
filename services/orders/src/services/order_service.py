@@ -18,6 +18,7 @@ from src.schemas import (
     OrderQueryParams,
 )
 from src.config_local import OrdersSettings
+from src.services.audit_client import AuditClient
 
 settings = OrdersSettings()
 
@@ -75,6 +76,27 @@ class OrderService:
             and_(
                 # Convert to string to match VARCHAR column
                 Order.id == str(order_id),
+                Order.tenant_id == tenant_id,
+                Order.is_active == True
+            )
+        ).options(
+            selectinload(Order.items),
+            selectinload(Order.documents),
+            selectinload(Order.status_history)
+        )
+
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
+
+    async def get_order_by_order_number(
+        self,
+        order_number: str,
+        tenant_id: str
+    ) -> Optional[Order]:
+        """Get order by order_number and tenant"""
+        query = select(Order).where(
+            and_(
+                Order.order_number == order_number,
                 Order.tenant_id == tenant_id,
                 Order.is_active == True
             )
@@ -323,6 +345,26 @@ class OrderService:
             # Commit transaction
             await self.db.commit()
 
+            # Send audit log
+            audit_client = AuditClient(self.auth_headers)
+            await audit_client.log_event(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                action="create",
+                module="orders",
+                entity_type="order",
+                entity_id=str(order.id),
+                description=f"Order {order.order_number} created",
+                new_values={
+                    "order_number": order.order_number,
+                    "status": order.status,
+                    "total_amount": str(total_amount),
+                    "customer_id": order.customer_id,
+                    "branch_id": order.branch_id
+                }
+            )
+            await audit_client.close()
+
             # Query the order back with all relationships loaded
             result = await self.db.execute(
                 select(Order)
@@ -348,7 +390,7 @@ class OrderService:
         order_data: OrderUpdate,
         user_id: str
     ) -> Order:
-        """Update an existing order"""
+        """Update an existing order (including items for draft orders)"""
         query = select(Order).where(
             Order.id == str(order_id))  # Convert to string
         result = await self.db.execute(query)
@@ -357,8 +399,74 @@ class OrderService:
         if not order:
             raise ValueError("Order not found")
 
-        # Update order fields
-        update_data = order_data.model_dump(exclude_unset=True)
+        # Extract items from update data before processing other fields
+        items_data = order_data.items if hasattr(order_data, 'items') else None
+
+        # Update order fields (excluding items which are handled separately)
+        update_data = order_data.model_dump(exclude_unset=True, exclude={'items'})
+
+        # Recalculate totals if items are being updated
+        if items_data is not None:
+            total_weight = 0.0
+            total_volume = 0.0
+            package_count = 0
+            total_amount = 0.0
+
+            # Process new items
+            order_items = []
+            for i, item_data in enumerate(items_data):
+                # Fetch product details
+                product = await self._fetch_product_details(item_data.product_id)
+
+                # Use user-entered weight if provided, otherwise use product weight
+                item_weight = item_data.weight if hasattr(item_data, 'weight') and item_data.weight and item_data.weight > 0 else product.get("weight", 0)
+
+                # Calculate item totals
+                item_total_price = product["unit_price"] * item_data.quantity
+                item_total_weight = item_weight * item_data.quantity
+                item_total_volume = product.get("volume", 0) * item_data.quantity
+
+                # Update order totals
+                total_weight += item_total_weight
+                total_volume += item_total_volume
+                package_count += item_data.quantity
+                total_amount += item_total_price
+
+                # Create OrderItem object (only use fields that exist in OrderItem model)
+                order_item = OrderItem(
+                    id=str(uuid4()),
+                    order_id=str(order.id),
+                    product_id=item_data.product_id,
+                    product_name=product.get("name", ""),
+                    product_code=product.get("code", ""),
+                    description=product.get("description", ""),
+                    quantity=item_data.quantity,
+                    unit=product.get("unit", "pcs"),
+                    unit_price=product.get("unit_price", 0),
+                    total_price=item_total_price,
+                    weight=item_weight,
+                    volume=item_total_volume,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                )
+                order_items.append(order_item)
+
+            # Delete existing items and add new ones
+            from sqlalchemy import delete
+            delete_query = delete(OrderItem).where(OrderItem.order_id == str(order.id))
+            await self.db.execute(delete_query)
+
+            # Add new items
+            for order_item in order_items:
+                self.db.add(order_item)
+
+            # Update calculated totals in the order data
+            update_data['total_weight'] = total_weight
+            update_data['total_volume'] = total_volume
+            update_data['package_count'] = package_count
+            update_data['total_amount'] = total_amount
+
+        # Apply other field updates
         for field, value in update_data.items():
             setattr(order, field, value)
 
@@ -410,6 +518,21 @@ class OrderService:
         await self.db.commit()
         await self.db.refresh(order)
 
+        # Send audit log
+        audit_client = AuditClient(self.auth_headers)
+        await audit_client.log_event(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="submit",
+            module="orders",
+            entity_type="order",
+            entity_id=str(order.id),
+            description=f"Order {order.order_number} submitted for finance approval",
+            from_status="draft",
+            to_status="submitted"
+        )
+        await audit_client.close()
+
         # TODO: Send notification to finance manager
 
         return order
@@ -454,6 +577,23 @@ class OrderService:
 
         await self.db.commit()
         await self.db.refresh(order)
+
+        # Send audit log
+        audit_client = AuditClient(self.auth_headers)
+        await audit_client.log_event(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="approve" if approved else "reject",
+            module="orders",
+            entity_type="order",
+            entity_id=str(order.id),
+            description=f"Order {order.order_number} {'approved' if approved else 'rejected'} by finance",
+            from_status="submitted",
+            to_status=new_status,
+            approval_status="approved" if approved else "rejected",
+            reason=reason
+        )
+        await audit_client.close()
 
         # TODO: Send notification to relevant parties
 
@@ -502,6 +642,28 @@ class OrderService:
 
         await self.db.commit()
         await self.db.refresh(order)
+
+        # Send audit log
+        new_values = {}
+        if driver_id or trip_id:
+            new_values = {"driver_id": driver_id, "trip_id": trip_id}
+
+        audit_client = AuditClient(self.auth_headers)
+        await audit_client.log_event(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="approve" if approved else "reject",
+            module="orders",
+            entity_type="order",
+            entity_id=str(order.id),
+            description=f"Order {order.order_number} {'approved' if approved else 'rejected'} by logistics",
+            from_status="finance_approved",
+            to_status=new_status,
+            approval_status="approved" if approved else "rejected",
+            reason=reason,
+            new_values=new_values if new_values else None
+        )
+        await audit_client.close()
 
         # TODO: Send notification to driver and branch manager
 
@@ -568,6 +730,7 @@ class OrderService:
         if order.status in [OrderStatus.PICKED_UP, OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED]:
             raise ValueError("Order cannot be cancelled in current status")
 
+        old_status = order.status
         await self._update_order_status(
             order,
             OrderStatus.CANCELLED,
@@ -578,6 +741,22 @@ class OrderService:
 
         await self.db.commit()
         await self.db.refresh(order)
+
+        # Send audit log
+        audit_client = AuditClient(self.auth_headers)
+        await audit_client.log_event(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="cancel",
+            module="orders",
+            entity_type="order",
+            entity_id=str(order.id),
+            description=f"Order {order.order_number} cancelled",
+            from_status=old_status,
+            to_status="cancelled",
+            reason=reason
+        )
+        await audit_client.close()
 
         return order
 
@@ -624,9 +803,13 @@ class OrderService:
             OrderStatus.SUBMITTED: [OrderStatus.FINANCE_APPROVED, OrderStatus.FINANCE_REJECTED, OrderStatus.CANCELLED],
             OrderStatus.FINANCE_APPROVED: [OrderStatus.LOGISTICS_APPROVED, OrderStatus.LOGISTICS_REJECTED, OrderStatus.CANCELLED],
             OrderStatus.FINANCE_REJECTED: [OrderStatus.SUBMITTED, OrderStatus.CANCELLED],
-            OrderStatus.ASSIGNED: [OrderStatus.PICKED_UP, OrderStatus.CANCELLED],
-            OrderStatus.PICKED_UP: [OrderStatus.IN_TRANSIT],
-            OrderStatus.IN_TRANSIT: [OrderStatus.DELIVERED],
+            OrderStatus.LOGISTICS_APPROVED: [OrderStatus.ASSIGNED, OrderStatus.CANCELLED],
+            OrderStatus.LOGISTICS_REJECTED: [OrderStatus.SUBMITTED, OrderStatus.CANCELLED],
+            OrderStatus.ASSIGNED: [OrderStatus.PARTIAL_IN_TRANSIT, OrderStatus.IN_TRANSIT, OrderStatus.CANCELLED],
+            OrderStatus.PICKED_UP: [OrderStatus.PARTIAL_IN_TRANSIT, OrderStatus.IN_TRANSIT],
+            OrderStatus.PARTIAL_IN_TRANSIT: [OrderStatus.PARTIAL_DELIVERED, OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED],
+            OrderStatus.IN_TRANSIT: [OrderStatus.PARTIAL_DELIVERED, OrderStatus.DELIVERED],
+            OrderStatus.PARTIAL_DELIVERED: [OrderStatus.DELIVERED],
             OrderStatus.DELIVERED: [],  # Terminal state
             OrderStatus.CANCELLED: [],  # Terminal state
         }

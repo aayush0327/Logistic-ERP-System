@@ -7,7 +7,9 @@ FROM python:3.13-slim AS base
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    UV_HTTP_TIMEOUT=3000 \
+    UV_REQUEST_TIMEOUT=3000
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -30,8 +32,9 @@ FROM base AS dependencies
 COPY pyproject.toml ./
 COPY uv.lock* ./
 
-# Install Python dependencies using uv
-RUN uv pip install --system --no-cache .
+# Install Python dependencies using uv with increased timeout and retry
+RUN uv pip install --system --no-cache . || \
+    uv pip install --system --no-cache --retries 5 --timeout 600 .
 
 # ====================================
 # Stage 3: Production Image

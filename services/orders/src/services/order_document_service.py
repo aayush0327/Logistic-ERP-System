@@ -19,7 +19,7 @@ class OrderDocumentService:
     async def get_order_documents(self, order_id: UUID) -> List[OrderDocument]:
         """Get all documents for an order"""
         query = select(OrderDocument).where(
-            OrderDocument.order_id == order_id
+            OrderDocument.order_id == str(order_id)
         ).order_by(OrderDocument.created_at.desc())
 
         result = await self.db.execute(query)
@@ -27,7 +27,7 @@ class OrderDocumentService:
 
     async def get_document_by_id(self, document_id: UUID) -> Optional[OrderDocument]:
         """Get document by ID"""
-        query = select(OrderDocument).where(OrderDocument.id == document_id)
+        query = select(OrderDocument).where(OrderDocument.id == str(document_id))
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
@@ -59,7 +59,7 @@ class OrderDocumentService:
         document_data: OrderDocumentUpdate
     ) -> OrderDocument:
         """Update document details"""
-        query = select(OrderDocument).where(OrderDocument.id == document_id)
+        query = select(OrderDocument).where(OrderDocument.id == str(document_id))
         result = await self.db.execute(query)
         document = result.scalar_one_or_none()
 
@@ -80,7 +80,7 @@ class OrderDocumentService:
 
     async def delete_document(self, document_id: UUID) -> None:
         """Delete a document"""
-        query = select(OrderDocument).where(OrderDocument.id == document_id)
+        query = select(OrderDocument).where(OrderDocument.id == str(document_id))
         result = await self.db.execute(query)
         document = result.scalar_one_or_none()
 
@@ -98,7 +98,7 @@ class OrderDocumentService:
         verification_notes: Optional[str] = None
     ) -> OrderDocument:
         """Verify or unverify a document"""
-        query = select(OrderDocument).where(OrderDocument.id == document_id)
+        query = select(OrderDocument).where(OrderDocument.id == str(document_id))
         result = await self.db.execute(query)
         document = result.scalar_one_or_none()
 
@@ -106,7 +106,7 @@ class OrderDocumentService:
             raise ValueError("Document not found")
 
         document.is_verified = verified
-        document.verified_by = user_id
+        document.verified_by = str(user_id)
         document.verified_at = datetime.utcnow() if verified else None
         document.verification_notes = verification_notes
         document.updated_at = datetime.utcnow()
@@ -120,7 +120,7 @@ class OrderDocumentService:
         """Get all required documents for an order"""
         query = select(OrderDocument).where(
             and_(
-                OrderDocument.order_id == order_id,
+                OrderDocument.order_id == str(order_id),
                 OrderDocument.is_required == True
             )
         )
@@ -132,7 +132,7 @@ class OrderDocumentService:
         """Get documents pending verification"""
         query = select(OrderDocument).where(
             and_(
-                OrderDocument.order_id == order_id,
+                OrderDocument.order_id == str(order_id),
                 OrderDocument.is_verified == False
             )
         )

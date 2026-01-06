@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/Table";
+import { useOutsideClick } from "@/components/Hooks/useOutsideClick";
 import {
   Search,
   Plus,
@@ -23,7 +24,6 @@ import {
   Shield,
   Filter,
   Download,
-  MoreHorizontal,
   ChevronLeft,
   ChevronRight,
   UserCheck,
@@ -31,6 +31,9 @@ import {
   UserPlus,
   ArrowLeft,
   Eye,
+  X,
+  ChevronDown,
+  Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
@@ -73,6 +76,15 @@ export default function UsersPage() {
   const [invitationModalOpen, setInvitationModalOpen] = useState(false);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [showBulkActions, setShowBulkActions] = useState(false);
+  const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
+
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  useOutsideClick(filterRef, () => {
+    if (filterDropdownOpen) {
+      setFilterDropdownOpen(false);
+    }
+  });
 
   // Fetch users with filters
   const {
@@ -98,7 +110,6 @@ export default function UsersPage() {
   const { data: rolesData } = useGetRolesQuery({});
   const roles = Array.isArray(rolesData) ? rolesData : rolesData?.items || [];
 
-  console.log(rolesData, "RoleData");
   // Mutations
   const [deleteUser] = useDeleteUserMutation();
   const [updateUserStatus] = useUpdateUserStatusMutation();
@@ -262,7 +273,7 @@ export default function UsersPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => router.back()}
+            onClick={() => router.push("/company-admin/masters")}
             className="flex items-center"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -272,9 +283,6 @@ export default function UsersPage() {
             <h1 className="text-3xl font-bold text-gray-900">
               User Management
             </h1>
-            <p className="text-gray-500 mt-2">
-              Manage your company users and their permissions
-            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -298,155 +306,86 @@ export default function UsersPage() {
           </Button>
           <Button
             onClick={() => router.push("/company-admin/masters/users/new")}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 px-3 md:px-4 py-3 bg-[#1f40ae] hover:bg-[#1f40ae] active:bg-[#1f40ae] text-white rounded-xl transition-all duration-200 hover:scale-[1.02] hover:shadow-lg shadow-md"
           >
             <Plus className="w-4 h-4" />
-            New User
+            <span className="text-sm md:text-base font-semibold hover:font-bold">
+              New User
+            </span>
           </Button>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Total Users</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {pagination.total}
-                </p>
-              </div>
-              <Users className="w-8 h-8 text-blue-600" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+        {/* Total Users Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#edf0f7] border-2 border-[#c4cde9]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Total Users
+            </p>
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <Users className="w-5 h-5 md:w-6 md:h-6 text-blue-500" />
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Active</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {users.filter((u) => u.is_active).length}
-                </p>
-              </div>
-              <UserCheck className="w-8 h-8 text-green-600" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Inactive</p>
-                <p className="text-2xl font-bold text-gray-600">
-                  {users.filter((u) => !u.is_active).length}
-                </p>
-              </div>
-              <UserX className="w-8 h-8 text-gray-600" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Admins</p>
-                <p className="text-2xl font-bold text-purple-600">
-                  {users.filter((u) => u.is_superuser).length}
-                </p>
-              </div>
-              <Shield className="w-8 h-8 text-purple-600" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col lg:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <Input
-                placeholder="Search users..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant={statusFilter === "all" ? "primary" : "outline"}
-                size="sm"
-                onClick={() => setStatusFilter("all")}
-              >
-                All
-              </Button>
-              <Button
-                variant={statusFilter === "active" ? "primary" : "outline"}
-                size="sm"
-                onClick={() => setStatusFilter("active")}
-              >
-                Active
-              </Button>
-              <Button
-                variant={statusFilter === "inactive" ? "primary" : "outline"}
-                size="sm"
-                onClick={() => setStatusFilter("inactive")}
-              >
-                Inactive
-              </Button>
-            </div>
-            <select
-              value={roleFilter || ""}
-              onChange={(e) =>
-                setRoleFilter(e.target.value ? parseInt(e.target.value) : null)
-              }
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Roles</option>
-              {roles?.map((role) => (
-                <option key={role.id} value={role.id}>
-                  {role.name}
-                </option>
-              ))}
-            </select>
-            <select
-              value={branchFilter || ""}
-              onChange={(e) => setBranchFilter(e.target.value || null)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Branches</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
-              ))}
-            </select>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex items-center gap-2"
-                >
-                  <Download className="w-4 h-4" />
-                  Export
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem onClick={() => handleExport("excel")}>
-                  Export as Excel
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExport("csv")}>
-                  Export as CSV
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
-        </CardContent>
-      </Card>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {pagination.total}
+            </p>
+          </div>
+        </div>
+
+        {/* Active Users Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#f0f7f0] border-2 border-[#c5edd6]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Active
+            </p>
+            <div className="p-2 bg-emerald-100 rounded-lg">
+              <UserCheck className="w-5 h-5 md:w-6 md:h-6 text-emerald-500" />
+            </div>
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {users.filter((u) => u.is_active).length}
+            </p>
+          </div>
+        </div>
+
+        {/* Inactive Users Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#f0f7fa] border-2 border-[#c0e5f7]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Inactive
+            </p>
+            <div className="p-2 bg-sky-100 rounded-lg">
+              <UserX className="w-5 h-5 md:w-6 md:h-6 text-sky-500" />
+            </div>
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {users.filter((u) => !u.is_active).length}
+            </p>
+          </div>
+        </div>
+
+        {/* Admins Card */}
+        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#fff8f0] border-2 border-[#f8e4c2]">
+          <div className="flex justify-between items-start">
+            <p className="text-sm md:text-base font-semibold text-black">
+              Admins
+            </p>
+            <div className="p-2 bg-amber-100 rounded-lg">
+              <Shield className="w-5 h-5 md:w-6 md:h-6 text-amber-500" />
+            </div>
+          </div>
+          <div className="flex items-end justify-between mt-3">
+            <p className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+              {users.filter((u) => u.is_superuser).length}
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* Bulk Actions Bar */}
       {selectedUsers.length > 0 && (
@@ -500,13 +439,205 @@ export default function UsersPage() {
       {/* Users Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Users</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <CardTitle>Users</CardTitle>
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              {/* Search */}
+              <div className="relative flex-1 sm:flex-none">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input
+                  placeholder="Search users..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 pr-4 py-2 w-full sm:w-64"
+                />
+              </div>
+
+              {/* Filter Button with Dropdown */}
+              <div className="relative" ref={filterRef}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
+                  className="flex items-center gap-2"
+                >
+                  <Filter className="w-4 h-4" />
+                  Filter
+                  <ChevronDown className="w-4 h-4" />
+                </Button>
+
+                {/* Filter Dropdown */}
+                {filterDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                    <div className="py-1">
+                      <button
+                        onClick={() => {
+                          setStatusFilter("all");
+                          setFilterDropdownOpen(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between text-black"
+                      >
+                        <span>All Users</span>
+                        {statusFilter === "all" && (
+                          <span className="w-2 h-2 bg-blue-600 rounded-full" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setStatusFilter("active");
+                          setFilterDropdownOpen(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between text-black"
+                      >
+                        <span>Active</span>
+                        {statusFilter === "active" && (
+                          <span className="w-2 h-2 bg-green-600 rounded-full" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setStatusFilter("inactive");
+                          setFilterDropdownOpen(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between text-black"
+                      >
+                        <span>Inactive</span>
+                        {statusFilter === "inactive" && (
+                          <span className="w-2 h-2 bg-gray-600 rounded-full" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Role Filter */}
+              <select
+                value={roleFilter || ""}
+                onChange={(e) =>
+                  setRoleFilter(
+                    e.target.value ? parseInt(e.target.value) : null
+                  )
+                }
+                className="px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="">All Roles</option>
+                {roles?.map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {role.name}
+                  </option>
+                ))}
+              </select>
+
+              {/* Branch Filter */}
+              <select
+                value={branchFilter || ""}
+                onChange={(e) => setBranchFilter(e.target.value || null)}
+                className="px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="">All Branches</option>
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
+              </select>
+
+              {/* Export Button */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    Export
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => handleExport("excel")}>
+                    Export as Excel
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleExport("csv")}>
+                    Export as CSV
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
+          </div>
+
+          {/* Active Filter Chips */}
+          {statusFilter !== "all" && (
+            <div className="flex items-center gap-2 mt-3 flex-wrap">
+              <span className="text-sm text-gray-600">Active filters:</span>
+              <div className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+                {statusFilter === "active" ? "Active" : "Inactive"}
+                <button
+                  onClick={() => setStatusFilter("all")}
+                  className="ml-1 hover:bg-blue-200 rounded-full p-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          )}
+        </CardHeader>
+        <CardContent className="overflow-visible">
+          {isLoading ? (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12 whitespace-nowrap">
+                      <div className="h-4 w-4 bg-gray-200 rounded" />
+                    </TableHead>
+                    <TableHead className="whitespace-nowrap">Name</TableHead>
+                    <TableHead className="whitespace-nowrap">Email</TableHead>
+                    <TableHead className="whitespace-nowrap">Role</TableHead>
+                    <TableHead className="whitespace-nowrap">Branch</TableHead>
+                    <TableHead className="whitespace-nowrap">Status</TableHead>
+                    <TableHead className="whitespace-nowrap">Last Login</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Array.from({ length: 8 }).map((_, index) => (
+                    <TableRow key={index} className="animate-pulse">
+                      <TableCell>
+                        <div className="h-4 w-4 bg-gray-200 rounded" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-28" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-36" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-6 bg-gray-200 rounded w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-24" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-6 bg-gray-200 rounded w-16" />
+                      </TableCell>
+                      <TableCell>
+                        <div className="h-4 bg-gray-200 rounded w-24" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <div className="h-8 w-8 bg-gray-200 rounded" />
+                          <div className="h-8 w-8 bg-gray-200 rounded" />
+                          <div className="h-8 w-8 bg-gray-200 rounded" />
+                          <div className="h-8 w-8 bg-gray-200 rounded" />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </>
           ) : error ? (
             <div className="text-center py-8">
               <p className="text-red-600">
@@ -546,7 +677,7 @@ export default function UsersPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-12">
+                    <TableHead className="w-12 whitespace-nowrap">
                       <input
                         type="checkbox"
                         checked={
@@ -557,13 +688,17 @@ export default function UsersPage() {
                         className="rounded border-gray-300"
                       />
                     </TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Branch</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Last Login</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead className="whitespace-nowrap">Name</TableHead>
+                    <TableHead className="whitespace-nowrap">Email</TableHead>
+                    <TableHead className="whitespace-nowrap">Role</TableHead>
+                    <TableHead className="whitespace-nowrap">Branch</TableHead>
+                    <TableHead className="whitespace-nowrap">Status</TableHead>
+                    <TableHead className="whitespace-nowrap">
+                      Last Login
+                    </TableHead>
+                    <TableHead className="text-right whitespace-nowrap">
+                      Actions
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -602,54 +737,60 @@ export default function UsersPage() {
                           {user.is_active ? "Active" : "Inactive"}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-gray-600">
+                      <TableCell className="text-sm text-gray-600 whitespace-nowrap">
                         {formatDate(user.last_login)}
                       </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              <MoreHorizontal className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => handleViewProfile(user)}
-                            >
-                              <Eye className="w-4 h-4 mr-2" />
-                              View Profile
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleEdit(user.id)}
-                            >
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleViewProfile(user)}
+                            className="h-8 w-8 p-0"
+                            title="View Profile"
+                          >
+                            <Eye className="w-4 h-4 text-gray-600" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEdit(user.id)}
+                            className="h-8 w-8 p-0"
+                            title="Edit"
+                          >
+                            <Edit className="w-4 h-4 text-gray-600" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              user.is_active
+                                ? handleDeactivate(user)
+                                : handleActivate(user)
+                            }
+                            className={`h-8 w-8 p-0 ${
+                              user.is_active
+                                ? "text-yellow-600 hover:text-yellow-700"
+                                : "text-green-600 hover:text-green-700"
+                            }`}
+                            title={user.is_active ? "Deactivate" : "Activate"}
+                          >
                             {user.is_active ? (
-                              <DropdownMenuItem
-                                onClick={() => handleDeactivate(user)}
-                                className="text-yellow-600"
-                              >
-                                <UserX className="w-4 h-4 mr-2" />
-                                Deactivate
-                              </DropdownMenuItem>
+                              <UserX className="w-4 h-4" />
                             ) : (
-                              <DropdownMenuItem
-                                onClick={() => handleActivate(user)}
-                                className="text-green-600"
-                              >
-                                <UserCheck className="w-4 h-4 mr-2" />
-                                Activate
-                              </DropdownMenuItem>
+                              <UserCheck className="w-4 h-4" />
                             )}
-                            <DropdownMenuItem
-                              onClick={() => confirmDelete(user)}
-                              className="text-red-600"
-                            >
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => confirmDelete(user)}
+                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -670,10 +811,9 @@ export default function UsersPage() {
                       disabled={page === 1}
                     >
                       <ChevronLeft className="w-4 h-4" />
-                      Previous
                     </Button>
                     <span className="text-sm text-gray-600 px-2">
-                      Page {pagination.current} of {pagination.pages}
+                      {pagination.current}
                     </span>
                     <Button
                       variant="outline"
@@ -681,7 +821,6 @@ export default function UsersPage() {
                       onClick={() => setPage(page + 1)}
                       disabled={page >= pagination.pages}
                     >
-                      Next
                       <ChevronRight className="w-4 h-4" />
                     </Button>
                   </div>

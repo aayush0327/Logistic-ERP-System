@@ -1,14 +1,26 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 interface DropdownMenuProps {
   children: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function DropdownMenu({ children }: DropdownMenuProps) {
+export function DropdownMenu({
+  children,
+  open: controlledOpen,
+  onOpenChange,
+}: DropdownMenuProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+
+  const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setIsOpen = onOpenChange || setInternalOpen;
+
   return (
-    <DropdownMenuProvider>
+    <DropdownMenuProvider isOpen={isOpen} setIsOpen={setIsOpen}>
       <div className="relative inline-block text-left">{children}</div>
     </DropdownMenuProvider>
   );
@@ -16,11 +28,15 @@ export function DropdownMenu({ children }: DropdownMenuProps) {
 
 interface DropdownMenuProviderProps {
   children: React.ReactNode;
+  isOpen: boolean;
+  setIsOpen: (open: boolean) => void;
 }
 
-function DropdownMenuProvider({ children }: DropdownMenuProviderProps) {
-  const [isOpen, setIsOpen] = useState(false);
-
+function DropdownMenuProvider({
+  children,
+  isOpen,
+  setIsOpen,
+}: DropdownMenuProviderProps) {
   return (
     <DropdownMenuContext.Provider value={{ isOpen, setIsOpen }}>
       {children}
@@ -64,8 +80,8 @@ export function DropdownMenuTrigger({
   if (asChild && React.isValidElement(children)) {
     return React.cloneElement(children, {
       onClick: handleClick,
-      'aria-expanded': isOpen,
-      'aria-haspopup': true,
+      "aria-expanded": isOpen,
+      "aria-haspopup": true,
     } as any);
   }
 
@@ -87,41 +103,73 @@ export function DropdownMenuContent({
   align = "end",
   className = "",
 }: DropdownMenuContentProps) {
-  const { isOpen } = React.useContext(DropdownMenuContext);
+  const { isOpen, setIsOpen } = React.useContext(DropdownMenuContext);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = React.useState<{ top: number; left: number }>(
+    { top: 0, left: 0 }
+  );
+
+  const updatePosition = React.useCallback(() => {
+    const trigger = document.querySelector('[aria-expanded="true"]');
+    if (trigger) {
+      const rect = trigger.getBoundingClientRect();
+      let left = rect.left;
+
+      if (align === "end") {
+        left = rect.right - 192; // 192 = w-48 (12rem)
+      } else if (align === "center") {
+        left = rect.left + rect.width / 2 - 96; // 96 = half of w-48
+      }
+
+      setPosition({
+        top: rect.bottom + window.scrollY + 4, // 4 = mt-2
+        left: Math.max(8, Math.min(left, window.innerWidth - 200)), // Keep within viewport
+      });
+    }
+  }, [align]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        // Close is handled by the trigger
+        setIsOpen(false);
+      }
+    };
+
+    const handleScroll = () => {
+      if (isOpen) {
+        updatePosition();
       }
     };
 
     if (isOpen) {
       document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("scroll", handleScroll, true);
+      window.addEventListener("resize", updatePosition);
+
+      // Calculate initial position
+      updatePosition();
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", updatePosition);
     };
-  }, [isOpen]);
+  }, [isOpen, setIsOpen, updatePosition]);
 
   if (!isOpen) return null;
 
-  const alignmentClasses = {
-    start: "left-0",
-    center: "left-1/2 transform -translate-x-1/2",
-    end: "right-0",
-  };
-
-  return (
+  const content = (
     <div
-      className={`absolute z-[9999] mt-2 w-48 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none ${alignmentClasses[align]} ${className}`}
+      ref={menuRef}
+      className={`z-50 mt-2 w-48 rounded-md bg-white shadow-lg ring-1 ring-opacity-5 focus:outline-none ${className}`}
       role="menu"
       aria-orientation="vertical"
       aria-labelledby="menu-button"
       style={{
-        zIndex: 99999,
+        position: "absolute",
+        top: `${position.top}px`,
+        left: `${position.left}px`,
         pointerEvents: "auto",
       }}
     >
@@ -130,6 +178,8 @@ export function DropdownMenuContent({
       </div>
     </div>
   );
+
+  return createPortal(content, document.body);
 }
 
 interface DropdownMenuItemProps {
@@ -147,7 +197,7 @@ export function DropdownMenuItem({
 }: DropdownMenuItemProps) {
   const { setIsOpen } = React.useContext(DropdownMenuContext);
 
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = () => {
     if (disabled) return;
 
     // Close the menu first

@@ -86,6 +86,10 @@ class UserService:
         if not user.is_active:
             return None, "Account is disabled"
 
+        # Check if tenant is active
+        if user.tenant_id and not user.tenant.is_active:
+            return None, "Your company account has been deactivated. Please contact support."
+
         # Check account lockout
         is_locked, remaining_minutes = check_user_lockout(
             user.login_attempts,
@@ -360,6 +364,8 @@ class UserService:
                 "id": user.tenant.id,
                 "name": user.tenant.name,
                 "domain": user.tenant.domain,
+                "settings": user.tenant.settings,  # Include tenant settings (currency, timezone)
+                "is_active": user.tenant.is_active,
                 "created_at": user.tenant.created_at
             } if user.tenant else None
         }

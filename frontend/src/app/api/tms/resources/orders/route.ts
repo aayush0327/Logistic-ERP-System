@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
-    console.log("data",data)
+
     // Filter out rejected orders, but show all other orders including drafts
     // This allows TMS to see draft orders and handle them appropriately
     const filteredOrders = data.filter((order: { status: string }) =>

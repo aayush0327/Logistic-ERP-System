@@ -4,10 +4,12 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { FormError } from '@/components/ui/FormError'
 import { User } from '@/services/api/companyApi'
 import { DriverProfile as DriverProfileType } from '@/services/api/profileApi'
 import { useCreateDriverProfileMutation, useUpdateDriverProfileMutation } from '@/services/api/profileApi'
 import { Car, X, Save } from 'lucide-react'
+import { licenseNumberSchema, futureDateSchema, phoneSchema, emailSchema, validateField, formatApiError } from '@/lib/validations'
 
 interface DriverProfileFormProps {
   user: User
@@ -36,6 +38,10 @@ export default function DriverProfileForm({
     preferred_vehicle_types: [] as string[],
     experience_years: 0
   })
+
+  // Validation errors state
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [apiError, setApiError] = useState<string | null>(null)
 
   const availableLicenseTypes = [
     'Light Motor Vehicle (LMV)',
@@ -81,6 +87,39 @@ export default function DriverProfileForm({
       ...prev,
       [field]: value
     }))
+    // Clear error for this field when user starts typing
+    if (errors[field]) {
+      setErrors(prev => {
+        const newErrors = { ...prev }
+        delete newErrors[field]
+        return newErrors
+      })
+    }
+    // Clear API error when user starts typing
+    if (apiError) {
+      setApiError(null)
+    }
+  }
+
+  // Validate form before submission
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {}
+
+    // Validate license number (required, numeric only)
+    const licenseError = validateField(licenseNumberSchema, formData.license_number)
+    if (licenseError) newErrors.license_number = licenseError
+
+    // Validate license type (required)
+    if (!formData.license_type) {
+      newErrors.license_type = 'License type is required'
+    }
+
+    // Validate license expiry date (must be future date)
+    const expiryError = validateField(futureDateSchema, formData.license_expiry_date)
+    if (expiryError) newErrors.license_expiry_date = expiryError
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
   }
 
   const handleVehicleToggle = (vehicle: string) => {
@@ -96,6 +135,11 @@ export default function DriverProfileForm({
     e.preventDefault()
 
     if (!isEditing) {
+      return
+    }
+
+    // Validate form before submission
+    if (!validateForm()) {
       return
     }
 
@@ -121,6 +165,8 @@ export default function DriverProfileForm({
       onSave()
     } catch (error) {
       console.error('Error saving driver profile:', error)
+      const errorMessage = formatApiError(error)
+      setApiError(errorMessage)
     }
   }
 
@@ -237,6 +283,13 @@ export default function DriverProfileForm({
   // EDIT MODE - Form inputs
   return (
     <form id="profile-form" onSubmit={handleSubmit} className="space-y-6">
+      {/* API Error Display */}
+      {apiError && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+          <p className="text-sm text-red-600">{apiError}</p>
+        </div>
+      )}
+
       {/* License Information */}
       <Card>
         <CardHeader>
@@ -252,9 +305,11 @@ export default function DriverProfileForm({
               <Input
                 value={formData.license_number}
                 onChange={(e) => handleInputChange('license_number', e.target.value)}
-                placeholder="Enter license number"
+                placeholder="Enter license number (numeric only)"
                 required
+                error={!!errors.license_number}
               />
+              <FormError error={errors.license_number} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Issuing Authority</label>
@@ -269,7 +324,7 @@ export default function DriverProfileForm({
               <select
                 value={formData.license_type}
                 onChange={(e) => handleInputChange('license_type', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className={`w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.license_type ? 'border-red-500' : 'border-gray-300'}`}
                 required
               >
                 <option value="">Select license type</option>
@@ -277,6 +332,7 @@ export default function DriverProfileForm({
                   <option key={type} value={type}>{type}</option>
                 ))}
               </select>
+              <FormError error={errors.license_type} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Expiry Date *</label>
@@ -285,7 +341,10 @@ export default function DriverProfileForm({
                 value={formData.license_expiry_date}
                 onChange={(e) => handleInputChange('license_expiry_date', e.target.value)}
                 required
+                min={new Date().toISOString().split('T')[0]}
+                error={!!errors.license_expiry_date}
               />
+              <FormError error={errors.license_expiry_date} />
             </div>
           </div>
         </CardContent>

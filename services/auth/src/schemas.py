@@ -2,7 +2,7 @@
 Pydantic schemas for Auth Service
 """
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 
 
@@ -10,6 +10,29 @@ from pydantic import BaseModel, EmailStr, Field, ConfigDict
 class BaseSchema(BaseModel):
     """Base schema with common configuration"""
     model_config = ConfigDict(from_attributes=True)
+
+
+# Currency and Timezone Configuration Schemas
+class CurrencyConfig(BaseSchema):
+    """Currency configuration schema"""
+    code: str = Field(default="TZS", pattern="^[A-Z]{3}$", description="ISO 4217 currency code")
+    symbol: str = Field(default="TSh", description="Currency symbol (e.g., $, €, £)")
+    position: str = Field(default="before", pattern="^(before|after)$", description="Symbol position")
+    decimal_places: int = Field(default=2, ge=0, le=4, description="Number of decimal places")
+    thousands_separator: str = Field(default=",", description="Thousands separator")
+    decimal_separator: str = Field(default=".", description="Decimal separator")
+
+
+class TimezoneConfig(BaseSchema):
+    """Timezone configuration schema"""
+    iana: str = Field(default="Africa/Dar_es_Salaam", description="IANA timezone identifier")
+    enabled: bool = Field(default=True, description="Whether timezone conversion is enabled")
+
+
+class TenantSettings(BaseSchema):
+    """Tenant settings schema for currency and timezone"""
+    currency: Optional[CurrencyConfig] = None
+    timezone: Optional[TimezoneConfig] = None
 
 
 # Tenant schemas

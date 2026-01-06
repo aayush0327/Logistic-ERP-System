@@ -1,13 +1,16 @@
 """Driver API endpoints - providing driver-specific data to the Driver Service"""
 
+import logging
 from typing import Optional, List
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.exceptions import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, update, func
 from datetime import date, datetime
 
 from src.database import get_async_session, Trip, TripOrder, TMSAuditLog
+
+logger = logging.getLogger(__name__)
 from src.schemas import (
     TripResponse, TripWithOrders, TripOrderResponse,
     DeliveryUpdate, DriverTripListResponse, DriverTripDetailResponse,
@@ -301,7 +304,8 @@ async def update_order_delivery_status(
     company_id: Optional[str] = Query(None, description="Filter by company ID"),
     token_data: TokenData = Depends(require_permissions(["driver:update"])),
     tenant_id: str = Depends(get_current_tenant_id),
-    db: AsyncSession = Depends(get_async_session)
+    db: AsyncSession = Depends(get_async_session),
+    request: Request = None
 ):
     """Update delivery status of an order"""
     # Verify trip belongs to driver
@@ -418,11 +422,63 @@ async def update_order_delivery_status(
         total_orders = all_orders_result.scalar()
         delivered_count = delivered_orders_result.scalar()
 
+        logger.info(f"Trip {trip_id}: total_orders={total_orders}, delivered_count={delivered_count}, trip.driver_id={trip.driver_id}, trip.truck_plate={trip.truck_plate}")
+
         if total_orders == delivered_count:
             # Mark trip as completed
             await db.execute(
                 update(Trip).where(Trip.id == trip_id).values(status='completed')
             )
+
+            # Update driver and truck status to available when trip is completed
+            try:
+                from src.services.company_client import company_client
+
+                # Extract auth token from request
+                auth_token = None
+                if request:
+                    auth_header = request.headers.get("authorization")
+                    if auth_header and auth_header.startswith("Bearer "):
+                        auth_token = auth_header[7:]  # Remove "Bearer " prefix
+                        logger.info(f"Using auth token for status update (length: {len(auth_token)})")
+
+                # Use the company_id from trip or query parameter for tenant
+                actual_tenant_id = trip.company_id or company_id or tenant_id
+
+                # Update driver status to available
+                driver_update_success = await company_client.update_driver_status(
+                    driver_id=trip.driver_id,
+                    status="available",
+                    tenant_id=actual_tenant_id,
+                    auth_token=auth_token
+                )
+
+                # Update truck/vehicle status to available
+                # First get the vehicle ID from the plate number
+                vehicle_id = await company_client.get_vehicle_id_by_plate(
+                    truck_plate=trip.truck_plate,
+                    tenant_id=actual_tenant_id,
+                    auth_token=auth_token
+                )
+
+                vehicle_update_success = False
+                if vehicle_id:
+                    vehicle_update_success = await company_client.update_vehicle_status(
+                        vehicle_id=vehicle_id,  # Use actual vehicle ID instead of plate
+                        status="available",
+                        tenant_id=actual_tenant_id,
+                        auth_token=auth_token
+                    )
+                else:
+                    logger.warning(f"Could not find vehicle ID for plate {trip.truck_plate}")
+
+                logger.info(
+                    f"Trip {trip_id} completed. Driver {trip.driver_id} status update: {driver_update_success}, "
+                    f"Vehicle {trip.truck_plate} (ID: {vehicle_id}) status update: {vehicle_update_success}"
+                )
+            except Exception as e:
+                logger.error(f"Failed to update driver/vehicle status after trip completion: {e}")
+                # Don't fail the request if status update fails
 
     # Log the action
     audit_log = TMSAuditLog(
@@ -452,7 +508,8 @@ async def mark_order_delivered(
     company_id: Optional[str] = Query(None, description="Filter by company ID"),
     token_data: TokenData = Depends(require_permissions(["driver:update"])),
     tenant_id: str = Depends(get_current_tenant_id),
-    db: AsyncSession = Depends(get_async_session)
+    db: AsyncSession = Depends(get_async_session),
+    request: Request = None
 ):
     """Quick endpoint to mark an order as delivered"""
     # Helper function to update delivery status
@@ -570,11 +627,62 @@ async def mark_order_delivered(
             total_orders = all_orders_result.scalar()
             delivered_count = delivered_orders_result.scalar()
 
+            logger.info(f"Trip {trip_id}: total_orders={total_orders}, delivered_count={delivered_count}, trip.driver_id={trip.driver_id}, trip.truck_plate={trip.truck_plate}")
+
             if total_orders == delivered_count:
                 # Mark trip as completed
                 await db.execute(
                     update(Trip).where(Trip.id == trip_id).values(status='completed')
                 )
+
+                # Update driver and truck status to available when trip is completed
+                try:
+                    from src.services.company_client import company_client
+
+                    # Extract auth token from request
+                    auth_token = None
+                    if request:
+                        auth_header = request.headers.get("authorization")
+                        if auth_header and auth_header.startswith("Bearer "):
+                            auth_token = auth_header[7:]  # Remove "Bearer " prefix
+                            logger.info(f"Using auth token for status update (length: {len(auth_token)})")
+
+                    # Update driver status to available
+                    # Use the company_id from trip or query parameter for tenant
+                    actual_tenant_id = trip.company_id or company_id or tenant_id
+                    driver_update_success = await company_client.update_driver_status(
+                        driver_id=trip.driver_id,
+                        status="available",
+                        tenant_id=actual_tenant_id,
+                        auth_token=auth_token
+                    )
+
+                    # Update truck/vehicle status to available
+                    # First get the vehicle ID from the plate number
+                    vehicle_id = await company_client.get_vehicle_id_by_plate(
+                        truck_plate=trip.truck_plate,
+                        tenant_id=actual_tenant_id,
+                        auth_token=auth_token
+                    )
+
+                    vehicle_update_success = False
+                    if vehicle_id:
+                        vehicle_update_success = await company_client.update_vehicle_status(
+                            vehicle_id=vehicle_id,  # Use actual vehicle ID instead of plate
+                            status="available",
+                            tenant_id=actual_tenant_id,
+                            auth_token=auth_token
+                        )
+                    else:
+                        logger.warning(f"Could not find vehicle ID for plate {trip.truck_plate}")
+
+                    logger.info(
+                        f"Trip {trip_id} completed. Driver {trip.driver_id} status update: {driver_update_success}, "
+                        f"Vehicle {trip.truck_plate} (ID: {vehicle_id}) status update: {vehicle_update_success}"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update driver/vehicle status after trip completion: {e}")
+                    # Don't fail the request if status update fails
 
         # Log the action
         audit_log = TMSAuditLog(

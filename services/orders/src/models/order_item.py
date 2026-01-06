@@ -90,6 +90,21 @@ class OrderItem(Base):
         nullable=True
     )
 
+    # Item status tracking (from TMS)
+    item_status: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        default="pending_to_assign",
+        index=True,
+        comment="Item status: pending_to_assign, planning, loading, on_route, delivered, failed, returned"
+    )
+    trip_id: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        index=True,
+        comment="ID of the trip this item is assigned to (from TMS service)"
+    )
+
     # Metadata
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

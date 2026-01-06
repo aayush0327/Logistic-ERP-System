@@ -1,7 +1,7 @@
 """
 Tenant management endpoints
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from datetime import datetime, timezone
@@ -60,6 +60,42 @@ async def create_tenant(
                 detail=f"Missing required field: {field}"
             )
 
+    # Extract currency and timezone (optional)
+    currency_code = tenant_data.get("currency")
+    timezone_iana = tenant_data.get("timezone")
+    timezone_enabled = tenant_data.get("timezone_enabled", True)
+
+    # Validate currency code if provided
+    if currency_code:
+        try:
+            import pycountry
+            if pycountry.currencies.get(alpha_3=currency_code.upper()) is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid currency code: {currency_code}"
+                )
+            currency_code = currency_code.upper()
+        except ImportError:
+            # If pycountry not available, accept any 3-letter code
+            if len(currency_code) != 3:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid currency code format: {currency_code}"
+                )
+
+    # Validate timezone if provided
+    if timezone_iana:
+        try:
+            import pytz
+            if timezone_iana not in pytz.all_timezones:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid timezone: {timezone_iana}"
+                )
+        except ImportError:
+            # If pytz not available, accept any timezone string
+            pass
+
     # Check if domain already exists
     existing_tenants = await TenantService.get_all_tenants(db)
     for t in existing_tenants:
@@ -77,7 +113,10 @@ async def create_tenant(
             db=db,
             name=tenant_data["name"],
             domain=tenant_data["domain"],
-            admin_data=tenant_data["admin"]
+            admin_data=tenant_data["admin"],
+            currency_code=currency_code,
+            timezone_iana=timezone_iana,
+            timezone_enabled=timezone_enabled
         )
 
         return tenant
@@ -147,6 +186,7 @@ async def update_tenant(
 @router.delete("/{tenant_id}")
 async def delete_tenant(
     tenant_id: str,
+    request: Request,
     token_data: TokenData = Depends(get_current_user_token),
     perm_service: PermissionService = Depends(get_permission_service),
     db: AsyncSession = Depends(get_db)
@@ -159,7 +199,10 @@ async def delete_tenant(
             detail="Only super admins can delete tenants"
         )
 
-    success = await TenantService.delete_tenant(db, tenant_id)
+    # Get auth token from request to pass to other services
+    auth_header = request.headers.get("authorization")
+
+    success = await TenantService.delete_tenant(db, tenant_id, auth_token=auth_header)
 
     if not success:
         raise HTTPException(
@@ -167,7 +210,7 @@ async def delete_tenant(
             detail="Tenant not found"
         )
 
-    return {"message": "Tenant deactivated successfully"}
+    return {"message": "Tenant deleted successfully"}
 
 
 @router.get("/{tenant_id}/users")
@@ -272,3 +315,73 @@ async def update_tenant_admin(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update admin: {str(e)}"
         )
+
+
+@router.get("/{tenant_id}/status")
+async def get_tenant_status(
+    tenant_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get tenant status (internal API for other services)"""
+    from ...database import Tenant
+
+    query = select(Tenant.is_active).where(Tenant.id == tenant_id)
+    result = await db.execute(query)
+    is_active = result.scalar_one_or_none()
+
+    if is_active is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tenant not found"
+        )
+
+    return {"tenant_id": tenant_id, "is_active": is_active}
+
+
+@router.patch("/{tenant_id}/activate")
+async def activate_tenant(
+    tenant_id: str,
+    token_data: TokenData = Depends(get_current_user_token),
+    db: AsyncSession = Depends(get_db)
+):
+    """Activate a tenant (Super Admin only)"""
+    if not token_data.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only super admins can activate tenants"
+        )
+
+    success = await TenantService.activate_tenant(db, tenant_id)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tenant not found"
+        )
+
+    return {"message": "Tenant activated successfully", "is_active": True}
+
+
+@router.patch("/{tenant_id}/deactivate")
+async def deactivate_tenant(
+    tenant_id: str,
+    token_data: TokenData = Depends(get_current_user_token),
+    db: AsyncSession = Depends(get_db)
+):
+    """Deactivate a tenant (Super Admin only)"""
+    if not token_data.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only super admins can deactivate tenants"
+        )
+
+    success = await TenantService.deactivate_tenant(db, tenant_id)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tenant not found"
+        )
+
+    return {"message": "Tenant deactivated successfully", "is_active": False}
+

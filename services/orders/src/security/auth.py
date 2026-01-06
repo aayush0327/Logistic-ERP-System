@@ -171,8 +171,15 @@ def extract_token_from_header(authorization: str) -> str:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Trim and handle extra spaces
+    authorization = authorization.strip()
+
     try:
-        scheme, token = authorization.split()
+        # Split on whitespace and handle extra spaces
+        parts = authorization.split()
+        if len(parts) != 2:
+            raise ValueError("Invalid authorization format")
+        scheme, token = parts
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

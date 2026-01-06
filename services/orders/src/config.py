@@ -46,10 +46,21 @@ class Settings(BaseSettings):
         "application/pdf",
         "image/jpeg",
         "image/png",
+        "image/jpg",
+        "image/gif",
+        "image/webp",
         "application/vnd.ms-excel",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     ]
     UPLOAD_DIR: str = "uploads"
+
+    # MinIO S3 settings
+    MINIO_ENDPOINT: str = "minio:9000"
+    MINIO_PUBLIC_ENDPOINT: str = "localhost:9000"
+    MINIO_ROOT_USER: str = "minioadmin"
+    MINIO_ROOT_PASSWORD: str = "minioadmin"
+    MINIO_SECURE: bool = False
+    MINIO_BUCKET: str = "order-documents"
 
     # External services
     AUTH_SERVICE_URL: str = "http://localhost:8001"

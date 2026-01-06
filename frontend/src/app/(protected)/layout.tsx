@@ -9,6 +9,8 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { DashboardSkeleton } from "@/components/skeletons/DashboardSkeleton";
+import { TenantSettingsProvider } from "@/contexts/TenantSettingsContext";
+import type { TenantSettings } from "@/types/tenant";
 
 export default function ProtectedLayout({
   children,
@@ -24,6 +26,21 @@ export default function ProtectedLayout({
   const hasRedirectedRef = useRef(false);
   const lastCheckedPathRef = useRef<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Get initial tenant settings from localStorage (set during login, persists across sessions)
+  const getInitialSettings = (): TenantSettings | undefined => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('tenantSettings');
+      if (stored) {
+        try {
+          return JSON.parse(stored) as TenantSettings;
+        } catch {
+          return undefined;
+        }
+      }
+    }
+    return undefined;
+  };
 
   const toggleSidebar = () => {
     setSidebarCollapsed((prev) => !prev);
@@ -103,12 +120,14 @@ export default function ProtectedLayout({
 
   // Render with persistent Sidebar and Header
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar isCollapsed={sidebarCollapsed} onToggle={toggleSidebar} />
-      <div className="flex-1 flex flex-col overflow-hidden transition-all duration-300 ease-in-out">
-        <Header />
-        <PageContainer>{children}</PageContainer>
+    <TenantSettingsProvider initialSettings={getInitialSettings()}>
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar isCollapsed={sidebarCollapsed} onToggle={toggleSidebar} />
+        <div className="flex-1 flex flex-col overflow-hidden transition-all duration-300 ease-in-out">
+          <Header />
+          <PageContainer>{children}</PageContainer>
+        </div>
       </div>
-    </div>
+    </TenantSettingsProvider>
   );
 }

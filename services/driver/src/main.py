@@ -9,7 +9,7 @@ import time
 import uvicorn
 
 from src.config import settings
-from src.api.endpoints import driver as driver_router
+from src.api.endpoints import driver as driver_router, tenant_cleanup
 from src.middleware.auth import AuthenticationMiddleware
 
 # Configure structured logging
@@ -167,6 +167,13 @@ app.include_router(
     driver_router.router,
     prefix=f"{settings.API_V1_STR}/driver",
     tags=["Driver"]
+)
+
+# Internal endpoints for inter-service communication
+app.include_router(
+    tenant_cleanup.router,
+    prefix="/api/v1/internal",
+    tags=["Internal"]
 )
 
 

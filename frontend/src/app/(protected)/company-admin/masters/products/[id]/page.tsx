@@ -23,6 +23,7 @@ import {
   BarChart3,
   TrendingUp,
 } from "lucide-react";
+import { CurrencyDisplay } from "@/components/CurrencyDisplay";
 import {
   useGetProductQuery,
   useGetProductStockHistoryQuery,
@@ -185,7 +186,7 @@ export default function ProductDetailsPage() {
                 Unit Price
               </label>
               <p className="text-2xl font-bold text-gray-900">
-                ${product.unit_price.toFixed(2)}
+                <CurrencyDisplay amount={product.unit_price} />
               </p>
             </div>
             {product.special_price && (
@@ -194,7 +195,7 @@ export default function ProductDetailsPage() {
                   Special Price
                 </label>
                 <p className="text-lg font-semibold text-green-600">
-                  ${product.special_price.toFixed(2)}
+                  <CurrencyDisplay amount={product.special_price} />
                 </p>
               </div>
             )}
@@ -203,7 +204,7 @@ export default function ProductDetailsPage() {
                 Total Value
               </label>
               <p className="text-lg font-semibold text-gray-900">
-                ${(product.current_stock * product.unit_price).toLocaleString()}
+                <CurrencyDisplay amount={product.current_stock * product.unit_price} />
               </p>
             </div>
           </CardContent>
@@ -355,7 +356,7 @@ export default function ProductDetailsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Revenue</p>
-                <p className="text-2xl font-bold text-gray-900">$78,350</p>
+                <p className="text-2xl font-bold text-gray-900"><CurrencyDisplay amount={78350} /></p>
               </div>
               <DollarSign className="w-8 h-8 text-purple-600" />
             </div>
@@ -559,9 +560,9 @@ export default function ProductDetailsPage() {
                     <TableCell>2024-01-15</TableCell>
                     <TableCell>ABC Corp</TableCell>
                     <TableCell>50</TableCell>
-                    <TableCell>${product.unit_price.toFixed(2)}</TableCell>
+                    <TableCell><CurrencyDisplay amount={product.unit_price} /></TableCell>
                     <TableCell>
-                      ${(50 * product.unit_price).toFixed(2)}
+                      <CurrencyDisplay amount={50 * product.unit_price} />
                     </TableCell>
                     <TableCell>
                       <Badge variant="success">Delivered</Badge>
@@ -573,15 +574,10 @@ export default function ProductDetailsPage() {
                     <TableCell>XYZ Ltd</TableCell>
                     <TableCell>100</TableCell>
                     <TableCell>
-                      $
-                      {product.special_price?.toFixed(2) ||
-                        product.unit_price.toFixed(2)}
+                      <CurrencyDisplay amount={product.special_price || product.unit_price} />
                     </TableCell>
                     <TableCell>
-                      $
-                      {(
-                        100 * (product.special_price || product.unit_price)
-                      ).toFixed(2)}
+                      <CurrencyDisplay amount={100 * (product.special_price || product.unit_price)} />
                     </TableCell>
                     <TableCell>
                       <Badge variant="info">In Transit</Badge>
@@ -592,9 +588,9 @@ export default function ProductDetailsPage() {
                     <TableCell>2024-01-13</TableCell>
                     <TableCell>Global Inc</TableCell>
                     <TableCell>75</TableCell>
-                    <TableCell>${product.unit_price.toFixed(2)}</TableCell>
+                    <TableCell><CurrencyDisplay amount={product.unit_price} /></TableCell>
                     <TableCell>
-                      ${(75 * product.unit_price).toFixed(2)}
+                      <CurrencyDisplay amount={75 * product.unit_price} />
                     </TableCell>
                     <TableCell>
                       <Badge variant="warning">Pending</Badge>
