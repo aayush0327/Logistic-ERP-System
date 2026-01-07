@@ -48,6 +48,7 @@ export interface Trip {
   capacityTotal: number;
   capacityUsed: number;
   orders: TripOrder[];
+  maintenanceNote?: string;
 }
 
 export interface TripOrder {

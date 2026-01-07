@@ -357,7 +357,7 @@ async def delete_vehicle(
 @router.put("/{vehicle_id}/status", response_model=VehicleSchema)
 async def update_vehicle_status(
     vehicle_id: UUID,
-    status: VehicleStatus,
+    status: str = Query(..., description="Vehicle status (available, assigned, on_trip, maintenance, out_of_service)"),
     token_data: TokenData = Depends(require_any_permission(["vehicles:update", "tms:status_update"])),
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_db)
@@ -369,6 +369,7 @@ async def update_vehicle_status(
     - vehicles:update
     - tms:status_update (special permission for TMS service to update status when trip completes)
     """
+    logger.info(f"update_vehicle_status called: vehicle_id={vehicle_id}, status={status}, tenant_id={tenant_id}")
 
     # Get existing vehicle
     query = select(Vehicle).where(
@@ -379,15 +380,31 @@ async def update_vehicle_status(
     vehicle = result.scalar_one_or_none()
 
     if not vehicle:
+        logger.error(f"Vehicle not found: vehicle_id={vehicle_id}, tenant_id={tenant_id}")
         raise HTTPException(status_code=404, detail="Vehicle not found")
 
+    old_status = vehicle.status
+    logger.info(f"Current vehicle status: {old_status}, new status: {status}")
+
+    # Validate and convert status to enum
+    try:
+        vehicle_status = VehicleStatus(status)
+        logger.info(f"Validated status: {vehicle_status}")
+    except ValueError as e:
+        logger.error(f"Invalid vehicle status: {status}, error: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid vehicle status: {status}. Must be one of: {[s.value for s in VehicleStatus]}"
+        )
+
     # Update status
-    vehicle.status = status
+    vehicle.status = vehicle_status
+    logger.info(f"Vehicle {vehicle.plate_number} (ID: {vehicle_id}) status updated from {old_status} to {vehicle_status}")
 
     # Set maintenance dates if applicable
-    if status == VehicleStatus.MAINTENANCE:
+    if vehicle_status == VehicleStatus.MAINTENANCE:
         vehicle.last_maintenance = datetime.utcnow()
-    elif status == VehicleStatus.AVAILABLE:
+    elif vehicle_status == VehicleStatus.AVAILABLE:
         # Coming from maintenance, set next maintenance date
         if vehicle.last_maintenance:
             # Schedule next maintenance in 3 months

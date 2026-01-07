@@ -219,6 +219,10 @@ class TripResponse(BaseSchema):
     capacity_used: int
     capacity_total: int
     trip_date: date
+    maintenance_note: Optional[str] = None
+    paused_at: Optional[datetime] = None
+    paused_reason: Optional[str] = None
+    resumed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     orders: List[TripOrderResponse] = []
@@ -306,6 +310,39 @@ class DriverTripListResponse(BaseModel):
     completed: int
 
 
+class DriverOrderItemDimensions(BaseModel):
+    """Item dimensions from order_items table"""
+    length: Optional[float] = None
+    width: Optional[float] = None
+    height: Optional[float] = None
+
+
+class DriverOrderItem(BaseModel):
+    """Individual order item details for driver"""
+    # From order_items table
+    id: str  # Item UUID
+    product_id: str
+    product_name: str
+    product_code: Optional[str] = None
+    description: Optional[str] = None
+    quantity: int  # Original quantity from order
+    unit: str = "pcs"
+    unit_price: Optional[float] = None
+    total_price: Optional[float] = None
+    weight: Optional[float] = None  # Per unit
+    volume: Optional[float] = None  # Per unit
+    dimensions: Optional[DriverOrderItemDimensions] = None
+
+    # From trip_item_assignments table (filtered by trip_id)
+    assigned_quantity: int  # Quantity assigned to THIS trip
+    item_status: str  # pending_to_assign, planning, loading, on_route, delivered, failed, returned
+    assigned_at: Optional[datetime] = None
+
+    # Metadata
+    is_partially_assigned: bool = False  # True if item split across multiple trips
+    other_trips: List[str] = []  # List of other trip IDs with this item
+
+
 class DriverOrderDetail(BaseModel):
     id: int
     order_id: str
@@ -318,10 +355,12 @@ class DriverOrderDetail(BaseModel):
     total: float = 0
     weight: float = 0  # Changed from int to float
     volume: float = 0  # Changed from int to float
-    items: int = 0
+    items: int = 0  # Count field for backward compatibility
     priority: Priority
     sequence_number: int
     assigned_at: datetime
+    # NEW: Items array with full details
+    order_items: List[DriverOrderItem] = []
 
 
 class DriverTripDetailResponse(BaseModel):
@@ -346,6 +385,9 @@ class DriverTripDetailResponse(BaseModel):
     paused_at: Optional[datetime] = None
     paused_reason: Optional[str] = None
     resumed_at: Optional[datetime] = None
+    # NEW: Error handling for items service
+    items_unavailable: bool = False
+    items_error_message: Optional[str] = None
 
 
 # Pause/Resume Schemas

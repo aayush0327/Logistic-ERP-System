@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS trips (
     driver_name VARCHAR(100) NOT NULL,
     driver_phone VARCHAR(20) NOT NULL,
     status VARCHAR(50) NOT NULL DEFAULT 'planning' CHECK (
-        status IN ('planning', 'loading', 'on-route', 'completed', 'cancelled', 'truck-malfunction')
+        status IN ('planning', 'loading', 'on-route', 'paused', 'completed', 'cancelled', 'truck-malfunction')
     ),
     origin VARCHAR(100),
     destination VARCHAR(100),
@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS trips (
     capacity_used INTEGER DEFAULT 0,
     capacity_total INTEGER NOT NULL,
     trip_date DATE NOT NULL,
+    maintenance_note TEXT,
+    paused_at TIMESTAMP WITH TIME ZONE,
+    paused_reason VARCHAR(500),
+    resumed_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -243,6 +247,10 @@ GROUP BY t.id, t.branch, t.truck_plate, t.driver_name, t.status,
 -- GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO your_db_user;
 
 COMMENT ON TABLE trips IS 'Core table storing trip planning information';
+COMMENT ON COLUMN trips.maintenance_note IS 'Additional notes about maintenance/issues';
+COMMENT ON COLUMN trips.paused_at IS 'Timestamp when trip was paused';
+COMMENT ON COLUMN trips.paused_reason IS 'Reason for pausing the trip (breakdown, accident, weather, etc.)';
+COMMENT ON COLUMN trips.resumed_at IS 'Timestamp when trip was resumed';
 COMMENT ON TABLE trip_orders IS 'Stores order allocations to trips';
 COMMENT ON COLUMN trip_orders.sequence_number IS 'Delivery sequence order for drag and drop functionality (0 = first delivery, 1 = second, etc.)';
 COMMENT ON TABLE trip_routes IS 'Stores delivery route sequence for trips';

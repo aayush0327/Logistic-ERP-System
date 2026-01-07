@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { driverAPI } from "@/lib/api";
 import { CurrencyDisplay } from "@/components/CurrencyDisplay";
-import { Truck, AlertTriangle, RefreshCw, Wrench, Play, AlertCircle } from "lucide-react";
+import { Truck, AlertTriangle, RefreshCw, Wrench, AlertCircle } from "lucide-react";
 import { DocumentUploadModal } from "@/components/driver";
 
 // Type definitions
@@ -54,9 +54,8 @@ export default function DriverDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Pause/Resume state
+  // Pause state
   const [showPauseModal, setShowPauseModal] = useState(false);
-  const [showResumeModal, setShowResumeModal] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [pauseReason, setPauseReason] = useState("");
   const [pauseNote, setPauseNote] = useState("");
@@ -179,25 +178,6 @@ export default function DriverDashboard() {
     }
   };
 
-  const handleResumeTrip = async () => {
-    if (!selectedTrip) return;
-
-    setIsProcessing(true);
-    try {
-      await driverAPI.resumeTrip(selectedTrip.id, pauseNote);
-      setShowResumeModal(false);
-      setPauseNote("");
-      setSelectedTrip(null);
-      await fetchDriverData();
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to resume trip"
-      );
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -276,17 +256,6 @@ export default function DriverDashboard() {
                 <p className="text-sm text-orange-700 italic">{pausedTrip.maintenance_note}</p>
               </div>
             )}
-
-            <button
-              onClick={() => {
-                setSelectedTrip(pausedTrip);
-                setShowResumeModal(true);
-              }}
-              className="px-6 py-3 bg-orange-600 text-white rounded-lg font-medium hover:bg-orange-700 flex items-center gap-2"
-            >
-              <Play className="w-4 h-4" />
-              Resume Trip
-            </button>
           </div>
         );
       })()}
@@ -649,50 +618,6 @@ export default function DriverDashboard() {
                 className="flex-1 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
                 {isProcessing ? "Pausing..." : "Yes, Pause Trip"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Resume Trip Modal */}
-      {showResumeModal && selectedTrip && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-xl font-bold text-black mb-2">Resume Trip</h3>
-            <p className="text-gray-600 mb-4">
-              Ready to continue deliveries? This will mark the trip as active again.
-            </p>
-
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-black mb-1">Notes (optional)</label>
-              <textarea
-                value={pauseNote}
-                onChange={(e) => setPauseNote(e.target.value)}
-                placeholder="Any updates on the maintenance status..."
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setShowResumeModal(false);
-                  setPauseNote("");
-                  setSelectedTrip(null);
-                }}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50"
-                disabled={isProcessing}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleResumeTrip}
-                disabled={isProcessing}
-                className="flex-1 px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                {isProcessing ? "Resuming..." : "Resume Trip"}
               </button>
             </div>
           </div>

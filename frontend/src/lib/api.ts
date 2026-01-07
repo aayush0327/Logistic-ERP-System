@@ -594,6 +594,7 @@ export const tmsAPI = {
       createdAt: trip.created_at,
       capacityUsed: trip.capacity_used,
       capacityTotal: trip.capacity_total,
+      maintenanceNote: trip.maintenance_note,
     }));
   },
 
@@ -620,6 +621,22 @@ export const tmsAPI = {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(tripData),
+    });
+  },
+
+  // Reassign trip resources (truck and driver)
+  async reassignTripResources(tripId: string, resourceData: {
+    truck_plate: string;
+    truck_model: string;
+    truck_capacity: number;
+    driver_id: string;
+    driver_name: string;
+    driver_phone: string;
+  }) {
+    return fetchWithError(`${TMS_BASE}/trips/${tripId}/reassign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(resourceData),
     });
   },
 

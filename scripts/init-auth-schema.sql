@@ -2816,6 +2816,16 @@ VALUES
                 AND action = 'logistics_view'
         )
     ),
+    (
+        6,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'orders'
+                AND action = 'update'
+        )
+    ),
     -- Order documents
     (
         6,
@@ -2890,7 +2900,17 @@ VALUES
                 AND action = 'update'
         )
     ),
-    -- Trips pause and resume permissions
+    -- Trips update, pause and resume permissions
+    (
+        6,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'trips'
+                AND action = 'update'
+        )
+    ),
     (
         6,
         (
@@ -2931,6 +2951,17 @@ VALUES
             WHERE
                 resource = 'tms'
                 AND action = 'status_update'
+        )
+    ),
+    -- Users read permission (for driver profile lookups during status updates)
+    (
+        6,
+        (
+            SELECT id
+            FROM permissions
+            WHERE
+                resource = 'users'
+                AND action = 'read'
         )
     ) ON CONFLICT (role_id, permission_id) DO NOTHING;
 
