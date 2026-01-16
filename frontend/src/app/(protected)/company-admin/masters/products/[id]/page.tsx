@@ -154,6 +154,16 @@ export default function ProductDetailsPage() {
             </div>
             <div>
               <label className="text-sm font-medium text-gray-500">
+                Unit Type
+              </label>
+              <p className="text-gray-900">
+                {product.unit_type
+                  ? `${product.unit_type.name} (${product.unit_type.abbreviation || product.unit_type.code})`
+                  : "-"}
+              </p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-500">
                 Status
               </label>
               <div className="mt-1">

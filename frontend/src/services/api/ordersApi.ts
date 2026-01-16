@@ -34,9 +34,14 @@ export interface Order {
   payment_type: 'cod' | 'prepaid' | 'credit';
   created_at: string;
   updated_at?: string;
+  due_days?: number;
+  due_days_marked_created?: boolean;
   items: OrderItem[];
   items_count: number;  // Number of items (backward compatibility)
   documents?: OrderDocument[];
+  // Time in current status fields
+  current_status_since?: string;  // ISO timestamp of when current status was set
+  time_in_current_status_minutes?: number;  // Duration in minutes
 }
 
 export interface OrderItem {
@@ -117,6 +122,7 @@ export interface OrderCreate {
   delivery_instructions?: string;
   pickup_date?: string;
   delivery_date?: string;
+  due_days?: number;
   items: {
     product_id: string;
     quantity: number;
@@ -185,11 +191,52 @@ export interface Customer {
   created_at: string;
 }
 
+// Due Days types
+export interface DueDaysOrder {
+  id: string;
+  order_number: string;
+  customer_id: string;
+  branch_id: string;
+  due_days: number;
+  created_at: string;
+  delivery_date: string;
+  days_remaining: number;
+  due_status: 'overdue' | 'due_soon' | 'pending';
+  status: string;
+  total_amount: number;
+  order_type: string;
+  priority: string;
+}
+
+export interface DueDaysData {
+  overdue_count: number;
+  due_soon_count: number;
+  total_count: number;
+  reference_date: string;
+  threshold_date: string;
+  orders: DueDaysOrder[];
+}
+
+export interface DueDaysStatistics {
+  overdue_count: number;
+  due_soon_count: number;
+  total_due_count: number;
+}
+
+export interface MarkAsCreatedRequest {
+  order_ids: string[];
+}
+
+export interface MarkAsCreatedResponse {
+  message: string;
+  count: number;
+}
+
 // Create API slice
 export const ordersApi = createApi({
   reducerPath: 'ordersApi',
   baseQuery: fetchBaseQuery({
-    baseUrl: '/api/orders',
+    baseUrl: '/api',
     prepareHeaders: (headers, { getState }) => {
       // Get token from Redux store
       const token = (getState() as RootState).auth.token;
@@ -199,7 +246,7 @@ export const ordersApi = createApi({
       return headers;
     },
   }),
-  tagTypes: ['Order', 'Branch', 'Product', 'Customer'],
+  tagTypes: ['Order', 'Branch', 'Product', 'Customer', 'DueDays'],
   endpoints: (builder) => ({
     // Order endpoints
     getOrders: builder.query<PaginatedOrderResponse, {
@@ -218,7 +265,7 @@ export const ordersApi = createApi({
       search?: string;
     }>({
       query: (params) => ({
-        url: '/',
+        url: '/orders/',
         params: params,
       }),
       providesTags: ['Order'],
@@ -226,7 +273,7 @@ export const ordersApi = createApi({
 
     getOrderById: builder.query<Order, string>({
       query: (id) => ({
-        url: `/${id}`,
+        url: `/orders/${id}`,
       }),
       providesTags: (result, error, id) => [{ type: 'Order', id }],
     }),
@@ -255,14 +302,14 @@ export const ordersApi = createApi({
       };
     }, string>({
       query: (id) => ({
-        url: `/${id}/items-with-assignments`,
+        url: `/orders/${id}/items-with-assignments`,
       }),
       providesTags: (result, error, id) => [{ type: 'Order', id }],
     }),
 
     createOrder: builder.mutation<Order, OrderCreate>({
       query: (order) => ({
-        url: '/',
+        url: '/orders/',
         method: 'POST',
         body: order,
       }),
@@ -271,7 +318,7 @@ export const ordersApi = createApi({
 
     updateOrder: builder.mutation<Order, { id: string; data: Partial<OrderCreate> }>({
       query: ({ id, data }) => ({
-        url: `/${id}`,
+        url: `/orders/${id}`,
         method: 'PUT',
         body: data,
       }),
@@ -280,7 +327,7 @@ export const ordersApi = createApi({
 
     submitOrder: builder.mutation<Order, string>({
       query: (id) => ({
-        url: `/${id}/submit`,
+        url: `/orders/${id}/submit`,
         method: 'POST',
       }),
       invalidatesTags: (result, error, id) => [{ type: 'Order', id }],
@@ -288,7 +335,7 @@ export const ordersApi = createApi({
 
     cancelOrder: builder.mutation<Order, { id: string; reason?: string }>({
       query: ({ id, reason }) => ({
-        url: `/${id}/cancel`,
+        url: `/orders/${id}/cancel`,
         method: 'POST',
         params: reason ? { reason } : undefined,
       }),
@@ -297,7 +344,7 @@ export const ordersApi = createApi({
 
     deleteOrder: builder.mutation<void, string>({
       query: (id) => ({
-        url: `/${id}`,
+        url: `/orders/${id}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['Order'],
@@ -306,7 +353,7 @@ export const ordersApi = createApi({
     // Resource endpoints (fetching from company service)
     getBranches: builder.query<Branch[], void>({
       query: () => ({
-        url: '/resources/branches',
+        url: '/orders/resources/branches',
       }),
       providesTags: ['Branch'],
     }),
@@ -317,7 +364,7 @@ export const ordersApi = createApi({
       include_branches?: boolean;
     }>({
       query: (params) => ({
-        url: '/resources/products',
+        url: '/orders/resources/products',
         params: {
           is_active: true,
           ...params,
@@ -331,7 +378,7 @@ export const ordersApi = createApi({
       branch_id?: string;
     }>({
       query: (params) => ({
-        url: '/resources/products/by-category',
+        url: '/orders/resources/products/by-category',
         params: params,
       }),
       providesTags: ['Product'],
@@ -343,13 +390,45 @@ export const ordersApi = createApi({
       is_active?: boolean;
     }>({
       query: (params) => ({
-        url: '/resources/customers',
+        url: '/orders/resources/customers',
         params: {
           is_active: true,
           ...params,
         },
       }),
       providesTags: ['Customer'],
+    }),
+
+    // Due Days endpoints
+    getDueDaysOrders: builder.query<DueDaysData, {
+      days_threshold?: number;
+      filter_date?: string;
+      status_filter?: string;
+    }>({
+      query: (params) => ({
+        url: '/due-days/orders',
+        params: {
+          days_threshold: 3,
+          ...params,
+        },
+      }),
+      providesTags: ['DueDays'],
+    }),
+
+    getDueDaysStatistics: builder.query<DueDaysStatistics, void>({
+      query: () => ({
+        url: '/due-days/statistics',
+      }),
+      providesTags: ['DueDays'],
+    }),
+
+    markOrdersAsCreated: builder.mutation<MarkAsCreatedResponse, MarkAsCreatedRequest>({
+      query: (data) => ({
+        url: '/due-days/mark-created',
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: ['DueDays'],
     }),
   }),
 });
@@ -368,4 +447,7 @@ export const {
   useGetProductsQuery,
   useGetProductsByCategoryQuery,
   useGetCustomersQuery,
+  useGetDueDaysOrdersQuery,
+  useGetDueDaysStatisticsQuery,
+  useMarkOrdersAsCreatedMutation,
 } = ordersApi;

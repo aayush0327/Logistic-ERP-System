@@ -27,27 +27,27 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     ):
         super().__init__(app)
         self.default_limits = default_limits or {
-            "requests_per_minute": 200,
-            "requests_per_hour": 2000,
-            "requests_per_day": 20000
+            "requests_per_minute": 3000,    # Increased for 30-40 concurrent users
+            "requests_per_hour": 18000,
+            "requests_per_day": 100000
         }
         self.endpoint_limits = endpoint_limits or {
             # Stricter limits for sensitive endpoints
-            "/api/v1/orders/": {"requests_per_minute": 300},
-            "/api/v1/orders/finance-approval": {"requests_per_minute": 50},
-            "/api/v1/orders/logistics-approval": {"requests_per_minute": 50},
+            "/api/v1/orders/": {"requests_per_minute": 1500},
+            "/api/v1/orders/finance-approval": {"requests_per_minute": 1000},
+            "/api/v1/orders/logistics-approval": {"requests_per_minute": 1000},
             "/api/v1/orders/documents/": {"requests_per_minute": 500},
-            "/api/v1/reports/": {"requests_per_minute": 50},
+            "/api/v1/reports/": {"requests_per_minute": 500},
         }
         self.user_limits = user_limits or {
-            # Different limits for different user roles
-            "admin": {"requests_per_minute": 500},
-            "finance_manager": {"requests_per_minute": 300},
-            "logistics_manager": {"requests_per_minute": 400},
-            "branch_manager": {"requests_per_minute": 400},
-            "sales_manager": {"requests_per_minute": 300},
-            "driver": {"requests_per_minute": 300},
-            "user": {"requests_per_minute": 200},
+            # Different limits for different user roles - increased significantly
+            "admin": {"requests_per_minute": 1000},
+            "finance_manager": {"requests_per_minute": 800},
+            "logistics_manager": {"requests_per_minute": 800},
+            "branch_manager": {"requests_per_minute": 800},
+            "sales_manager": {"requests_per_minute": 600},
+            "driver": {"requests_per_minute": 600},
+            "user": {"requests_per_minute": 500},
         }
         self.exclude_paths = exclude_paths or ["/health", "/ready", "/metrics", "/docs", "/openapi.json"]
 

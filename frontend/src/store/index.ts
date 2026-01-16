@@ -6,6 +6,7 @@ import { authApi } from '../services/api/authApi';
 import { ordersApi } from '../services/api/ordersApi';
 import { setupListeners } from '@reduxjs/toolkit/query';
 import authReducer from './slices/auth.slice';
+import notificationReducer from './slices/notificationSlice';
 
 export const store = configureStore({
   reducer: {
@@ -15,6 +16,7 @@ export const store = configureStore({
     authApi: authApi.reducer,
     ordersApi: ordersApi.reducer,
     auth: authReducer,
+    notifications: notificationReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

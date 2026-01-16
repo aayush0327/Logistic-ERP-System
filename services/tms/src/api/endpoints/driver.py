@@ -30,7 +30,7 @@ router = APIRouter()
 
 @router.get("/trips", response_model=DriverTripListResponse)
 async def get_driver_trips(
-    driver_id: str = Query(..., description="Driver ID"),
+    driver_id: str = Depends(get_current_user_id),
     status: Optional[str] = Query(None, description="Filter by trip status"),
     trip_date: Optional[date] = Query(None, description="Filter by trip date"),
     company_id: Optional[str] = Query(None, description="Filter by company ID"),
@@ -40,7 +40,7 @@ async def get_driver_trips(
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_async_session)
 ):
-    """Get all trips for a specific driver with statistics"""
+    """Get all trips for the current driver (extracts driver_id from JWT token) with statistics"""
     query = select(Trip).where(Trip.driver_id == driver_id)
 
     # Apply filters
@@ -111,7 +111,7 @@ async def get_driver_trips(
 
 @router.get("/trips/current", response_model=Optional[dict])
 async def get_driver_current_trip(
-    driver_id: str = Query(..., description="Driver ID"),
+    driver_id: str = Depends(get_current_user_id),
     company_id: Optional[str] = Query(None, description="Filter by company ID"),
     token_data: TokenData = Depends(
         require_any_permission(["driver:read", "trips:read", "trips:read_all"])
@@ -119,11 +119,11 @@ async def get_driver_current_trip(
     tenant_id: str = Depends(get_current_tenant_id),
     db: AsyncSession = Depends(get_async_session)
 ):
-    """Get the currently active trip for a driver"""
+    """Get the currently active trip for a driver (extracts driver_id from JWT token)"""
     query = select(Trip).where(
         and_(
             Trip.driver_id == driver_id,
-            Trip.status.in_(['loading', 'on-route'])
+            Trip.status.in_(['on-route'])
         )
     )
     if company_id:
@@ -158,10 +158,15 @@ async def get_driver_current_trip(
 
     return {
         "id": trip.id,
+        "driver_id": trip.driver_id,
         "status": trip.status,
         "origin": trip.origin,
         "destination": trip.destination,
         "truck_plate": trip.truck_plate,
+        "truck_model": trip.truck_model,
+        "capacity_used": trip.capacity_used or 0,
+        "capacity_total": trip.capacity_total or 0,
+        "trip_date": trip.trip_date,
         "total_orders": total_orders,
         "completed_orders": completed_orders
     }

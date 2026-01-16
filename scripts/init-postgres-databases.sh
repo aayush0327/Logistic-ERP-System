@@ -14,6 +14,7 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     CREATE DATABASE billing_db;
     CREATE DATABASE finance_db;
     CREATE DATABASE telemetry_db;
+    CREATE DATABASE notification_db;
 
     -- Grant permissions
     GRANT ALL PRIVILEGES ON DATABASE auth_db TO $POSTGRES_USER;
@@ -24,6 +25,7 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     GRANT ALL PRIVILEGES ON DATABASE billing_db TO $POSTGRES_USER;
     GRANT ALL PRIVILEGES ON DATABASE finance_db TO $POSTGRES_USER;
     GRANT ALL PRIVILEGES ON DATABASE telemetry_db TO $POSTGRES_USER;
+    GRANT ALL PRIVILEGES ON DATABASE notification_db TO $POSTGRES_USER;
 EOSQL
 
 # Initialize auth database schema
@@ -45,5 +47,9 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "company_db" -f /do
 # Initialize finance database schema
 echo "Initializing finance database schema..."
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "finance_db" -f /docker-entrypoint-initdb.d/05-finance-schema.sql
+
+# Initialize notification database schema
+echo "Initializing notification database schema..."
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "notification_db" -f /docker-entrypoint-initdb.d/06-notification-schema.sql
 
 echo "Database initialization complete!"

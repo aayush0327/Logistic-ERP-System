@@ -22,6 +22,7 @@ import {
   useCreateProductMutation,
   useGetProductCategoriesQuery,
   useGetBranchesQuery,
+  useGetAllProductUnitTypesQuery,
 } from "@/services/api/companyApi";
 import { ProductCreate, ProductCategory } from "@/services/api/companyApi";
 import { toast } from "react-hot-toast";
@@ -36,12 +37,14 @@ export default function NewProductPage() {
     ? categoriesData
     : categoriesData?.items || [];
   const { data: branches } = useGetBranchesQuery({});
+  const { data: unitTypes } = useGetAllProductUnitTypesQuery({ is_active: true });
   const [createProduct, { isLoading: isCreating }] = useCreateProductMutation();
 
   const [formData, setFormData] = useState<ProductCreate>({
     branch_ids: [],
     available_for_all_branches: true,
     category_id: undefined,
+    unit_type_id: undefined,
     code: "",
     name: "",
     description: "",
@@ -147,6 +150,7 @@ export default function NewProductPage() {
         ...(!isAvailableForAllBranches &&
           selectedBranches.length > 0 && { branch_ids: selectedBranches }),
         ...(formData.category_id && { category_id: formData.category_id }),
+        ...(formData.unit_type_id && { unit_type_id: formData.unit_type_id }),
         ...(formData.description && { description: formData.description }),
         ...(formData.special_price &&
           formData.special_price > 0 && {
@@ -338,6 +342,27 @@ export default function NewProductPage() {
                     </option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <Label htmlFor="unit_type_id">Unit Type</Label>
+                <select
+                  id="unit_type_id"
+                  value={formData.unit_type_id || ""}
+                  onChange={(e) =>
+                    handleInputChange("unit_type_id", e.target.value || undefined)
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select Unit Type</option>
+                  {unitTypes?.map((unitType: any) => (
+                    <option key={unitType.id} value={unitType.id}>
+                      {unitType.name} ({unitType.abbreviation || unitType.code})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Optional: Select a measurement unit for this product
+                </p>
               </div>
               <div>
                 <Label className="text-sm font-medium text-gray-700 mb-3 block">

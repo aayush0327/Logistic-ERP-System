@@ -262,6 +262,22 @@ export default function VehicleDetailsPage() {
                   <p className="text-gray-900">{new Date(vehicle.next_maintenance).toLocaleDateString()}</p>
                 </div>
               )}
+              <div>
+                <label className="text-sm font-medium text-gray-500">Current Odometer</label>
+                <p className="text-gray-900">
+                  {vehicle.current_odometer
+                    ? `${vehicle.current_odometer.toLocaleString()} km`
+                    : "N/A"}
+                </p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-500">Fuel Economy</label>
+                <p className="text-gray-900">
+                  {vehicle.current_fuel_economy
+                    ? `${vehicle.current_fuel_economy.toFixed(2)} km/liter`
+                    : "N/A"}
+                </p>
+              </div>
             </CardContent>
           </Card>
         </div>

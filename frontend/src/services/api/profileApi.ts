@@ -14,6 +14,7 @@ export interface DriverProfile {
   user_id: string
   employee_profile_id?: string
   tenant_id?: string
+  driver_code?: string
   license_number?: string
   license_type?: string  // Backend returns single string, not array
   license_issue_date?: string
@@ -115,6 +116,7 @@ export interface EmployeeProfileForm {
 }
 
 export interface DriverProfileForm {
+  driver_code?: string
   license_number: string
   license_types: string[]
   license_issue_date: string

@@ -79,7 +79,11 @@ CREATE TABLE IF NOT EXISTS orders (
     -- Metadata
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    is_active BOOLEAN DEFAULT true
+    is_active BOOLEAN DEFAULT true,
+
+    -- Due Days tracking
+    due_days INTEGER,
+    due_days_marked_created BOOLEAN DEFAULT false
 );
 
 -- Create order_items table

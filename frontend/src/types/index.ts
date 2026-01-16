@@ -52,6 +52,12 @@ export interface Trip {
   createdAt?: string;
   capacityUsed?: number;
   capacityTotal?: number;
+  // Time in current status
+  current_status_since?: string;
+  time_in_current_status_minutes?: number;
+  // Status change information
+  from_status?: string;
+  to_status?: string;
 }
 
 export interface OrderItem {
@@ -176,4 +182,30 @@ export interface Driver {
   currentTruck?: string | null;
   branch_id?: string | null;
   user_id?: string | null;
+}
+
+// Loading Stage Types
+export interface PendingItem {
+  order_id: string;
+  customer: string;
+  order_item_id: string;
+  product_name: string;
+  product_code?: string;
+  original_quantity: number;  // From order_items (never modified)
+  assigned_quantity: number;  // Currently assigned (planning stage)
+  remaining_quantity: number;  // Derived: original - assigned across all trips
+  weight_per_unit: number;
+  total_weight: number;
+  item_status: string;
+  max_assignable: number;  // Maximum user can assign (cannot exceed original)
+}
+
+export interface LoadingModalData {
+  tripId: string;
+  pendingItems: PendingItem[];
+  totalWeight: number;
+  capacityTotal: number;
+  capacityUsed?: number;  // Optional, for future use
+  isOverCapacity: boolean;
+  capacityShortage: number;
 }

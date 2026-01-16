@@ -138,6 +138,7 @@ class CustomerBase(BaseSchema):
     name: str = Field(..., min_length=2, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
     email: Optional[str] = Field(None, max_length=100)
+    contact_person_name: Optional[str] = Field(None, max_length=100)
     address: Optional[str] = Field(None, max_length=500)
     city: Optional[str] = Field(None, max_length=100)
     state: Optional[str] = Field(None, max_length=100)
@@ -177,6 +178,7 @@ class CustomerUpdate(BaseSchema):
     name: Optional[str] = Field(None, min_length=2, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
     email: Optional[str] = Field(None, max_length=100)
+    contact_person_name: Optional[str] = Field(None, max_length=100)
     address: Optional[str] = Field(None, max_length=500)
     city: Optional[str] = Field(None, max_length=100)
     state: Optional[str] = Field(None, max_length=100)
@@ -286,6 +288,10 @@ class VehicleBase(BaseSchema):
     status: VehicleStatus = VehicleStatus.AVAILABLE
     last_maintenance: Optional[datetime] = None
     next_maintenance: Optional[datetime] = None
+    # Odometer and fuel economy tracking
+    current_odometer: Optional[float] = Field(None, ge=0)  # Current odometer reading in km
+    current_fuel_economy: Optional[float] = Field(None, ge=0)  # Current fuel economy in km/liter
+    last_odometer_update: Optional[datetime] = None
     is_active: bool = True
 
     @model_validator(mode='before')
@@ -319,6 +325,10 @@ class VehicleUpdate(BaseSchema):
     status: Optional[VehicleStatus] = None
     last_maintenance: Optional[datetime] = None
     next_maintenance: Optional[datetime] = None
+    # Odometer and fuel economy tracking
+    current_odometer: Optional[float] = Field(None, ge=0)
+    current_fuel_economy: Optional[float] = Field(None, ge=0)
+    last_odometer_update: Optional[datetime] = None
     is_active: Optional[bool] = None
 
 
@@ -340,6 +350,85 @@ class Vehicle(VehicleInDB):
 class VehicleBranch(BaseSchema):
     """Schema for vehicle-branch relationship"""
     branch: Optional[Branch] = None
+
+
+# Vehicle Odometer & Fuel Log schemas
+class VehicleOdometerFuelLogBase(BaseSchema):
+    """Base vehicle odometer and fuel log schema"""
+    vehicle_id: UUID
+    odometer_reading: float = Field(..., ge=0)
+    fuel_economy: Optional[float] = Field(None, ge=0)
+    fuel_consumed: Optional[float] = Field(None, ge=0)
+    distance_traveled: Optional[float] = Field(None, ge=0)
+    log_date: datetime
+    log_type: str = Field(..., min_length=1, max_length=20)  # 'manual', 'refueling', 'maintenance', 'trip_end'
+    notes: Optional[str] = Field(None, max_length=1000)
+    recorded_by_user_id: Optional[str] = None
+
+
+class VehicleOdometerFuelLogCreate(VehicleOdometerFuelLogBase):
+    """Schema for creating an odometer log"""
+    pass
+
+
+class VehicleOdometerFuelLogUpdate(BaseSchema):
+    """Schema for updating an odometer log"""
+    odometer_reading: Optional[float] = Field(None, ge=0)
+    fuel_economy: Optional[float] = Field(None, ge=0)
+    fuel_consumed: Optional[float] = Field(None, ge=0)
+    distance_traveled: Optional[float] = Field(None, ge=0)
+    log_date: Optional[datetime] = None
+    log_type: Optional[str] = Field(None, min_length=1, max_length=20)
+    notes: Optional[str] = Field(None, max_length=1000)
+
+
+class VehicleOdometerFuelLogInDB(VehicleOdometerFuelLogBase):
+    """Schema for odometer log in database"""
+    id: UUID
+    tenant_id: str
+    created_at: datetime
+
+
+class VehicleOdometerFuelLog(VehicleOdometerFuelLogInDB):
+    """Schema for odometer log response"""
+    pass
+
+
+# Product Unit Type schemas
+class ProductUnitTypeBase(BaseSchema):
+    """Base product unit type schema"""
+    code: str = Field(..., min_length=1, max_length=20)
+    name: str = Field(..., min_length=1, max_length=100)
+    abbreviation: Optional[str] = Field(None, max_length=20)
+    description: Optional[str] = Field(None, max_length=500)
+    is_active: bool = True
+
+
+class ProductUnitTypeCreate(ProductUnitTypeBase):
+    """Schema for creating a product unit type"""
+    pass
+
+
+class ProductUnitTypeUpdate(BaseSchema):
+    """Schema for updating a product unit type"""
+    code: Optional[str] = Field(None, min_length=1, max_length=20)
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    abbreviation: Optional[str] = Field(None, max_length=20)
+    description: Optional[str] = Field(None, max_length=500)
+    is_active: Optional[bool] = None
+
+
+class ProductUnitTypeInDB(ProductUnitTypeBase):
+    """Schema for product unit type in database"""
+    id: UUID
+    tenant_id: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class ProductUnitType(ProductUnitTypeInDB):
+    """Schema for product unit type response"""
+    pass
 
 
 # Product Category schemas
@@ -385,6 +474,7 @@ class ProductBase(BaseSchema):
     branch_ids: Optional[List[UUID]] = None
     available_for_all_branches: bool = True
     category_id: Optional[UUID] = None
+    unit_type_id: Optional[UUID] = None
     code: str = Field(..., min_length=2, max_length=50)
     name: str = Field(..., min_length=2, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
@@ -475,6 +565,7 @@ class Product(ProductInDB):
     available_for_all_branches: bool = True
     branches: Optional[List["ProductBranch"]] = None
     category: Optional[ProductCategory] = None
+    unit_type: Optional["ProductUnitType"] = None
 
 
 class ProductBranch(BaseSchema):
@@ -808,6 +899,7 @@ class EmployeeBranch(EmployeeBranchInDB):
 class DriverProfileBase(BaseSchema):
     """Base driver profile schema"""
     employee_profile_id: str = Field(..., min_length=36, max_length=36)
+    driver_code: Optional[str] = Field(None, max_length=50)  # Unique driver code for identification
     license_number: str = Field(..., min_length=2, max_length=50)
     license_type: str = Field(..., max_length=50)  # Increased from 20 to accommodate longer license types
     license_expiry: datetime
@@ -835,6 +927,7 @@ class DriverProfileCreate(DriverProfileBase):
 
 class DriverProfileUpdate(BaseSchema):
     """Schema for updating a driver profile"""
+    driver_code: Optional[str] = Field(None, max_length=50)  # Unique driver code for identification
     license_number: Optional[str] = Field(None, min_length=2, max_length=50)
     license_type: Optional[str] = Field(None, max_length=50)  # Increased from 20 to match base schema
     license_expiry: Optional[datetime] = None

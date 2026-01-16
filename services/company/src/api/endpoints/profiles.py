@@ -9,7 +9,7 @@ import io
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File as FastAPIFile, BackgroundTasks, Response, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, func, and_, or_, desc, asc
+from sqlalchemy import select, func, and_, or_, desc, asc, inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 import uuid
@@ -91,10 +91,19 @@ logger = logging.getLogger(__name__)
 
 def driver_profile_to_dict(driver: DriverProfile) -> dict:
     """Convert DriverProfile SQLAlchemy model to dictionary"""
+    # Safely check if employee relationship is loaded without triggering lazy loading
+    employee_dict = None
+    try:
+        if inspect(driver).attrs.employee.loaded_value is not inspect.RelationshipState.NO_VALUE:
+            employee_dict = employee_profile_to_dict(driver.employee)
+    except:
+        pass
+
     return {
         "id": str(driver.id),
         "employee_profile_id": driver.employee_profile_id,
         "tenant_id": driver.tenant_id,
+        "driver_code": driver.driver_code,
         "license_number": driver.license_number,
         "license_type": driver.license_type,
         "license_expiry": driver.license_expiry,
@@ -115,7 +124,7 @@ def driver_profile_to_dict(driver: DriverProfile) -> dict:
         "is_active": driver.is_active,
         "created_at": driver.created_at,
         "updated_at": driver.updated_at,
-        "employee": employee_profile_to_dict(driver.employee) if driver.employee else None
+        "employee": employee_dict
     }
 
 
@@ -870,6 +879,19 @@ async def create_driver_profile(
             detail="License number already exists"
         )
 
+    # Check if driver_code already exists (within the tenant)
+    if driver_data.driver_code:
+        driver_code_query = select(DriverProfile).where(
+            DriverProfile.driver_code == driver_data.driver_code,
+            DriverProfile.tenant_id == tenant_id
+        )
+        driver_code_result = await db.execute(driver_code_query)
+        if driver_code_result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Driver code '{driver_data.driver_code}' already exists. Please use a unique code."
+            )
+
     # Create driver profile
     driver = DriverProfile(
         tenant_id=tenant_id,
@@ -928,6 +950,20 @@ async def update_driver_profile(
             raise HTTPException(
                 status_code=400,
                 detail="License number already exists"
+            )
+
+    # Check driver_code uniqueness if updating
+    if "driver_code" in update_data and update_data["driver_code"]:
+        driver_code_query = select(DriverProfile).where(
+            DriverProfile.driver_code == update_data["driver_code"],
+            DriverProfile.tenant_id == tenant_id,
+            DriverProfile.id != driver_id
+        )
+        driver_code_result = await db.execute(driver_code_query)
+        if driver_code_result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Driver code '{update_data['driver_code']}' already exists. Please use a unique code."
             )
 
     for field, value in update_data.items():

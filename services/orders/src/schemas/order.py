@@ -47,6 +47,9 @@ class OrderBase(BaseModel):
     pickup_date: Optional[datetime] = None
     delivery_date: Optional[datetime] = None
 
+    # Due days tracking
+    due_days: Optional[int] = Field(default=7, ge=1, le=365, description="Due days for delivery")
+
 
 class OrderCreate(OrderBase):
     """Schema for creating an order"""
@@ -97,6 +100,9 @@ class OrderUpdate(BaseModel):
     # Dates
     pickup_date: Optional[datetime] = None
     delivery_date: Optional[datetime] = None
+
+    # Due days tracking
+    due_days: Optional[int] = Field(None, ge=1, le=365)
 
     # Items - for updating order items when editing draft orders
     items: Optional[List["OrderItemCreateRequest"]] = None
@@ -189,6 +195,10 @@ class OrderResponse(OrderBase):
     updated_at: datetime
     is_active: bool
 
+    # Due days tracking
+    due_days: Optional[int] = None
+    due_days_marked_created: bool = False
+
     # Relationships
     items: List[OrderItemResponse] = []
     documents: List[OrderDocumentResponse] = []
@@ -217,10 +227,18 @@ class OrderListResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # Due days tracking
+    due_days: Optional[int] = None
+    due_days_marked_created: bool = False
+
     # Additional fields for UI
     customer: Optional[dict] = None  # Customer details from company service
     items: List[dict] = []  # Order items with product details
     items_count: int = 0  # Number of items in the order (backward compatibility)
+
+    # Time in current status fields
+    current_status_since: Optional[datetime] = None  # Timestamp when current status was set
+    time_in_current_status_minutes: Optional[int] = None  # Duration in minutes
 
 
 class OrderListPaginatedResponse(BaseModel):

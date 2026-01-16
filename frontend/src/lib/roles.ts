@@ -64,7 +64,6 @@ export const ROLE_ROUTES: Record<Role, string[]> = {
     "/branch-manager",
     "/finance-manager",
     "/logistics-manager",
-    "/drivermodule",
   ],
   [ROLES.FINANCE_MANAGER]: ["/finance-manager"],
   [ROLES.LOGISTICS_MANAGER]: ["/logistics-manager"],
@@ -72,6 +71,14 @@ export const ROLE_ROUTES: Record<Role, string[]> = {
   [ROLES.DRIVER]: ["/drivermodule"], // Temporary renamed protected driver route
   [ROLES.USER]: [], // User role - no access yet (awaiting instructions)
 };
+
+// Analytics routes - accessible to all management roles
+export const ANALYTICS_ROUTES: string[] = [
+  "/company-admin/analytics",
+  "/branch-manager/analytics",
+  "/finance-manager/analytics",
+  "/logistics-manager/analytics",
+];
 
 // Default redirect per role
 export const ROLE_DEFAULT_ROUTE: Record<Role, string> = {

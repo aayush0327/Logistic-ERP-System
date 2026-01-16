@@ -59,7 +59,25 @@ async def fetch_orders_from_service(
             )
 
             if response.status_code == 200:
-                return response.json()
+                data = response.json()
+
+                # Debug: Log first order to check time_in_status fields
+                if data.get("items") and len(data["items"]) > 0:
+                    first_order = data["items"][0]
+                    logger.info(f"FINANCE SERVICE - First order received from Orders Service: "
+                              f"order_number={first_order.get('order_number')}, "
+                              f"time_in_current_status_minutes={first_order.get('time_in_current_status_minutes')}, "
+                              f"current_status_since={first_order.get('current_status_since')}")
+
+                    # Debug: Log what we're returning to frontend
+                    import json
+                    logger.info(f"FINANCE SERVICE - Returning to frontend: {json.dumps({
+                        'order_number': first_order.get('order_number'),
+                        'time_in_current_status_minutes': first_order.get('time_in_current_status_minutes'),
+                        'current_status_since': first_order.get('current_status_since')
+                    })}")
+
+                return data
             else:
                 logger.error(f"Failed to fetch orders from Orders Service: {response.status_code}")
                 raise HTTPException(
@@ -231,6 +249,9 @@ async def list_orders_for_approval(
                 "finance_approved_by": item.get("finance_approved_by"),
                 "approval_action_id": None,  # This would be determined from finance approval table
                 "approval_reason": None,  # This would be determined from finance approval table
+                # Time in current status fields
+                "current_status_since": item.get("current_status_since"),
+                "time_in_current_status_minutes": item.get("time_in_current_status_minutes"),
             }
             finance_orders.append(OrderApprovalResponse(**order_data))
 

@@ -54,6 +54,7 @@ export default function NewCustomerPage() {
     name: "",
     phone: "",
     email: "",
+    contact_person_name: "",
     address: "",
     city: "",
     state: "",
@@ -145,6 +146,7 @@ export default function NewCustomerPage() {
         // Ensure empty strings are converted to undefined for optional fields
         phone: formData.phone || undefined,
         email: formData.email || undefined,
+        contact_person_name: formData.contact_person_name || undefined,
         address: formData.address || undefined,
         city: formData.city || undefined,
         state: formData.state || undefined,
@@ -568,6 +570,20 @@ export default function NewCustomerPage() {
                 {errors.email && (
                   <p className="text-sm text-red-600 mt-1">{errors.email}</p>
                 )}
+              </div>
+              <div>
+                <Label htmlFor="contact_person_name">Contact Person Name</Label>
+                <Input
+                  id="contact_person_name"
+                  type="text"
+                  value={formData.contact_person_name}
+                  onChange={(e) => handleInputChange("contact_person_name", e.target.value)}
+                  placeholder="e.g., John Smith"
+                  maxLength={100}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Primary contact person at the customer company
+                </p>
               </div>
             </div>
           </CardContent>

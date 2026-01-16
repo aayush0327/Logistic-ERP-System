@@ -226,6 +226,12 @@ class TripResponse(BaseSchema):
     created_at: datetime
     updated_at: datetime
     orders: List[TripOrderResponse] = []
+    # Time in current status
+    current_status_since: Optional[str] = None
+    time_in_current_status_minutes: Optional[int] = None
+    # Status change information
+    from_status: Optional[str] = None
+    to_status: Optional[str] = None
 
 
 class TripWithOrders(TripResponse):
@@ -400,3 +406,39 @@ class TripPause(BaseModel):
 class TripResume(BaseModel):
     """Schema for resuming a trip"""
     note: Optional[str] = Field(None, max_length=2000, description="Resume notes")
+
+
+# Loading Stage Schemas
+class LoadingConfirmationRequest(BaseModel):
+    """Request to confirm item assignments at LOADING stage"""
+    item_assignments: List[dict]  # List of {order_id, order_item_id, assigned_quantity, weight_per_unit}
+    split_items: Optional[List[dict]] = None  # Items split across other trips (future enhancement)
+
+
+class PendingItem(BaseModel):
+    """Item returned by prepare-loading for user decision"""
+    order_id: str
+    customer: str
+    order_item_id: str
+    product_name: str
+    product_code: Optional[str] = None
+    original_quantity: int  # From order_items (never modified)
+    assigned_quantity: int  # Currently assigned (planning stage)
+    remaining_quantity: int  # Derived: original - assigned across all trips
+    weight_per_unit: float
+    total_weight: float
+    item_status: str
+    max_assignable: int  # Maximum user can assign (cannot exceed original)
+
+
+class PrepareLoadingResponse(BaseModel):
+    """Response with pending items for loading stage"""
+    trip_id: str
+    pending_items: List[PendingItem]
+    total_weight: float
+    capacity_total: int
+    capacity_used: int
+    is_over_capacity: bool
+    capacity_shortage: float
+    requires_splitting: bool
+

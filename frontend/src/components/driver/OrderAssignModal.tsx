@@ -142,24 +142,60 @@ export default function OrderAssignModal({
     if (!splitOrder || !trip) return;
 
     try {
-      // Create split order data
+      // Get items_data from the order - this contains order_item details with order_item_id
+      // The order should have items_data (from TMS resources endpoint)
+      const itemsData = splitOrder.items_data || splitOrder.items_json || splitOrder.items || [];
+      const itemsArray = Array.isArray(itemsData) ? itemsData : [];
+
+      // Calculate per-unit values
+      const weightPerUnit = splitOrder.weight / splitOrder.items;
+      const pricePerUnit = splitOrder.total / splitOrder.items;
+      const volumePerUnit = (splitOrder.volume || 0) / splitOrder.items;
+
+      // Build items_json with the partial assignment - CRITICAL for trip_item_assignments
+      const itemsJson = itemsArray.map((item: any) => ({
+        id: item.id,  // order_item_id - CRITICAL for trip_item_assignments
+        product_id: item.product_id,
+        product_name: item.product_name,
+        quantity: splitItemsCount,  // Partial quantity being assigned
+        original_quantity: splitItemsCount,  // Original for THIS assignment
+        weight: weightPerUnit,  // Per-unit weight
+        total_weight: weightPerUnit * splitItemsCount,  // Total for this partial
+        volume: volumePerUnit,
+        total_volume: volumePerUnit * splitItemsCount,
+        unit_price: pricePerUnit,
+        total_price: pricePerUnit * splitItemsCount,
+      }));
+
+      // Build remaining_items_json with the unassigned portion
+      const remainingItemsJson = itemsArray.map((item: any) => ({
+        id: item.id,
+        product_id: item.product_id,
+        product_name: item.product_name,
+        quantity: splitOrder.items - splitItemsCount,  // Remaining quantity
+        original_quantity: item.original_quantity || splitOrder.items,  // True original
+        weight: weightPerUnit,
+        total_weight: weightPerUnit * (splitOrder.items - splitItemsCount),
+        volume: volumePerUnit,
+        total_volume: volumePerUnit * (splitOrder.items - splitItemsCount),
+      }));
+
+      // Create split order data - use ORIGINAL order_id (not -SPLIT)
       const splitOrderData = {
-        order_id: `${splitOrder.id}-SPLIT`,
+        order_id: splitOrder.id,  // Use ORIGINAL order ID (not -SPLIT)
         customer: splitOrder.customer,
         customerAddress: splitOrder.customerAddress,
-        total: Math.round(
-          (splitOrder.total / splitOrder.items) * splitItemsCount
-        ),
+        total: Math.round(pricePerUnit * splitItemsCount),
         weight: splitWeight,
-        volume: Math.round(
-          (splitOrder.volume / splitOrder.items) * splitItemsCount
-        ),
+        volume: Math.round(volumePerUnit * splitItemsCount),
         items: splitItemsCount,
         priority: splitOrder.priority,
         address: splitOrder.address,
         original_order_id: splitOrder.id,
         original_items: splitOrder.items,
         original_weight: splitOrder.weight,
+        items_json: itemsJson,  // CRITICAL: Send items_json with order_item_id
+        remaining_items_json: remainingItemsJson,  // CRITICAL: Send remaining items
       };
 
       // Assign split order to trip
@@ -168,7 +204,7 @@ export default function OrderAssignModal({
       // Show success message
       const remainingItems = splitOrder.items - splitItemsCount;
       alert(
-        `Successfully assigned split order with ${splitItemsCount} items. ${remainingItems} items remaining from original order ${splitOrder.id}.`
+        `Successfully assigned ${splitItemsCount} items. ${remainingItems} items remaining.`
       );
 
       // Reset split state and close modals

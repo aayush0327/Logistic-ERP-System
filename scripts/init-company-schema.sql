@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS customers (
     pricing_tier VARCHAR(20) DEFAULT 'standard',
     is_active BOOLEAN DEFAULT true,
     available_for_all_branches BOOLEAN DEFAULT true,
+    contact_person_name VARCHAR(100),
     marketing_person_name VARCHAR(100),
     marketing_person_phone VARCHAR(20),
     marketing_person_email VARCHAR(100),
@@ -111,6 +112,9 @@ CREATE TABLE IF NOT EXISTS vehicles (
     next_maintenance TIMESTAMP WITH TIME ZONE,
     is_active BOOLEAN DEFAULT true,
     available_for_all_branches BOOLEAN DEFAULT true,
+    current_odometer FLOAT,
+    current_fuel_economy FLOAT,
+    last_odometer_update TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE,
     UNIQUE(tenant_id, plate_number)  -- Tenant-aware unique constraint
@@ -126,6 +130,22 @@ CREATE TABLE IF NOT EXISTS vehicle_branches (
     UNIQUE(vehicle_id, branch_id)
 );
 
+-- Create vehicle_odometer_fuel_logs table for tracking odometer and fuel economy
+CREATE TABLE IF NOT EXISTS vehicle_odometer_fuel_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id VARCHAR NOT NULL,
+    vehicle_id UUID NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+    odometer_reading FLOAT NOT NULL,
+    fuel_economy FLOAT,
+    fuel_consumed FLOAT,
+    distance_traveled FLOAT,
+    log_date TIMESTAMP NOT NULL,
+    log_type VARCHAR(20) NOT NULL,
+    notes VARCHAR(1000),
+    recorded_by_user_id VARCHAR,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
 -- Create product_categories table
 CREATE TABLE IF NOT EXISTS product_categories (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -138,12 +158,27 @@ CREATE TABLE IF NOT EXISTS product_categories (
     updated_at TIMESTAMP WITH TIME ZONE
 );
 
+-- Create product_unit_types table
+CREATE TABLE IF NOT EXISTS product_unit_types (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id VARCHAR NOT NULL,
+    code VARCHAR(20) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    abbreviation VARCHAR(20),
+    description VARCHAR(500),
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT tenant_unit_code UNIQUE (tenant_id, code)
+);
+
 -- Create products table
 CREATE TABLE IF NOT EXISTS products (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id VARCHAR(255) NOT NULL,
     category_id UUID REFERENCES product_categories(id) ON DELETE SET NULL,
     code VARCHAR(50) NOT NULL,
+    unit_type_id UUID REFERENCES product_unit_types(id) ON DELETE SET NULL,
     name VARCHAR(100) NOT NULL,
     description VARCHAR(500),
     unit_price DECIMAL(12,2) NOT NULL,
@@ -214,12 +249,19 @@ CREATE INDEX IF NOT EXISTS idx_customers_business_type ON customers(business_typ
 CREATE INDEX IF NOT EXISTS idx_vehicle_branches_vehicle_id ON vehicle_branches(vehicle_id);
 CREATE INDEX IF NOT EXISTS idx_vehicle_branches_branch_id ON vehicle_branches(branch_id);
 CREATE INDEX IF NOT EXISTS idx_vehicle_branches_tenant_id ON vehicle_branches(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_vofl_vehicle ON vehicle_odometer_fuel_logs(vehicle_id);
+CREATE INDEX IF NOT EXISTS idx_vofl_date ON vehicle_odometer_fuel_logs(log_date DESC);
+CREATE INDEX IF NOT EXISTS idx_vofl_tenant ON vehicle_odometer_fuel_logs(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_vehicles_status ON vehicles(status);
 CREATE INDEX IF NOT EXISTS idx_vehicles_type ON vehicles(vehicle_type);
 CREATE INDEX IF NOT EXISTS idx_pricing_tenant_zone ON pricing_rules(tenant_id, zone_origin, zone_destination);
 CREATE INDEX IF NOT EXISTS idx_products_tenant ON products(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);
 CREATE INDEX IF NOT EXISTS idx_products_code ON products(code);
+CREATE INDEX IF NOT EXISTS idx_products_unit_type ON products(unit_type_id);
+CREATE INDEX IF NOT EXISTS idx_put_tenant ON product_unit_types(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_put_code ON product_unit_types(code);
+CREATE INDEX IF NOT EXISTS idx_put_is_active ON product_unit_types(is_active);
 CREATE INDEX IF NOT EXISTS idx_products_stock ON products(current_stock, min_stock_level);
 CREATE INDEX idx_product_branches_product_id ON product_branches(product_id);
 CREATE INDEX idx_product_branches_branch_id ON product_branches(branch_id);
@@ -396,6 +438,7 @@ CREATE TABLE IF NOT EXISTS driver_profiles (
     average_rating DECIMAL(3,2) DEFAULT 0.00 CHECK (average_rating >= 0 AND average_rating <= 5),
     accident_count INTEGER DEFAULT 0,
     traffic_violations INTEGER DEFAULT 0,
+    driver_code VARCHAR(50),
     medical_fitness_certificate_date DATE,
     police_verification_date DATE,
     is_active BOOLEAN DEFAULT true,
@@ -487,6 +530,7 @@ CREATE INDEX IF NOT EXISTS idx_employee_profiles_code ON employee_profiles(emplo
 CREATE INDEX IF NOT EXISTS idx_driver_profiles_employee ON driver_profiles(employee_profile_id);
 CREATE INDEX IF NOT EXISTS idx_driver_profiles_license ON driver_profiles(license_number);
 CREATE INDEX IF NOT EXISTS idx_driver_profiles_status ON driver_profiles(current_status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_driver_code_tenant ON driver_profiles(driver_code, tenant_id) WHERE driver_code IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_finance_manager_profiles_employee ON finance_manager_profiles(employee_profile_id);
 CREATE INDEX IF NOT EXISTS idx_branch_manager_profiles_employee ON branch_manager_profiles(employee_profile_id);
 CREATE INDEX IF NOT EXISTS idx_branch_manager_profiles_branch ON branch_manager_profiles(managed_branch_id);

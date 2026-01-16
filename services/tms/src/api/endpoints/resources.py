@@ -447,15 +447,18 @@ async def get_orders(
                                 ) if isinstance(original_items, list) else None
 
                             quantity = item_info.get("remaining_quantity", 0)
-                            # Use total_weight from remaining_items_json if available, otherwise calculate from weight
-                            if remaining_item and remaining_item.get("total_weight") is not None:
-                                item_total_weight = remaining_item.get("total_weight", 0)
-                                # Calculate weight per unit for consistency
-                                item_weight_per_unit = item_total_weight / remaining_item.get("quantity", 1) if remaining_item.get("quantity", 1) > 0 else 0
-                                item_weight = item_weight_per_unit
+
+                            # ALWAYS calculate total_weight from quantity × weight_per_unit for consistency
+                            # Get weight_per_unit from remaining_item or item_info
+                            if remaining_item and remaining_item.get("weight") is not None:
+                                item_weight = remaining_item.get("weight", 0)
+                            elif item_info.get("weight") is not None:
+                                item_weight = item_info.get("weight", 0)
                             else:
-                                item_weight = remaining_item.get("weight", 0) if remaining_item else 0
-                                item_total_weight = item_weight * quantity if item_weight else 0
+                                item_weight = 0
+
+                            # Calculate total_weight from quantity × weight_per_unit
+                            item_total_weight = item_weight * quantity
 
                             transformed_items.append({
                                 "id": item_info["id"],
@@ -520,6 +523,7 @@ async def get_orders(
 
                 transformed_order = {
                     "id": order.get("order_number", order.get("id")),
+                    "order_number": order.get("order_number"),  # Add order_number explicitly for frontend matching
                     "customer": order.get("customer", {}).get("name", "Unknown Customer") if order.get("customer") else "Unknown Customer",
                     "customerAddress": order.get("customer", {}).get("address", "Unknown Address") if order.get("customer") else "Unknown Address",
                     "status": order.get("status", "unknown"),

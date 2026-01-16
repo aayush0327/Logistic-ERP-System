@@ -456,3 +456,32 @@ async def deactivate_user(
     await db.commit()
 
     return {"message": "User deactivated successfully"}
+
+
+@router.get("/by-role/{role_name}")
+async def get_users_by_role(
+    role_name: str,
+    tenant_id: str = Query(..., description="Tenant ID"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get all user IDs with a specific role in a tenant.
+
+    This endpoint is used by the notification service to resolve recipients.
+    Returns only user IDs (minimal data) for performance.
+    """
+    from ...database import Role
+
+    # Join User with Role to filter by role name
+    query = select(User.id).join(User.role).where(
+        and_(
+            User.tenant_id == tenant_id,
+            Role.name == role_name,  # e.g., "finance_manager", "branch_manager"
+            User.is_active == True
+        )
+    )
+
+    result = await db.execute(query)
+    user_ids = [str(row[0]) for row in result.fetchall()]
+
+    return {"users": user_ids}

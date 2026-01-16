@@ -10,7 +10,8 @@ import {
   OrderAssignData,
   TripCreateData,
 } from "@/lib/api";
-import { Driver, Trip } from "@/types";
+import { Driver, Trip, LoadingModalData } from "@/types";
+import { DurationDisplay } from "@/components/DurationDisplay";
 import {
   Truck,
   MapPin,
@@ -33,6 +34,7 @@ import {
   AlertTriangle,
   AlertCircle,
   Trash2,
+  Clock,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -85,6 +87,10 @@ export default function Trips() {
   const [reassignDriverDropdownOpen, setReassignDriverDropdownOpen] = useState(false);
   const [reassignTruckSearchQuery, setReassignTruckSearchQuery] = useState("");
   const [reassignDriverSearchQuery, setReassignDriverSearchQuery] = useState("");
+
+  // Loading stage modal state
+  const [loadingModal, setLoadingModal] = useState<LoadingModalData | null>(null);
+  const [editableQuantities, setEditableQuantities] = useState<Record<string, number>>({});
 
   // Search states for trip creation
   const [branchSearchTerm, setBranchSearchTerm] = useState("");
@@ -140,6 +146,20 @@ export default function Trips() {
     try {
       setLoading(true);
       const data = await tmsAPI.getAllTrips();
+
+      // Debug: Log first trip to check time_in_status fields
+      if (data && data.length > 0) {
+        console.log('First trip data:', {
+          id: data[0].id,
+          status: data[0].status,
+          time_in_current_status_minutes: data[0].time_in_current_status_minutes,
+          current_status_since: data[0].current_status_since,
+          from_status: data[0].from_status,
+          to_status: data[0].to_status,
+          createdAt: data[0].createdAt
+        });
+      }
+
       // Deduplicate trips by ID in case of duplicates
       const uniqueTrips = Array.from(
         new Map(data.map((trip: Trip) => [trip.id, trip])).values()
@@ -189,6 +209,15 @@ export default function Trips() {
   // Update filtered trips when status filter changes
   useEffect(() => {
     fetchTrips(statusFilter ? { status: statusFilter } : undefined);
+  }, [statusFilter]);
+
+  // Auto-refresh trips every hour (3600000 ms) to update time-in-status
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchTrips(statusFilter ? { status: statusFilter } : undefined);
+    }, 3600000); // 1 hour
+
+    return () => clearInterval(interval);
   }, [statusFilter]);
 
   // Close dropdowns when clicking outside
@@ -310,7 +339,7 @@ export default function Trips() {
         const hasInvalidOrderStatus = trip.orders.some(
           (tripOrder) => {
             // Find the original order in availableOrders to check its finance status
-            const originalOrder = availableOrders.find(o => o.id === tripOrder.order_id);
+            const originalOrder = availableOrders.find(o => o.order_number === tripOrder.order_id);
             const orderStatus = originalOrder?.status;
             const isValid = orderStatus && validOrderStatuses.includes(orderStatus);
             console.log(`Validating order ${tripOrder.order_id}: originalOrder=`, originalOrder, `status=`, orderStatus, `isValid=`, isValid);
@@ -322,17 +351,47 @@ export default function Trips() {
           // Find the first invalid order to show in the error message
           const invalidOrder = trip.orders.find(
             (tripOrder) => {
-              const originalOrder = availableOrders.find(o => o.id === tripOrder.order_id);
+              const originalOrder = availableOrders.find(o => o.order_number === tripOrder.order_id);
               const orderStatus = originalOrder?.status;
               return !orderStatus || !validOrderStatuses.includes(orderStatus);
             }
           );
 
-          const originalOrderForMsg = availableOrders.find(o => o.id === invalidOrder?.order_id);
+          const originalOrderForMsg = availableOrders.find(o => o.order_number === invalidOrder?.order_id);
           alert(
             `Cannot change trip status. Order "${invalidOrder?.order_id || "N/A"}" has status "${originalOrderForMsg?.status || "unknown"}". Orders must be in one of these statuses: ${validOrderStatuses.join(", ")}.`
           );
           return;
+        }
+
+        // Special handling for loading status - mandatory item assignment
+        if (newStatus === "loading") {
+          // Call prepare-loading endpoint to get pending items
+          try {
+            const prepareResponse = await tmsAPI.prepareTripForLoading(tripId);
+
+            // Initialize editable quantities from pending items
+            const initialQuantities: Record<string, number> = {};
+            prepareResponse.pending_items.forEach((item: any) => {
+              initialQuantities[item.order_item_id] = item.assigned_quantity;
+            });
+            setEditableQuantities(initialQuantities);
+
+            // Show loading assignment modal (MANDATORY - blocks status change)
+            setLoadingModal({
+              tripId,
+              pendingItems: prepareResponse.pending_items,
+              totalWeight: prepareResponse.total_weight,
+              capacityTotal: prepareResponse.capacity_total,
+              isOverCapacity: prepareResponse.is_over_capacity,
+              capacityShortage: prepareResponse.capacity_shortage
+            });
+
+            return; // Don't proceed with status change yet - modal will handle it
+          } catch (error) {
+            alert(`Failed to prepare loading: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            return;
+          }
         }
       }
 
@@ -1304,20 +1363,13 @@ export default function Trips() {
         return;
       }
 
-      // Check capacity
+      // Check capacity (non-blocking warning for planning stage)
       const newCapacityUsed =
         (selectedTripForOrders.capacityUsed || 0) +
         ordersData.reduce((sum, order) => sum + order.weight, 0);
 
-      if (newCapacityUsed > (selectedTripForOrders.capacityTotal || 0)) {
-        if (
-          !confirm(
-            `Warning: Total weight (${newCapacityUsed.toFixed(2)}kg) exceeds truck capacity (${selectedTripForOrders.capacityTotal}kg). Do you want to continue?`
-          )
-        ) {
-          return;
-        }
-      }
+      // Capacity check removed - assignment allowed in planning stage
+      // Warning will be displayed in UI if over capacity
 
       // Assign orders via API
       await tmsAPI.assignOrdersToTrip(selectedTripForOrders.id, ordersData);
@@ -1714,6 +1766,24 @@ export default function Trips() {
                                     LOCKED
                                   </Badge>
                                 )}
+                                {/* Time in current status with from/to status */}
+                                {(trip.time_in_current_status_minutes !== undefined && trip.time_in_current_status_minutes !== null) && (
+                                  <div className="mt-2 text-xs text-gray-600">
+                                    {trip.from_status && trip.to_status ? (
+                                      <div className="flex items-center gap-1 mb-1">
+                                        <span className="font-medium">
+                                          {trip.from_status.replace("-", " ")} → {trip.to_status.replace("-", " ")}
+                                        </span>
+                                      </div>
+                                    ) : null}
+                                    <div className="flex items-center gap-1">
+                                      <Clock className="w-3 h-3" />
+                                      <span>
+                                        For <DurationDisplay minutes={trip.time_in_current_status_minutes || 0} />
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
 
                               {/* Origin */}
@@ -1832,6 +1902,19 @@ export default function Trips() {
                                     </div>
                                   )}
                                 </div>
+
+                                {/* Capacity Warning Indicator */}
+                                {trip.capacityUsed && trip.capacityTotal &&
+                                  trip.capacityUsed > trip.capacityTotal && (
+                                  <div className="mt-2 bg-yellow-50 border border-yellow-300 rounded-lg p-2">
+                                    <div className="flex items-center gap-2 text-yellow-800">
+                                      <AlertTriangle className="w-4 h-4" />
+                                      <span className="text-xs font-medium">
+                                        Over capacity: {(trip.capacityUsed - trip.capacityTotal).toFixed(2)}kg
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
 
                                 {/* Add Orders Button */}
                                 {trip.status === "planning" && (
@@ -2185,12 +2268,12 @@ export default function Trips() {
                                   {order.weight} kg
                                 </span>
                               </div>
-                              <div className="flex items-center justify-between">
+                              {/* <div className="flex items-center justify-between">
                                 <span className="text-sm text-gray-600">Volume</span>
                                 <span className="text-lg font-bold text-gray-900">
                                   {order.volume} L
                                 </span>
-                              </div>
+                              </div> */}
                               <div className="flex items-center justify-between pt-3 border-t border-gray-200">
                                 <span className="text-sm text-gray-600">Total Amount</span>
                                 <span className="text-2xl font-bold text-gray-900">
@@ -2225,7 +2308,7 @@ export default function Trips() {
                                       <th className="text-left py-3 px-4 font-semibold text-gray-700">Product</th>
                                       <th className="text-right py-3 px-4 font-semibold text-gray-700">Quantity</th>
                                       <th className="text-right py-3 px-4 font-semibold text-gray-700">Weight/Unit</th>
-                                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Volume</th>
+                                      {/* <th className="text-right py-3 px-4 font-semibold text-gray-700">Volume</th> */}
                                       <th className="text-right py-3 px-4 font-semibold text-gray-700">Price/Unit</th>
                                       <th className="text-right py-3 px-4 font-semibold text-gray-700">Total Weight</th>
                                     </tr>
@@ -2256,9 +2339,9 @@ export default function Trips() {
                                             <span className="text-xs text-gray-400 block">({item.weight_type})</span>
                                           )}
                                         </td>
-                                        <td className="py-3 px-4 text-right text-gray-900">
+                                        {/* <td className="py-3 px-4 text-right text-gray-900">
                                           {item.volume ?? 0} m³
-                                        </td>
+                                        </td> */}
                                         <td className="py-3 px-4 text-right text-gray-900">
                                           {item.unit_price ? `₹${item.unit_price}` : "N/A"}
                                         </td>
@@ -2891,11 +2974,9 @@ export default function Trips() {
                                       type="checkbox"
                                       checked={selectedOrders.includes(order.id)}
                                       onChange={() => {
-                                        if (!wouldExceedCapacity) {
-                                          handleOrderToggle(order.id);
-                                        }
+                                        // Allow selection regardless of capacity (planning stage)
+                                        handleOrderToggle(order.id);
                                       }}
-                                      disabled={wouldExceedCapacity}
                                       className="w-4 h-4 text-blue-600 rounded"
                                     />
                                     <div className="flex-1">
@@ -3011,12 +3092,12 @@ export default function Trips() {
                                                   )}
                                                 </span>
                                               </div>
-                                              <div>
+                                              {/* <div>
                                                 <span className="text-gray-500">Volume:</span>
                                                 <span className="ml-1 font-medium text-gray-900">
                                                   {item.volume ?? 0} m³
                                                 </span>
-                                              </div>
+                                              </div> */}
                                               <div>
                                                 <span className="text-gray-500">Price:</span>
                                                 <span className="ml-1 font-medium text-gray-900">
@@ -3791,6 +3872,273 @@ export default function Trips() {
                   >
                     {isReassigning ? "Processing..." : "Reassign & Resume"}
                   </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Loading Assignment Modal */}
+          {loadingModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center">
+              {/* Backdrop */}
+              <div
+                className="fixed inset-0 bg-black/50"
+                onClick={() => setLoadingModal(null)}
+              />
+
+              {/* Modal Content */}
+              <div
+                className="relative z-50 w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-lg bg-white shadow-xl flex flex-col"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Modal Header */}
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h2 className="text-2xl font-bold text-gray-900">Loading Stage - Item Assignment</h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Decide quantities for each item. You can: assign full, assign partial, or skip items.
+                  </p>
+                </div>
+
+                {/* Capacity Summary */}
+                <div className="px-6 py-4 bg-gray-50 border-b">
+                  {(() => {
+                    const currentTotalWeight = loadingModal.pendingItems.reduce((sum, item) => {
+                      const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
+                      return sum + (qty * item.weight_per_unit);
+                    }, 0);
+                    const availableCapacity = loadingModal.capacityTotal - currentTotalWeight;
+                    const utilizationPercentage = (currentTotalWeight / loadingModal.capacityTotal) * 100;
+
+                    return (
+                      <div className="grid grid-cols-4 gap-4">
+                        <div>
+                          <p className="text-sm text-gray-600">Truck Capacity</p>
+                          <p className="text-lg font-semibold">{loadingModal.capacityTotal}kg</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">Current Assigned</p>
+                          <p className="text-lg font-semibold text-blue-600">
+                            {currentTotalWeight.toFixed(2)}kg
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">Available</p>
+                          <p className={`text-lg font-semibold ${availableCapacity >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {availableCapacity.toFixed(2)}kg
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">Utilization</p>
+                          <p className={`text-lg font-semibold ${
+                            utilizationPercentage > 100 ? 'text-red-600' :
+                            utilizationPercentage > 80 ? 'text-yellow-600' :
+                            'text-green-600'
+                          }`}>
+                            {utilizationPercentage.toFixed(1)}%
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Modal Body */}
+                <div className="px-6 py-4 overflow-y-auto flex-1 min-h-0">
+                  <div className="space-y-3">
+                    {loadingModal.pendingItems.map((item, idx) => {
+                      const currentQty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
+                      const itemWeight = currentQty * item.weight_per_unit;
+                      const isPartial = currentQty < item.original_quantity && currentQty > 0;
+                      const isSkipped = currentQty === 0;
+
+                      return (
+                        <div key={`${item.order_item_id}-${idx}`} className="border rounded-lg p-4 bg-white shadow-sm">
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <h3 className="font-semibold text-gray-900">{item.product_name}</h3>
+                                {item.product_code && (
+                                  <span className="text-sm text-gray-500">({item.product_code})</span>
+                                )}
+                                {isPartial && (
+                                  <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-700 rounded-full">Partial Assignment</span>
+                                )}
+                                {isSkipped && (
+                                  <span className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-full">Skipped</span>
+                                )}
+                              </div>
+
+                              <p className="text-sm text-gray-600 mb-3">
+                                Order: {item.order_id} • Customer: {item.customer}
+                              </p>
+
+                              <div className="grid grid-cols-3 gap-4 text-sm mb-3">
+                                <div>
+                                  <span className="text-gray-600">Original: </span>
+                                  <span className="font-medium">{item.original_quantity}</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-600">Planning: </span>
+                                  <span className="font-medium">{item.assigned_quantity}</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-600">Remaining: </span>
+                                  <span className="font-medium text-green-600">{item.remaining_quantity}</span>
+                                </div>
+                              </div>
+
+                              {/* Quantity Decision Controls */}
+                              <div className="flex items-center gap-4">
+                                <label className="text-sm font-medium">Assign to Loading:</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={item.max_assignable || item.original_quantity}
+                                  value={currentQty}
+                                  onChange={(e) => {
+                                    const newQty = Math.min(
+                                      Math.max(0, parseInt(e.target.value) || 0),
+                                      item.max_assignable || item.original_quantity
+                                    );
+                                    setEditableQuantities(prev => ({
+                                      ...prev,
+                                      [item.order_item_id]: newQty
+                                    }));
+                                  }}
+                                  className="w-32 px-3 py-2 border border-gray-300 rounded text-sm"
+                                />
+                                <span className="text-sm text-gray-600">
+                                  / {item.max_assignable || item.original_quantity} (max)
+                                </span>
+
+                                {/* Quick Action Buttons */}
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => setEditableQuantities(prev => ({
+                                      ...prev,
+                                      [item.order_item_id]: item.max_assignable || item.original_quantity
+                                    }))}
+                                    className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+                                  >
+                                    Full
+                                  </button>
+                                  <button
+                                    onClick={() => setEditableQuantities(prev => ({
+                                      ...prev,
+                                      [item.order_item_id]: Math.floor((item.max_assignable || item.original_quantity) / 2)
+                                    }))}
+                                    className="px-3 py-1 text-xs bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 transition-colors"
+                                  >
+                                    Half
+                                  </button>
+                                  <button
+                                    onClick={() => setEditableQuantities(prev => ({
+                                      ...prev,
+                                      [item.order_item_id]: 0
+                                    }))}
+                                    className="px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                                  >
+                                    Skip
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="mt-2 text-sm text-gray-600">
+                                Weight: {itemWeight.toFixed(2)}kg
+                                {item.weight_per_unit > 0 && ` (${item.weight_per_unit}kg/each)`}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Modal Footer */}
+                <div className="px-6 py-4 border-t bg-gray-50 flex justify-between items-center flex-shrink-0">
+                  {(() => {
+                    const itemsConfirmed = loadingModal.pendingItems.filter(item => {
+                      const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
+                      return qty > 0;
+                    }).length;
+                    const itemsSkipped = loadingModal.pendingItems.filter(item => {
+                      const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
+                      return qty === 0;
+                    }).length;
+                    const itemsPartial = loadingModal.pendingItems.filter(item => {
+                      const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
+                      return qty > 0 && qty < item.original_quantity;
+                    }).length;
+
+                    return (
+                      <div className="text-sm text-gray-600">
+                        <span>Items: </span>
+                        <span className="font-medium">{itemsConfirmed}</span> confirmed,
+                        <span className="font-medium">{itemsSkipped}</span> skipped,
+                        <span className="font-medium">{itemsPartial}</span> partial
+                      </div>
+                    );
+                  })()}
+
+                  <div className="flex gap-3">
+                    <Button
+                      onClick={() => {
+                        setLoadingModal(null);
+                        setEditableQuantities({});
+                      }}
+                      variant="outline"
+                      className="text-gray-700 border-gray-300 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </Button>
+
+                    <Button
+                      onClick={async () => {
+                        try {
+                          // Calculate current total weight from editable quantities
+                          const currentTotalWeight = loadingModal.pendingItems.reduce((sum, item) => {
+                            const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
+                            return sum + (qty * item.weight_per_unit);
+                          }, 0);
+                          const capacityTotal = loadingModal.capacityTotal || 0;
+
+                          // Check capacity
+                          if (currentTotalWeight > capacityTotal) {
+                            alert(`Over capacity! Current: ${currentTotalWeight.toFixed(2)}kg, Max: ${capacityTotal.toFixed(2)}kg`);
+                            return;
+                          }
+
+                          // Use editable quantities for the assignment
+                          const itemAssignments = loadingModal.pendingItems.map(item => {
+                            const qty = editableQuantities[item.order_item_id] ?? item.assigned_quantity;
+                            return {
+                              order_id: item.order_id,
+                              order_item_id: item.order_item_id,
+                              assigned_quantity: qty,
+                              weight_per_unit: item.weight_per_unit
+                            };
+                          });
+
+                          await tmsAPI.confirmLoadingAssignment(loadingModal.tripId, {
+                            item_assignments: itemAssignments
+                          });
+
+                          // Refresh trips to show updated status
+                          await fetchTrips();
+
+                          setLoadingModal(null);
+                          setEditableQuantities({});
+                          alert("Trip successfully moved to loading status!");
+                        } catch (error) {
+                          alert(`Failed to confirm loading: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                        }
+                      }}
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      Confirm & Start Loading
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>

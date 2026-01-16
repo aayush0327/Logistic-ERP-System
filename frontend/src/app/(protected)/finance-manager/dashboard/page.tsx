@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { CurrencyDisplay } from "@/components/CurrencyDisplay";
 import { DateDisplay } from "@/components/DateDisplay";
+import { DurationDisplay } from "@/components/DurationDisplay";
 
 interface OrderItem {
   id: string;
@@ -74,6 +75,9 @@ interface FinanceOrder {
   total_units?: number;
   total_weight?: number;
   last_updated?: string;
+  // Time in current status fields
+  current_status_since?: string;
+  time_in_current_status_minutes?: number;
 }
 
 export default function FinanceManager() {
@@ -83,12 +87,6 @@ export default function FinanceManager() {
   const [orders, setOrders] = useState<FinanceOrder[]>([]);
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [showBulkActions, setShowBulkActions] = useState(false);
-
-  // Fetch orders on mount and when search query changes
-  useEffect(() => {
-    fetchOrders();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery]);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -104,6 +102,17 @@ export default function FinanceManager() {
       if (response.ok) {
         const data = await response.json();
         setOrders(data.items || []);
+
+        // Debug: Log first order to check time_in_status fields
+        if (data.items && data.items.length > 0) {
+          console.log('Finance Manager - First order data:', {
+            order_number: data.items[0].order_number,
+            status: data.items[0].status,
+            time_in_current_status_minutes: data.items[0].time_in_current_status_minutes,
+            current_status_since: data.items[0].current_status_since,
+            created_at: data.items[0].created_at
+          });
+        }
       } else {
         setOrders([]);
       }
@@ -114,6 +123,21 @@ export default function FinanceManager() {
       setLoading(false);
     }
   }, [searchQuery]);
+
+  // Fetch orders on mount and when search query changes
+  useEffect(() => {
+    fetchOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
+
+  // Auto-refresh orders every hour (3600000 ms) to update time-in-status
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchOrders();
+    }, 3600000); // 1 hour
+
+    return () => clearInterval(interval);
+  }, [fetchOrders]);
 
   // Calculate order stats from fetched orders
   const orderStats = {
@@ -454,12 +478,22 @@ export default function FinanceManager() {
                             className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                           />
                         </div>
-                        <Badge 
+                        <Badge
                           variant={statusConfig.variant}
                           className={`${statusConfig.bgColor} ${statusConfig.color} border ${statusConfig.borderColor} font-semibold px-3 py-1`}
                         >
                           {statusConfig.label}
                         </Badge>
+
+                        {/* Time in current status */}
+                        {(order.time_in_current_status_minutes !== undefined && order.time_in_current_status_minutes !== null) && (
+                          <div className="mt-2 flex items-center gap-1 text-xs text-gray-600">
+                            <Clock className="w-3 h-3" />
+                            <span>
+                              For <DurationDisplay minutes={order.time_in_current_status_minutes || 0} />
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Date and Time */}

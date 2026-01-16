@@ -152,24 +152,19 @@ class DriverService:
 
     async def get_current_active_trip(
         self,
-        company_id: Optional[str] = None,
-        driver_id: Optional[str] = None
+        company_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Get the current active trip for the driver.
 
         Args:
             company_id: Optional company ID filter
-            driver_id: Optional driver ID (uses configured one if not provided)
 
         Returns:
             TripSummary from TMS service or None
         """
         try:
-            # Use the provided driver_id or fallback to the configured one
-            effective_driver_id = driver_id or self.driver_id
             result = await self.tms_client.get_driver_current_trip(
-                driver_id=effective_driver_id,
                 company_id=company_id or self.company_id
             )
             return result

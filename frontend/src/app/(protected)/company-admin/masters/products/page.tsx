@@ -218,6 +218,16 @@ export default function ProductsPage() {
             Manage Categories
           </Button>
           <Button
+            variant="outline"
+            onClick={() =>
+              router.push("/company-admin/masters/products/unit-types")
+            }
+            className="flex items-center gap-2"
+          >
+            <Box className="w-4 h-4" />
+            Manage Unit Types
+          </Button>
+          <Button
             onClick={() => router.push("/company-admin/masters/products/new")}
             className="flex items-center gap-2 px-3 md:px-4 py-3 bg-[#1f40ae] hover:bg-[#1f40ae] active:bg-[#1f40ae] text-white rounded-xl transition-all duration-200 hover:scale-[1.02] hover:shadow-lg shadow-md"
           >
@@ -288,7 +298,10 @@ export default function ProductsPage() {
         </div>
 
         {/* Categories Card */}
-        <div className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#fff8f0] border-2 border-[#f8e4c2]">
+        <button
+          onClick={() => router.push("/company-admin/masters/products/categories")}
+          className="rounded-xl p-3 md:p-6 transition-all duration-300 hover:shadow-md bg-[#fff8f0] border-2 border-[#f8e4c2] text-left w-full cursor-pointer hover:scale-[1.02]"
+        >
           <div className="flex justify-between items-start">
             <p className="text-sm md:text-base font-semibold text-black">
               Categories
@@ -302,7 +315,7 @@ export default function ProductsPage() {
               {isLoading ? "..." : categories?.length || 0}
             </p>
           </div>
-        </div>
+        </button>
       </div>
 
       {/* Products Table */}

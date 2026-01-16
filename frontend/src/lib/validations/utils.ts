@@ -183,10 +183,31 @@ export function formatApiError(error: unknown): string {
       return zodError.issues[0]?.message || 'Validation error'
     }
 
-    // Check for API response error
+    // Check for RTK Query API error structure (most common)
+    const apiError = error as any
+
+    // RTK Query error: error.data.detail (string or object)
+    if (apiError.data?.detail) {
+      const detail = apiError.data.detail
+      if (typeof detail === 'string') {
+        return detail
+      }
+      if (typeof detail === 'object' && detail.message) {
+        return detail.message
+      }
+      // Handle array of validation errors
+      if (Array.isArray(detail) && detail.length > 0) {
+        const firstError = detail[0]
+        if (typeof firstError === 'string') return firstError
+        if (firstError.msg) return firstError.msg
+        if (firstError.message) return firstError.message
+      }
+    }
+
+    // Check for response-based error structure
     if ('response' in error) {
-      const apiError = error as any
-      const detail = apiError.response?.data?.detail
+      const responseError = error as any
+      const detail = responseError.response?.data?.detail
 
       if (typeof detail === 'string') {
         return detail

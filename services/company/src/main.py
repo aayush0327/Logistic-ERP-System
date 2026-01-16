@@ -13,7 +13,7 @@ from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTEN
 from starlette.responses import Response as StarletteResponse
 from sqlalchemy.exc import IntegrityError
 
-from src.api.endpoints import branches, customers, vehicles, products, product_categories, business_types, vehicle_types, users, roles, profiles, audit, tenant_cleanup
+from src.api.endpoints import branches, customers, vehicles, products, product_categories, product_unit_types, business_types, vehicle_types, users, roles, profiles, audit, tenant_cleanup
 from src.config_local import settings
 from src.database import engine, Base
 from src.security import (
@@ -255,6 +255,13 @@ app.include_router(
     product_categories.router,
     prefix="/product-categories",
     tags=["Product Categories"]
+)
+
+# Use separate prefix to avoid conflict with products/{product_id} route
+app.include_router(
+    product_unit_types.router,
+    prefix="/product-unit-types",
+    tags=["Product Unit Types"]
 )
 
 app.include_router(

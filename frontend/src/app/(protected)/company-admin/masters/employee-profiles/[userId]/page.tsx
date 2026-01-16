@@ -233,33 +233,33 @@ export default function EmployeeProfileDetailPage() {
   });
 
   // Fetch driver profile if user is a driver
-  const skipDriverProfile = !user || !user.id || !isDriverRole(user);
+  const skipDriverProfile = !user || !user.user_id || !isDriverRole(user);
   const { data: driverProfile } = useGetDriverProfileByUserQuery(
-    user?.id || "",
+    user?.user_id || "",
     { skip: skipDriverProfile }
   );
 
   // Fetch branch manager profile if user is a branch manager
   const skipBranchManagerProfile =
-    !user || !user.id || !isBranchManagerRole(user);
+    !user || !user.user_id || !isBranchManagerRole(user);
   const { data: branchManagerProfile } = useGetBranchManagerProfileByUserQuery(
-    user?.id || "",
+    user?.user_id || "",
     { skip: skipBranchManagerProfile }
   );
 
   // Fetch finance manager profile if user is a finance manager
   const skipFinanceManagerProfile =
-    !user || !user.id || !isFinanceManagerRole(user);
+    !user || !user.user_id || !isFinanceManagerRole(user);
   const { data: financeManagerProfile } =
-    useGetFinanceManagerProfileByUserQuery(user?.id || "", {
+    useGetFinanceManagerProfileByUserQuery(user?.user_id || "", {
       skip: skipFinanceManagerProfile,
     });
 
   // Fetch logistics manager profile if user is a logistics manager
   const skipLogisticsManagerProfile =
-    !user || !user.id || !isLogisticsManagerRole(user);
+    !user || !user.user_id || !isLogisticsManagerRole(user);
   const { data: logisticsManagerProfile } =
-    useGetLogisticsManagerProfileByUserQuery(user?.id || "", {
+    useGetLogisticsManagerProfileByUserQuery(user?.user_id || "", {
       skip: skipLogisticsManagerProfile,
     });
 

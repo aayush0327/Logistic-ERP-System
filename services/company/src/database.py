@@ -160,6 +160,7 @@ class Customer(Base):
     name = Column(String(100), nullable=False)
     phone = Column(String(20))
     email = Column(String(100))
+    contact_person_name = Column(String(100))  # Contact person at the customer company
     address = Column(String(500))
     city = Column(String(100))
     state = Column(String(100))
@@ -248,6 +249,10 @@ class Vehicle(Base):
     )
     last_maintenance = Column(DateTime(timezone=True))
     next_maintenance = Column(DateTime(timezone=True))
+    # Odometer and fuel economy tracking
+    current_odometer = Column(Float)  # Current odometer reading in km
+    current_fuel_economy = Column(Float)  # Current fuel economy in km/liter
+    last_odometer_update = Column(DateTime(timezone=True))  # Last time odometer was updated
     is_active = Column(Boolean, default=True)
     available_for_all_branches = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -284,6 +289,7 @@ class Product(Base):
     tenant_id = Column(String, nullable=False)  # Will be foreign key to auth service
     category_id = Column(UUID(as_uuid=True), ForeignKey("product_categories.id"))
     code = Column(String(50), unique=True, nullable=False)
+    unit_type_id = Column(UUID(as_uuid=True), ForeignKey("product_unit_types.id"))
     name = Column(String(100), nullable=False)
     description = Column(String(500))
     unit_price = Column(Float, nullable=False)
@@ -322,6 +328,7 @@ class Product(Base):
     # Relationships
     branches = relationship("ProductBranch", back_populates="product")
     category = relationship("ProductCategory")
+    unit_type = relationship("ProductUnitType")
 
 
 class ProductBranch(Base):
@@ -337,6 +344,39 @@ class ProductBranch(Base):
     # Relationships
     product = relationship("Product", back_populates="branches")
     branch = relationship("Branch")
+
+
+class ProductUnitType(Base):
+    """Product Unit Type model - e.g., kg, liter, pieces, dozen"""
+    __tablename__ = "product_unit_types"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String, nullable=False)
+    code = Column(String(20), nullable=False)  # e.g., "KG", "LTR", "PCS"
+    name = Column(String(100), nullable=False)  # e.g., "Kilogram", "Liter", "Pieces"
+    abbreviation = Column(String(20))  # e.g., "kg", "ltr", "pcs"
+    description = Column(String(500))
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class VehicleOdometerFuelLog(Base):
+    """Vehicle odometer and fuel log tracking"""
+    __tablename__ = "vehicle_odometer_fuel_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String, nullable=False)
+    vehicle_id = Column(UUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    odometer_reading = Column(Float, nullable=False)  # Current odometer in km
+    fuel_economy = Column(Float)  # km/liter
+    fuel_consumed = Column(Float)  # Liters consumed
+    distance_traveled = Column(Float)  # km since last reading
+    log_date = Column(DateTime(timezone=True), nullable=False)
+    log_type = Column(String(20), nullable=False)  # 'manual', 'refueling', 'maintenance', 'trip_end'
+    notes = Column(String(1000))
+    recorded_by_user_id = Column(String)  # User who recorded the log
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class CustomerBranch(Base):
@@ -513,6 +553,7 @@ class DriverProfile(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     employee_profile_id = Column(String(36), ForeignKey("employee_profiles.id", ondelete="CASCADE"), nullable=False)
     tenant_id = Column(String(255), nullable=False)
+    driver_code = Column(String(50))  # Unique driver code for identification
     license_number = Column(String(50), unique=True, nullable=False)
     license_type = Column(String(50), nullable=False)  # e.g., Light Motor Vehicle (LMV), Heavy Motor Vehicle (HMV)
     license_expiry = Column(DateTime(timezone=True), nullable=False)

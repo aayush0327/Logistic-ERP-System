@@ -16,7 +16,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     Rate limiting middleware for Finance Service
     """
 
-    def __init__(self, app, requests: int = 100, window: int = 60):
+    def __init__(self, app, requests: int = 3000, window: int = 60):
         super().__init__(app)
         self.requests = requests
         self.window = window

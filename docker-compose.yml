@@ -18,6 +18,7 @@ services:
       - ./scripts/init-tms-schema.sql:/docker-entrypoint-initdb.d/03-tms-schema.sql
       - ./scripts/init-company-schema.sql:/docker-entrypoint-initdb.d/04-company-schema.sql
       - ./scripts/init-finance-schema.sql:/docker-entrypoint-initdb.d/05-finance-schema.sql
+      - ./scripts/init-notification-schema.sql:/docker-entrypoint-initdb.d/06-notification-schema.sql
     networks:
       - logistics-network
     healthcheck:
@@ -57,10 +58,11 @@ services:
     networks:
       - logistics-network
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 30s
 
   kafka:
     image: confluentinc/cp-kafka:7.4.0
@@ -91,8 +93,9 @@ services:
           "localhost:9092",
         ]
       interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout: 10s
+      retries: 12
+      start_period: 60s
 
   kafka-ui:
     image: provectuslabs/kafka-ui:v0.7.1
@@ -117,6 +120,7 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=false
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "xpack.security.enrollment.enabled=false"
     ports:
       - "9200:9200"
     volumes:
@@ -127,8 +131,9 @@ services:
       test:
         ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
-      timeout: 5s
-      retries: 10
+      timeout: 10s
+      retries: 15
+      start_period: 90s
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.12.0
@@ -460,6 +465,8 @@ services:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/tms_db
       - LOG_LEVEL=INFO
       - GLOBAL_JWT_SECRET=eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_NOTIFICATIONS_TOPIC=notifications
     depends_on:
       postgres:
         condition: service_healthy
@@ -580,6 +587,98 @@ services:
       - logistics-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Notification Service
+  notification-service:
+    build:
+      context: ./services/notification
+      dockerfile: Dockerfile
+    container_name: notification-service
+    restart: unless-stopped
+    ports:
+      - "8007:8007"
+    volumes:
+      - ./services/notification/src:/app/src
+      - ./services/notification/pyproject.toml:/app/pyproject.toml
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/notification_db
+      - REDIS_URL=redis://redis:6379
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_NOTIFICATIONS_TOPIC=notifications
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - JWT_SECRET=eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck
+      - ENV=development
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+      - CORS_ORIGINS=*
+      - SSE_HEARTBEAT_INTERVAL=30
+      - SCHEDULER_ENABLED=true
+      - NEXT_PUBLIC_NOTIFICATIONS_API_URL=http://notification-service:8007
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    networks:
+      - logistics-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8007/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Analytics Service
+  analytics-service:
+    build:
+      context: ./services/analytics
+      dockerfile: Dockerfile
+    container_name: analytics-service
+    restart: unless-stopped
+    ports:
+      - "8008:8008"
+    volumes:
+      - ./services/analytics/src:/app/src
+      - ./services/analytics/pyproject.toml:/app/pyproject.toml
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_COMPANY_DB=company_db
+      - POSTGRES_ORDERS_DB=orders_db
+      - POSTGRES_TMS_DB=tms_db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GLOBAL_JWT_SECRET=eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck
+      - ENV=development
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+      - PORT=8008
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://frontend:3000
+      - COMPANY_SERVICE_URL=http://company-service:8002
+      - ORDERS_SERVICE_URL=http://orders-service:8003
+      - TMS_SERVICE_URL=http://tms-service:8004
+      - AUTH_SERVICE_URL=http://auth-service:8001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      company-service:
+        condition: service_started
+    networks:
+      - logistics-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
       interval: 30s
       timeout: 10s
       retries: 3

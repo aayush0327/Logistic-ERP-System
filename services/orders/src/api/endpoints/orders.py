@@ -3,7 +3,7 @@ Orders API endpoints
 """
 from typing import List, Optional, Dict
 from uuid import UUID, uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 from httpx import AsyncClient
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
@@ -69,6 +69,56 @@ async def fetch_customers_by_ids(customer_ids: List[str], tenant_id: str, header
                 logger.error(f"Error fetching customer {customer_id}: {str(e)}")
 
     return customers_map
+
+
+async def fetch_latest_status_history(
+    db: AsyncSession,
+    order_ids: List[str],
+    tenant_id: str
+) -> Dict[str, datetime]:
+    """
+    Fetch the latest status change timestamp for multiple orders in a single query.
+
+    Returns: Dict mapping order_id -> most recent status change timestamp
+    """
+    from src.models.order_status_history import OrderStatusHistory
+    from sqlalchemy import func
+
+    # Subquery to get the latest status history entry for each order
+    # Join with orders table to filter by tenant_id
+    latest_history_subquery = (
+        select(
+            OrderStatusHistory.order_id,
+            func.max(OrderStatusHistory.created_at).label('latest_created_at')
+        )
+        .join(Order, Order.id == OrderStatusHistory.order_id)
+        .where(
+            and_(
+                OrderStatusHistory.order_id.in_(order_ids),
+                Order.tenant_id == tenant_id
+            )
+        )
+        .group_by(OrderStatusHistory.order_id)
+        .subquery()
+    )
+
+    # Main query to get the latest history records
+    query = (
+        select(OrderStatusHistory)
+        .join(
+            latest_history_subquery,
+            and_(
+                OrderStatusHistory.order_id == latest_history_subquery.c.order_id,
+                OrderStatusHistory.created_at == latest_history_subquery.c.latest_created_at
+            )
+        )
+    )
+
+    result = await db.execute(query)
+    history_records = result.scalars().all()
+
+    # Build mapping: order_id -> latest status change timestamp
+    return {record.order_id: record.created_at for record in history_records}
 
 
 router = APIRouter()
@@ -191,6 +241,13 @@ async def list_orders(
         page=page,
         page_size=limit
     )
+
+    # Fetch latest status history for all orders
+    order_ids = [order.id for order in orders]
+    latest_status_changes = await fetch_latest_status_history(db, order_ids, tenant_id)
+
+    # Get current UTC time once for consistent calculations
+    current_time = datetime.now(timezone.utc)
 
     # Log query results for debugging
     logger.info(f"ORDERS SERVICE - Query returned {len(orders)} orders (total: {total})")
@@ -503,6 +560,31 @@ async def list_orders(
         if is_partial_order:
             logger.info(f"Order {order.order_number} partial order - calculated_weight: {calculated_weight}, items: {len(items_data)}")
 
+        # Calculate time in current status
+        try:
+            current_status_since = latest_status_changes.get(order.id, order.created_at)
+
+            # Ensure both datetimes are timezone-aware for proper comparison
+            if current_status_since.tzinfo is None:
+                # If created_at is naive, assume it's UTC
+                current_status_since = current_status_since.replace(tzinfo=timezone.utc)
+
+            time_in_status_minutes = int(
+                (current_time - current_status_since).total_seconds() / 60
+            )
+
+            # Debug: Log time_in_status for first order
+            if order == orders[0]:
+                logger.info(f"ORDERS SERVICE - First order: {order.order_number}, "
+                          f"time_in_status_minutes={time_in_status_minutes}, "
+                          f"current_status_since={current_status_since}, "
+                          f"created_at={order.created_at}")
+        except Exception as e:
+            logger.error(f"Error calculating time_in_status for order {order.order_number}: {str(e)}")
+            # Fallback to 0 if calculation fails
+            current_status_since = order.created_at
+            time_in_status_minutes = 0
+
         order_dict = {
             'id': order.id,
             'order_number': order.order_number,
@@ -529,6 +611,9 @@ async def list_orders(
             # Include TMS JSON fields for reference
             'items_json': getattr(order, 'items_json', None),
             'remaining_items_json': getattr(order, 'remaining_items_json', None),
+            # Time in current status
+            'current_status_since': current_status_since.isoformat() if current_status_since else None,
+            'time_in_current_status_minutes': time_in_status_minutes,
         }
         enriched_orders.append(OrderListResponse(**order_dict))
 
@@ -816,7 +901,8 @@ async def finance_approval(
         tenant_id,
         approval_data.reason,
         approval_data.notes,
-        approval_data.payment_type
+        approval_data.payment_type,
+        user_role=token_data.role
     )
     return order
 
@@ -848,7 +934,8 @@ async def logistics_approval(
         approval_data.reason,
         approval_data.notes,
         approval_data.driver_id,
-        approval_data.trip_id
+        approval_data.trip_id,
+        user_role=token_data.role
     )
     return order
 
@@ -871,7 +958,8 @@ async def update_order_status(
         user_id,
         tenant_id,
         status_data.reason,
-        status_data.notes
+        status_data.notes,
+        user_role=token_data.role
     )
     return order
 
@@ -1168,6 +1256,70 @@ async def update_item_status(
 
     await db.commit()
 
+    # Publish Kafka events for delivery status changes
+    # Map item status to order status events
+    item_status_to_event = {
+        "picked_up": "picked_up",
+        "on_route": "in_transit",
+        "delivered": "delivered",
+        "failed": "failed",
+        "returned": "returned"
+    }
+
+    if status_data.item_status in item_status_to_event:
+        try:
+            from src.services.kafka_producer import order_event_producer
+
+            event_type = item_status_to_event[status_data.item_status]
+
+            # Publish different events based on status
+            if event_type == "picked_up":
+                order_event_producer.publish_order_status_changed(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=token_data.tenant_id,
+                    status="picked_up",
+                    additional_data={
+                        "trip_id": status_data.trip_id
+                    }
+                )
+            elif event_type == "in_transit":
+                order_event_producer.publish_order_status_changed(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=token_data.tenant_id,
+                    status="in_transit",
+                    additional_data={
+                        "trip_id": status_data.trip_id
+                    }
+                )
+            elif event_type == "delivered":
+                order_event_producer.publish_order_status_changed(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=token_data.tenant_id,
+                    status="delivered",
+                    additional_data={
+                        "trip_id": status_data.trip_id
+                    }
+                )
+            elif event_type == "failed":
+                order_event_producer.publish_order_failed_delivery(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=token_data.tenant_id
+                )
+            elif event_type == "returned":
+                order_event_producer.publish_order_returned(
+                    order_id=str(order.id),
+                    order_number=order.order_number,
+                    tenant_id=token_data.tenant_id
+                )
+
+            logger.info(f"Published order.{event_type} event for order {order.order_number}")
+        except Exception as e:
+            logger.error(f"Failed to publish Kafka event for item status {status_data.item_status}: {e}")
+
     logger.info(f"Updated {updated_count} order_items, {trip_assignments_updated} trip_item_assignments updated, {trip_assignments_deleted} deleted for order {status_data.order_id} to status {status_data.item_status}")
 
     return {
@@ -1204,7 +1356,8 @@ async def cancel_order(
         str(order_id),
         user_id,
         tenant_id,
-        reason
+        reason,
+        user_role=token_data.role
     )
     return order
 
@@ -1245,27 +1398,23 @@ async def bulk_create_trip_item_assignments(
         db.add(new_assignment)
         created_count += 1
 
-        # Also update the order_item status
-        order_item_id = item.get("order_item_id")
-        item_status = item.get("item_status", "pending_to_assign")
-        if order_item_id:
-            try:
-                order_item_query = select(OrderItem).where(
-                    and_(
-                        OrderItem.id == order_item_id,
-                        OrderItem.order_id == item.get("order_id")
-                    )
-                )
-                order_item_result = await db.execute(order_item_query)
-                order_item = order_item_result.scalar_one_or_none()
-
-                if order_item:
-                    logger.info(f"Updating order_item {order_item_id} status to {item_status}")
-                    order_item.item_status = item_status
-                    # Also update trip_id in order_items
-                    order_item.trip_id = trip_id
-            except Exception as e:
-                logger.error(f"Failed to update order_item {order_item_id} status: {str(e)}")
+        # OPTIONAL CLEANUP: Removed OrderItem.item_status update
+        # The trip_item_assignments table is the source of truth for tracking split/partial assignments
+        # OrderItem.item_status affects all items in the row (not just the assigned portion)
+        # Status display uses trip_item_assignments aggregation, so this update is not needed
+        #
+        # The original code below was removed as it incorrectly updated all items:
+        # order_item_id = item.get("order_item_id")
+        # item_status = item.get("item_status", "pending_to_assign")
+        # if order_item_id:
+        #     try:
+        #         order_item_query = select(OrderItem).where(...)
+        #         order_item = ...
+        #         if order_item:
+        #             order_item.item_status = item_status  # This affects ALL items in the row
+        #             order_item.trip_id = trip_id
+        #     except Exception as e:
+        #         logger.error(f"Failed to update order_item {order_item_id} status: {str(e)}")
 
     await db.commit()
 
@@ -1298,6 +1447,175 @@ async def update_trip_item_assignments_status(
     await db.commit()
 
     return {"message": f"Updated {len(assignments)} assignments", "updated_count": len(assignments)}
+
+
+@router.put("/trip-item-assignments/update-quantity")
+async def update_trip_item_assignment_quantity(
+    update_data: dict,
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_permissions(["orders:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """
+    Update assigned_quantity and item_status for a trip_item_assignment.
+    Called during LOADING stage when user confirms quantities.
+
+    This endpoint handles:
+    - Updating quantity when user decides partial assignment
+    - Updating item_status from 'planning' to 'loading'
+    - Validation that assigned_quantity <= original_quantity
+    """
+    from src.models.trip_item_assignment import TripItemAssignment
+    from src.models.order_item import OrderItem
+    from src.models.order import Order
+
+    trip_id = update_data.get("trip_id")
+    order_item_id = update_data.get("order_item_id")
+    assigned_quantity = update_data.get("assigned_quantity")
+    item_status = update_data.get("item_status")
+
+    if not all([trip_id, order_item_id, assigned_quantity is not None, item_status]):
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required fields: trip_id, order_item_id, assigned_quantity, item_status"
+        )
+
+    # Find the assignment
+    query = select(TripItemAssignment).where(
+        and_(
+            TripItemAssignment.trip_id == trip_id,
+            TripItemAssignment.order_item_id == order_item_id,
+            TripItemAssignment.tenant_id == tenant_id
+        )
+    )
+    result = await db.execute(query)
+    assignment = result.scalar_one_or_none()
+
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+
+    # Validate assigned_quantity <= original_quantity
+    # Note: OrderItem doesn't have tenant_id, so we join with Order for tenant validation
+    item_query = select(OrderItem).join(Order).where(
+        and_(
+            OrderItem.id == order_item_id,
+            Order.tenant_id == tenant_id
+        )
+    )
+    item_result = await db.execute(item_query)
+    order_item = item_result.scalar_one_or_none()
+
+    if not order_item:
+        raise HTTPException(status_code=404, detail="Order item not found")
+
+    if assigned_quantity > order_item.quantity:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Assigned quantity ({assigned_quantity}) cannot exceed original quantity ({order_item.quantity})"
+        )
+
+    # Update quantity and status
+    assignment.assigned_quantity = assigned_quantity
+    assignment.item_status = item_status
+    await db.commit()
+
+    logger.info(
+        f"Updated trip_item_assignment: trip={trip_id}, item={order_item_id}, "
+        f"qty={assigned_quantity}, status={item_status}"
+    )
+
+    return {
+        "message": "Assignment updated successfully",
+        "assigned_quantity": assigned_quantity,
+        "item_status": item_status
+    }
+
+
+@router.delete("/trip-item-assignments/delete")
+async def delete_trip_item_assignment(
+    delete_data: dict,
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_permissions(["orders:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """
+    Delete a trip_item_assignment (user skipped item during loading).
+
+    Called when user sets assigned_quantity = 0 during loading confirmation.
+    This removes the assignment record entirely, making the quantity available again.
+    """
+    from src.models.trip_item_assignment import TripItemAssignment
+
+    trip_id = delete_data.get("trip_id")
+    order_item_id = delete_data.get("order_item_id")
+
+    if not all([trip_id, order_item_id]):
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required fields: trip_id, order_item_id"
+        )
+
+    # Find the assignment
+    query = select(TripItemAssignment).where(
+        and_(
+            TripItemAssignment.trip_id == trip_id,
+            TripItemAssignment.order_item_id == order_item_id,
+            TripItemAssignment.tenant_id == tenant_id
+        )
+    )
+    result = await db.execute(query)
+    assignment = result.scalar_one_or_none()
+
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+
+    # Delete the assignment
+    await db.delete(assignment)
+    await db.commit()
+
+    logger.info(f"Deleted trip_item_assignment: trip={trip_id}, item={order_item_id}")
+
+    return {"message": "Assignment deleted successfully"}
+
+
+@router.put("/trip-item-assignments/reset-to-planning")
+async def reset_assignments_to_planning(
+    trip_id: str,
+    db: AsyncSession = Depends(get_db),
+    token_data: TokenData = Depends(require_permissions(["orders:update"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """
+    Reset all trip_item_assignments for a trip from 'loading' back to 'planning'.
+
+    Allows user to resplit items after returning trip from loading to planning stage.
+    This enables re-decision of item quantities.
+    """
+    from src.models.trip_item_assignment import TripItemAssignment
+
+    query = select(TripItemAssignment).where(
+        and_(
+            TripItemAssignment.trip_id == trip_id,
+            TripItemAssignment.tenant_id == tenant_id,
+            TripItemAssignment.item_status == "loading"
+        )
+    )
+    result = await db.execute(query)
+    assignments = result.scalars().all()
+
+    for assignment in assignments:
+        assignment.item_status = "planning"
+
+    await db.commit()
+
+    logger.info(
+        f"Reset {len(assignments)} trip_item_assignments from loading to planning for trip {trip_id}"
+    )
+
+    return {
+        "message": f"Reset {len(assignments)} items to planning status",
+        "count": len(assignments)
+    }
 
 
 @router.get("/trip-item-assignments/order/{order_number}")
@@ -1399,6 +1717,7 @@ async def get_order_item_assignments(
             "product_id": item.product_id,
             "product_name": item.product_name,
             "product_code": item.product_code,
+            "weight": item.weight,  # Weight per unit
             "original_quantity": original_qty,  # Original quantity from order_items
             "assigned_quantity": assigned_qty,  # Active assignments (planning/loading/on_route)
             "delivered_quantity": delivered_qty,  # Completed deliveries
@@ -1550,6 +1869,7 @@ async def bulk_get_order_item_assignments(
                 "product_id": item.product_id,
                 "product_name": item.product_name,
                 "product_code": item.product_code,
+                "weight": item.weight,  # Weight per unit
                 "original_quantity": original_qty,  # Original quantity from order_items
                 "assigned_quantity": assigned_qty,  # Active assignments (planning/loading/on_route)
                 "delivered_quantity": delivered_qty,  # Completed deliveries
@@ -1665,12 +1985,31 @@ async def get_order_items_with_assignments(
     total_assigned_quantity = 0
     total_remaining_quantity = 0
 
+    # Items status summary
+    items_status_summary = {
+        "planning": 0,
+        "loading": 0,
+        "on_route": 0,
+        "delivered": 0
+    }
+
     for item in items:
         item_assignments = assignments_by_item.get(item.id, [])
 
         # Split assignments by status - only count active assignments
         assigned_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] in ('planning', 'loading', 'on_route'))
         delivered_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] == 'delivered')
+
+        # Calculate status quantities for this item
+        planning_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] == 'planning')
+        loading_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] == 'loading')
+        on_route_qty = sum(a["assigned_quantity"] for a in item_assignments if a["item_status"] == 'on_route')
+
+        # Add to overall status summary
+        items_status_summary["planning"] += planning_qty
+        items_status_summary["loading"] += loading_qty
+        items_status_summary["on_route"] += on_route_qty
+        items_status_summary["delivered"] += delivered_qty
 
         # The order_items.quantity is the ORIGINAL quantity (not reduced)
         # trip_item_assignments tracks what has been assigned to trips
@@ -1713,6 +2052,7 @@ async def get_order_items_with_assignments(
 
     logger.info(f"Order {order.order_number} items-with-assignments: original={total_original_quantity}, assigned={total_assigned_quantity}, remaining={total_remaining_quantity}")
     logger.info(f"Items data: {items_with_assignments}")
+    logger.info(f"Items status summary: {items_status_summary}")
 
     return {
         "order_id": order.id,
@@ -1727,6 +2067,7 @@ async def get_order_items_with_assignments(
             "is_fully_assigned": total_remaining_quantity == 0,
             "is_partially_assigned": 0 < total_remaining_quantity < total_original_quantity,
             "is_available": total_remaining_quantity == total_original_quantity
-        }
+        },
+        "items_status_summary": items_status_summary
     }
 

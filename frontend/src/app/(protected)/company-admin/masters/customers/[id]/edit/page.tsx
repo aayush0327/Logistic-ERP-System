@@ -57,6 +57,7 @@ export default function EditCustomerPage() {
     name: "",
     phone: "",
     email: "",
+    contact_person_name: "",
     address: "",
     city: "",
     state: "",
@@ -90,6 +91,7 @@ export default function EditCustomerPage() {
         name: customer.name || "",
         phone: customer.phone || "",
         email: customer.email || "",
+        contact_person_name: customer.contact_person_name || "",
         address: customer.address || "",
         city: customer.city || "",
         state: customer.state || "",
@@ -578,7 +580,7 @@ export default function EditCustomerPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="phone">Phone Number</Label>
                 <Input
@@ -606,6 +608,20 @@ export default function EditCustomerPage() {
                 {errors.email && (
                   <p className="text-sm text-red-600 mt-1">{errors.email}</p>
                 )}
+              </div>
+              <div>
+                <Label htmlFor="contact_person_name">Contact Person Name</Label>
+                <Input
+                  id="contact_person_name"
+                  type="text"
+                  value={formData.contact_person_name}
+                  onChange={(e) => handleInputChange("contact_person_name", e.target.value)}
+                  placeholder="e.g., John Smith"
+                  maxLength={100}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Primary contact person at the customer company
+                </p>
               </div>
             </div>
           </CardContent>

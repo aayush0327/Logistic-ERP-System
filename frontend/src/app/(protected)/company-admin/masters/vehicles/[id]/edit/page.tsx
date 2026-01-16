@@ -50,6 +50,9 @@ export default function EditVehiclePage() {
     status: "available",
     last_maintenance: "",
     next_maintenance: "",
+    // Odometer and fuel economy tracking
+    current_odometer: 0,
+    current_fuel_economy: 0,
     is_active: true,
   });
 
@@ -79,6 +82,9 @@ export default function EditVehiclePage() {
         next_maintenance: vehicle.next_maintenance
           ? new Date(vehicle.next_maintenance).toISOString().split("T")[0]
           : "",
+        // Odometer and fuel economy tracking
+        current_odometer: vehicle.current_odometer || 0,
+        current_fuel_economy: vehicle.current_fuel_economy || 0,
         is_active: vehicle.is_active,
       });
 
@@ -542,6 +548,52 @@ export default function EditVehiclePage() {
                       handleInputChange("next_maintenance", e.target.value)
                     }
                   />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="current_odometer">
+                    Current Odometer (km)
+                  </Label>
+                  <Input
+                    id="current_odometer"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.current_odometer}
+                    onChange={(e) =>
+                      handleInputChange(
+                        "current_odometer",
+                        parseFloat(e.target.value) || 0
+                      )
+                    }
+                    placeholder="e.g., 50000.50"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Current odometer reading in kilometers
+                  </p>
+                </div>
+                <div>
+                  <Label htmlFor="current_fuel_economy">
+                    Fuel Economy (km/liter)
+                  </Label>
+                  <Input
+                    id="current_fuel_economy"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.current_fuel_economy}
+                    onChange={(e) =>
+                      handleInputChange(
+                        "current_fuel_economy",
+                        parseFloat(e.target.value) || 0
+                      )
+                    }
+                    placeholder="e.g., 12.5"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Average fuel consumption in km per liter
+                  </p>
                 </div>
               </div>
             </CardContent>

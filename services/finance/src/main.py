@@ -120,9 +120,13 @@ app.add_middleware(
 if getattr(settings, 'AUDIT_LOG_ENABLED', True):
     app.add_middleware(AuditLoggingMiddleware)
 
-# 4. Rate limiting (if enabled)
+# 4. Rate limiting (if enabled) - Increased limits for 30-40 concurrent users
 if getattr(settings, 'RATE_LIMIT_ENABLED', True):
-    app.add_middleware(RateLimitMiddleware)
+    app.add_middleware(
+        RateLimitMiddleware,
+        requests=3000,  # ~75 req/min per user for 40 users
+        window=60
+    )
 
 # 5. Tenant context for database operations
 app.add_middleware(TenantIsolationMiddleware)

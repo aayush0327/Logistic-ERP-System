@@ -235,6 +235,19 @@ class Order(Base):
         index=True
     )
 
+    # Due days tracking
+    due_days: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Number of days from order creation for expected delivery"
+    )
+    due_days_marked_created: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        comment="Whether order has been marked as created/dismissed from due days list"
+    )
+
     # Relationships
     items: Mapped[list["OrderItem"]] = relationship(
         "OrderItem",

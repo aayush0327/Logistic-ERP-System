@@ -460,6 +460,7 @@ export function CreateOrderModal({
         delivery_date: new Date(
           Date.now() + data.dueDays * 24 * 60 * 60 * 1000
         ).toISOString(),
+        due_days: data.dueDays,
         items: items,
         special_instructions: data.notes,
       };

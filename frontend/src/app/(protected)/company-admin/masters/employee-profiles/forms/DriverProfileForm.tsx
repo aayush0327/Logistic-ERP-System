@@ -29,6 +29,7 @@ export default function DriverProfileForm({
   onCancel
 }: DriverProfileFormProps) {
   const [formData, setFormData] = useState({
+    driver_code: '',
     license_number: '',
     license_type: '',
     license_expiry_date: '',
@@ -70,6 +71,7 @@ export default function DriverProfileForm({
   useEffect(() => {
     if (profile) {
       setFormData({
+        driver_code: profile.driver_code || '',
         license_number: profile.license_number || '',
         license_type: profile.license_type || '',
         license_expiry_date: profile.license_expiry ? profile.license_expiry.split('T')[0] : '',
@@ -147,6 +149,7 @@ export default function DriverProfileForm({
       // Map frontend form data to backend schema
       // Backend expects: license_type (string), license_expiry (datetime), badge_expiry, preferred_vehicle_types
       const profileData = {
+        driver_code: formData.driver_code || undefined,
         license_number: formData.license_number,
         license_type: formData.license_type, // String, not array
         license_expiry: formData.license_expiry_date, // Map license_expiry_date to license_expiry
@@ -186,6 +189,10 @@ export default function DriverProfileForm({
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-500 mb-1">Driver Code</label>
+                <p className="text-gray-900 font-medium">{profile.driver_code || '-'}</p>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-500 mb-1">License Number</label>
                 <p className="text-gray-900 font-medium">{profile.license_number || '-'}</p>
@@ -300,6 +307,16 @@ export default function DriverProfileForm({
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Driver Code</label>
+              <Input
+                value={formData.driver_code}
+                onChange={(e) => handleInputChange('driver_code', e.target.value)}
+                placeholder="e.g., DRV-001"
+                maxLength={50}
+              />
+              <p className="text-xs text-gray-500 mt-1">Unique driver code (letters, numbers, hyphens, underscores)</p>
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">License Number *</label>
               <Input

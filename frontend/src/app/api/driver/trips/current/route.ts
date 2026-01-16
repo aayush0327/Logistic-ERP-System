@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Driver Service URL from environment
-const NEXT_PUBLIC_DRIVER_SERVICE_URL = process.env.NEXT_PUBLIC_DRIVER_SERVICE_URL || 'http://localhost:8005';
+const DRIVER_SERVICE_URL = process.env.NEXT_PUBLIC_DRIVER_SERVICE_URL || 'http://localhost:8005';
 
 export async function GET(request: NextRequest) {
   try {
-    const url = `${NEXT_PUBLIC_DRIVER_SERVICE_URL}/api/v1/driver/trips/current`;
+    const url = `${DRIVER_SERVICE_URL}/api/v1/driver/trips/current`;
 
     const response = await fetch(url, {
       method: 'GET',

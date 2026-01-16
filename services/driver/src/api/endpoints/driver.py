@@ -78,13 +78,13 @@ async def get_current_trip(
     Get the current active trip for the driver.
 
     Returns the most recent trip that is in 'loading' or 'on-route' status.
+    The driver_id is extracted from the JWT token by the TMS service.
     """
     try:
         # Get driver service instance with auth token
         driver_service = get_driver_service(request)
         trip = await driver_service.get_current_active_trip(
-            company_id=tenant_id,
-            driver_id=user_id  # Use the logged-in user's ID as driver ID
+            company_id=tenant_id
         )
         return trip
     except Exception as e:

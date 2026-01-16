@@ -256,6 +256,10 @@ export default function CustomerDetailsPage() {
               <p className="text-gray-900">{customer.email || "N/A"}</p>
             </div>
             <div>
+              <label className="text-sm font-medium text-gray-500">Contact Person</label>
+              <p className="text-gray-900">{customer.contact_person_name || "N/A"}</p>
+            </div>
+            <div>
               <label className="text-sm font-medium text-gray-500">
                 Postal Code
               </label>

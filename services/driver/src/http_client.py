@@ -85,11 +85,10 @@ class TMSClient:
 
     async def get_driver_current_trip(
         self,
-        driver_id: str,
         company_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
-        """Get current active trip for driver"""
-        params = {"driver_id": driver_id}
+        """Get current active trip for driver (driver_id extracted from JWT by TMS service)"""
+        params = {}
         if company_id:
             params["company_id"] = company_id
 

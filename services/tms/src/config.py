@@ -39,10 +39,10 @@ class Settings(BaseSettings):
     GLOBAL_JWT_SECRET: str = "eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJJc3N1ZXIiOiJJc3N1ZXIiLCJVc2VybmFtZSI6IkphdmFJblVzZSIsImV4cCI6MTc2NTY5MTkzMywiaWF0IjoxNzY1NjkxOTMzfQ.IR5TvLwqTpsCqR2gRa7ApNoTgfxPAjUh_LQ9JmgoXck"
     GLOBAL_JWT_ALGORITHM: str = "HS256"
 
-    # Rate limiting
+    # Rate limiting - Increased limits for 30-40 concurrent users
     enable_rate_limiting: bool = True
-    rate_limit_requests_per_minute: int = 60
-    rate_limit_requests_per_hour: int = 1000
+    rate_limit_requests_per_minute: int = 3000    # ~75 req/min per user for 40 users
+    rate_limit_requests_per_hour: int = 18000     # ~450 req/hour per user for 40 users
 
     # Security
     enable_security_headers: bool = True
@@ -65,6 +65,15 @@ class Settings(BaseSettings):
 
     # Orders Service URL
     ORDERS_SERVICE_URL: str = "http://orders-service:8003"
+
+    # Company Service URL (for audit logs)
+    COMPANY_SERVICE_URL: str = "http://company-service:8002"
+
+    # Company Database URL (for centralized audit_logs)
+    COMPANY_DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@postgres:5432/company_db"
+
+    # Kafka Settings
+    KAFKA_BOOTSTRAP_SERVERS: str = "kafka:29092"
 
     class Config:
         env_file = ".env"

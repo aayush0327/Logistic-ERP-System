@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     PRODUCT_SERVICE_URL: str = "http://localhost:8005"
 
     # Kafka settings
-    KAFKA_BOOTSTRAP_SERVERS: List[str] = ["localhost:9092"]
+    KAFKA_BOOTSTRAP_SERVERS: List[str] = ["kafka:29092"]
     KAFKA_TOPIC_ORDERS: str = "orders"
     KAFKA_TOPIC_ORDER_EVENTS: str = "order-events"
 

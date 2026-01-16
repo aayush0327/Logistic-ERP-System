@@ -6,4 +6,5 @@ export { OrdersSummaryCards } from './OrdersSummaryCards';
 export type { OrderStats } from './OrdersSummaryCards';
 export { OrdersSearchBar } from './OrdersSearchBar';
 export { OrdersList } from './OrdersList';
+export { DueDaysTab } from './DueDaysTab';
 

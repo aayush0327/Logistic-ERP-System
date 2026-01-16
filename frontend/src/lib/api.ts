@@ -595,6 +595,9 @@ export const tmsAPI = {
       capacityUsed: trip.capacity_used,
       capacityTotal: trip.capacity_total,
       maintenanceNote: trip.maintenance_note,
+      // Time in current status
+      current_status_since: trip.current_status_since,
+      time_in_current_status_minutes: trip.time_in_current_status_minutes,
     }));
   },
 
@@ -678,6 +681,33 @@ export const tmsAPI = {
     // Use Next.js API route instead of direct TMS service
     return fetchWithError(`${TMS_BASE}/trips/${tripId}/orders/remove?order_id=${orderId}`, {
       method: 'DELETE',
+    });
+  },
+
+  // Prepare trip for loading - get pending items
+  async prepareTripForLoading(tripId: string) {
+    return fetchWithError(`${TMS_BASE}/trips/${tripId}/prepare-loading`, {
+      method: 'POST',
+    });
+  },
+
+  // Confirm loading assignment and change status
+  async confirmLoadingAssignment(
+    tripId: string,
+    confirmation: {
+      item_assignments: Array<{
+        order_id: string;
+        order_item_id: string;
+        assigned_quantity: number;
+        total_weight: number;
+      }>;
+      split_items?: Array<any>;
+    }
+  ) {
+    return fetchWithError(`${TMS_BASE}/trips/${tripId}/confirm-loading`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(confirmation),
     });
   },
 };

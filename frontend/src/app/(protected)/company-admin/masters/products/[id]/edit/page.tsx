@@ -21,6 +21,7 @@ import {
   useGetProductQuery,
   useUpdateProductMutation,
   useGetProductCategoriesQuery,
+  useGetAllProductUnitTypesQuery,
 } from "@/services/api/companyApi";
 import { ProductCreate } from "@/services/api/companyApi";
 import { toast } from "react-hot-toast";
@@ -32,10 +33,12 @@ export default function EditProductPage() {
 
   const { data: product, isLoading, error } = useGetProductQuery(productId);
   const { data: categories } = useGetProductCategoriesQuery({});
+  const { data: unitTypes } = useGetAllProductUnitTypesQuery({ is_active: true });
   const [updateProduct, { isLoading: isUpdating }] = useUpdateProductMutation();
 
   const [formData, setFormData] = useState<Partial<ProductCreate>>({
     category_id: "",
+    unit_type_id: undefined,
     code: "",
     name: "",
     description: "",
@@ -59,6 +62,7 @@ export default function EditProductPage() {
     if (product) {
       setFormData({
         category_id: product.category_id || "",
+        unit_type_id: product.unit_type_id || undefined,
         code: product.code || "",
         name: product.name || "",
         description: product.description || "",
@@ -323,6 +327,27 @@ export default function EditProductPage() {
                     </option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <Label htmlFor="unit_type_id">Unit Type</Label>
+                <select
+                  id="unit_type_id"
+                  value={formData.unit_type_id || ""}
+                  onChange={(e) =>
+                    handleInputChange("unit_type_id", e.target.value || undefined)
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select Unit Type</option>
+                  {unitTypes?.map((unitType: any) => (
+                    <option key={unitType.id} value={unitType.id}>
+                      {unitType.name} ({unitType.abbreviation || unitType.code})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Optional: Select a measurement unit for this product
+                </p>
               </div>
               <div>
                 <Label htmlFor="description">Description</Label>

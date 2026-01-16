@@ -23,6 +23,7 @@ class OrdersSettings(BaseSettings):
 
     # Service databases
     POSTGRES_ORDERS_DB: str = os.getenv("POSTGRES_ORDERS_DB", "orders_db")
+    POSTGRES_COMPANY_DB: str = os.getenv("POSTGRES_COMPANY_DB", "company_db")
 
     def get_database_url(self, db_name: str) -> str:
         """Get database URL for specific database"""

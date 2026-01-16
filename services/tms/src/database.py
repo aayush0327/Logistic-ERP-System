@@ -4,9 +4,9 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime, date
-from sqlalchemy import Column, String, Integer, Float, DateTime, Date, Text, ForeignKey, CheckConstraint, JSON
+from sqlalchemy import Column, String, Integer, Float, DateTime, Date, Text, ForeignKey, CheckConstraint, JSON, Boolean
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 import uuid
 
 from src.config import settings
@@ -18,9 +18,21 @@ engine = create_async_engine(
     future=True,
 )
 
+# Create async engine for company database (for centralized audit_logs)
+company_engine = create_async_engine(
+    settings.COMPANY_DATABASE_URL,
+    echo=False,  # Don't echo SQL for audit log writes
+    future=True,
+)
+
 # Create session factory
 async_session_maker = sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False
+)
+
+# Create session factory for company database (for audit logs)
+company_async_session_maker = sessionmaker(
+    company_engine, class_=AsyncSession, expire_on_commit=False
 )
 
 # Base class for models
@@ -159,7 +171,7 @@ class TripRoute(Base):
 
 
 class TMSAuditLog(Base):
-    """TMS Audit Log model"""
+    """TMS Audit Log model (deprecated - use CompanyAuditLog instead)"""
     __tablename__ = "tms_audit_logs"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -175,6 +187,43 @@ class TMSAuditLog(Base):
     # Relationships
     # Note: This relationship is complex due to the generic audit log structure
     # and can be added later when needed for specific audit log queries
+
+
+class CompanyAuditLog(Base):
+    """Centralized Audit Log model from company_db"""
+    __tablename__ = "audit_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True)
+    tenant_id = Column(String(255))
+    user_id = Column(String(255))
+    user_name = Column(String(255))
+    user_role = Column(String(100))
+    user_email = Column(String(255))
+    entity_type = Column(String(50))
+    entity_id = Column(String(255))
+    entity_name = Column(String(500))
+    action = Column(String(100))
+    module = Column(String(50))
+    sub_module = Column(String(50))
+    old_status = Column(String(50))
+    new_status = Column(String(50))
+    status_changed = Column(Boolean)
+    description = Column(Text)
+    reason = Column(Text)
+    notes = Column(Text)
+    meta_data = Column(JSONB)
+    ip_address = Column(String(45))
+    user_agent = Column(Text)
+    request_id = Column(String(100))
+    action_timestamp = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True))
+    updated_at = Column(DateTime(timezone=True))
+    old_values = Column(JSONB)
+    new_values = Column(JSONB)
+    from_status = Column(String(50))
+    to_status = Column(String(50))
+    approval_status = Column(String(20))
+    service_name = Column(String(50))
 
 
 # Dependency to get database session
@@ -195,3 +244,75 @@ async def get_async_session() -> AsyncSession:
             yield session
         finally:
             await session.close()
+
+
+async def get_company_db_session() -> AsyncSession:
+    """Get async session for company database (for centralized audit_logs)"""
+    async with company_async_session_maker() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
+
+async def write_audit_log_to_company(
+    entity_id: str,
+    entity_type: str,
+    module: str,
+    action: str,
+    from_status: str = None,
+    to_status: str = None,
+    description: str = None,
+    user_id: str = None,
+    user_name: str = None,
+    user_email: str = None,
+    user_role: str = None,
+    tenant_id: str = None,
+):
+    """
+    Write audit log to centralized audit_logs table in company_db
+
+    Args:
+        entity_id: ID of the entity (trip_id, order_id, etc.)
+        entity_type: Type of entity ('trip', 'trip_order', etc.)
+        module: Module name ('trips', 'orders', etc.)
+        action: Action performed ('create', 'status_change', etc.)
+        from_status: Previous status (for status changes)
+        to_status: New status (for status changes)
+        description: Human-readable description
+        user_id: ID of the user who performed the action
+        user_name: Name of the user
+        user_email: Email of the user
+        user_role: Role of the user
+        tenant_id: Tenant ID
+    """
+    from sqlalchemy import text
+
+    async with company_async_session_maker() as session:
+        query = text("""
+            INSERT INTO audit_logs (
+                tenant_id, user_id, user_name, user_email, user_role,
+                action, module, entity_type, entity_id,
+                description, from_status, to_status, created_at
+            ) VALUES (
+                :tenant_id, :user_id, :user_name, :user_email, :user_role,
+                :action, :module, :entity_type, :entity_id,
+                :description, :from_status, :to_status, NOW()
+            )
+        """)
+
+        await session.execute(query, {
+            "tenant_id": tenant_id or "",
+            "user_id": user_id or "",
+            "user_name": user_name,
+            "user_email": user_email,
+            "user_role": user_role,
+            "action": action,
+            "module": module,
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "description": description or f"{action} {entity_type} {entity_id}",
+            "from_status": from_status,
+            "to_status": to_status
+        })
+        await session.commit()

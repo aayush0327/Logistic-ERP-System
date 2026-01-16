@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { useAppSelector } from "@/store/hooks";
 import { useRouter } from "next/navigation";
 import { Dropdown, DropdownItem } from "@/components/ui/Dropdown";
+import { NotificationBell } from "@/components/notifications";
 
 interface HeaderProps {
   className?: string;
@@ -39,10 +40,7 @@ export function Header({ className }: HeaderProps) {
           <span className="text-sm text-gray-500">{currentDate}</span>
 
           {/* Notification Bell */}
-          <button className="relative p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-            <Bell className="w-5 h-5" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-          </button>
+          <NotificationBell />
 
           {/* User Avatar with Dropdown */}
           <Dropdown

@@ -98,6 +98,9 @@ class OrderApprovalResponse(BaseModel):
     finance_approved_by: Optional[str] = Field(None, description="Finance approver ID")
     approval_action_id: Optional[str] = Field(None, description="Approval action ID")
     approval_reason: Optional[str] = Field(None, description="Approval reason")
+    # Time in current status
+    current_status_since: Optional[str] = Field(None, description="Timestamp when current status was set")
+    time_in_current_status_minutes: Optional[int] = Field(None, description="Time in current status in minutes")
 
 
 class ApprovalListResponse(BaseModel):

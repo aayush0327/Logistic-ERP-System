@@ -22,6 +22,7 @@ import {
   UserCircle,
   UserCheck,
   FileClock,
+  BarChart3,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -105,6 +106,11 @@ const navigationStructure: NavItem[] = [
         href: "/company-admin/masters/audit-logs",
         icon: FileClock,
       },
+      {
+        label: "Analytics Dashboard",
+        href: "/company-admin/analytics",
+        icon: BarChart3,
+      },
     ],
   },
   {
@@ -117,11 +123,6 @@ const navigationStructure: NavItem[] = [
         href: "/branch-manager/dashboard",
         icon: LayoutDashboard,
       },
-      // {
-      //   label: "Dashboard New",
-      //   href: "/branch-manager/orders",
-      //   icon: LayoutDashboard,
-      // },
     ],
   },
   {

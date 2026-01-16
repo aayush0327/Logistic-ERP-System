@@ -6,10 +6,13 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CreateOrderModal } from "@/components/Modal";
 import { OrderDocumentsViewer } from "@/components/branch";
+import { DueDaysTab } from "@/components/orders/DueDaysTab";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 import {
   useGetOrdersQuery,
   useGetOrderItemsWithAssignmentsQuery,
   useSubmitOrderMutation,
+  useGetDueDaysStatisticsQuery,
   Order,
   OrderItemAssignment,
 } from "@/services/api/ordersApi";
@@ -37,12 +40,14 @@ import {
   ChevronRight,
   Edit
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
 import { CurrencyDisplay } from "@/components/CurrencyDisplay";
 import { DateDisplay } from "@/components/DateDisplay";
+import { DurationDisplay } from "@/components/DurationDisplay";
 
 export default function Orders() {
+  const [activeTab, setActiveTab] = useState("orders");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -60,7 +65,31 @@ export default function Orders() {
     per_page: 20,
     search: searchQuery || undefined,
   });
+
+  // Auto-refresh orders every hour (3600000 ms) to update time-in-status
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refetchOrders();
+    }, 3600000); // 1 hour
+
+    return () => clearInterval(interval);
+  }, [refetchOrders]);
+
   const orders = ordersData?.items || [];
+
+  // Fetch due days statistics for tab badge
+  const { data: dueDaysStats } = useGetDueDaysStatisticsQuery();
+
+  // Debug: Log first order to check time_in_status fields
+  if (orders.length > 0 && orders[0]) {
+    console.log('First order data:', {
+      order_number: orders[0].order_number,
+      status: orders[0].status,
+      time_in_current_status_minutes: orders[0].time_in_current_status_minutes,
+      current_status_since: orders[0].current_status_since,
+      created_at: orders[0].created_at
+    });
+  }
 
   // Submit order mutation
   const [submitOrder, { isLoading: isSubmitting }] = useSubmitOrderMutation();
@@ -207,6 +236,20 @@ export default function Orders() {
           </div>
         </div>
 
+        {/* Tabs */}
+        <Tabs defaultValue="orders" className="w-full">
+          <TabsList className="mb-6">
+            <TabsTrigger value="orders" className="text-black">
+              Orders ({orders.length})
+            </TabsTrigger>
+            <TabsTrigger value="due-days" className="text-black">
+              Due Days ({dueDaysStats?.total_due_count || 0})
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Orders Tab */}
+          <TabsContent value="orders">
+
         {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card
@@ -317,6 +360,16 @@ export default function Orders() {
                           >
                             {statusConfig.label}
                           </Badge>
+
+                          {/* Time in current status */}
+                          {(order.time_in_current_status_minutes !== undefined && order.time_in_current_status_minutes !== null) && (
+                            <div className="mt-2 flex items-center gap-1 text-xs text-gray-600">
+                              <Clock className="w-3 h-3" />
+                              <span>
+                                For <DurationDisplay minutes={order.time_in_current_status_minutes || 0} />
+                              </span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Date and Time */}
@@ -394,6 +447,32 @@ export default function Orders() {
                                   <div className="flex justify-between items-center">
                                     <span className="text-xs text-gray-600">Remaining:</span>
                                     <span className="text-sm font-bold text-orange-700">{summary.total_remaining_quantity}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Items Status Summary */}
+                              <div className="mt-4 pt-4 border-t border-gray-200">
+                                <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
+                                  <TrendingUp className="w-4 h-4" />
+                                  <span>Items Status</span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="bg-blue-50 rounded-lg p-2">
+                                    <p className="text-lg font-bold text-blue-700">{itemsData?.items_status_summary?.planning || 0}</p>
+                                    <p className="text-xs text-blue-600">Planning</p>
+                                  </div>
+                                  <div className="bg-orange-50 rounded-lg p-2">
+                                    <p className="text-lg font-bold text-orange-700">{itemsData?.items_status_summary?.loading || 0}</p>
+                                    <p className="text-xs text-orange-600">Loading</p>
+                                  </div>
+                                  <div className="bg-purple-50 rounded-lg p-2">
+                                    <p className="text-lg font-bold text-purple-700">{itemsData?.items_status_summary?.on_route || 0}</p>
+                                    <p className="text-xs text-purple-600">On Route</p>
+                                  </div>
+                                  <div className="bg-green-50 rounded-lg p-2">
+                                    <p className="text-lg font-bold text-green-700">{itemsData?.items_status_summary?.delivered || 0}</p>
+                                    <p className="text-xs text-green-600">Delivered</p>
                                   </div>
                                 </div>
                               </div>
@@ -707,6 +786,13 @@ export default function Orders() {
             </Card>
           )}
         </div>
+        </TabsContent>
+
+          {/* Due Days Tab */}
+          <TabsContent value="due-days">
+            <DueDaysTab />
+          </TabsContent>
+        </Tabs>
       </div>
 
       {/* Create Order Modal */}
