@@ -571,8 +571,7 @@ export default function Orders() {
                                     <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Quantity</th>
                                     <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Wt/Unit</th>
                                     <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Total Wt</th>
-                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Price/Unit</th>
-                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Total Price</th>
+                                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Remaining Qty</th>
                                     <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">planning</th>
                                     <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">loading</th>
                                     <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">on_route</th>
@@ -613,6 +612,10 @@ export default function Orders() {
                                       });
                                     }
 
+                                    // Calculate remaining quantity
+                                    const totalAssignedQty = statusQuantities.planning + statusQuantities.loading + statusQuantities.on_route + statusQuantities.delivered;
+                                    const remainingQuantity = displayQty - totalAssignedQty;
+
                                     return (
                                       <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
                                         <td className="py-4 px-2 text-sm text-gray-900">{index + 1}</td>
@@ -639,11 +642,8 @@ export default function Orders() {
                                         <td className="py-4 px-2 text-center text-sm text-gray-900">
                                           {totalItemWeight > 0 ? totalItemWeight.toFixed(2) : '0.00'}
                                         </td>
-                                        <td className="py-4 px-2 text-center text-sm text-gray-900">
-                                          {item.unit_price ? <CurrencyDisplay amount={item.unit_price} /> : 'N/A'}
-                                        </td>
-                                        <td className="py-4 px-2 text-center text-sm text-gray-900">
-                                          {item.total_price ? <CurrencyDisplay amount={item.total_price} /> : item.unit_price ? <CurrencyDisplay amount={item.unit_price * totalQty} /> : 'N/A'}
+                                        <td className="py-4 px-2 text-center text-sm font-semibold text-orange-600">
+                                          {remainingQuantity}
                                         </td>
                                         <td className="py-4 px-2 text-center text-sm font-semibold text-gray-900">
                                           {statusQuantities.planning || 0}
@@ -669,13 +669,77 @@ export default function Orders() {
                             </div>
                           )}
 
-                          {/* Overall Totals */}
-                          <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                            <div className="flex items-center justify-between">
-                              <h5 className="text-sm font-bold text-gray-700">Total Amount</h5>
-                              <p className="text-xl font-bold text-blue-700">{order.total_amount ? <CurrencyDisplay amount={order.total_amount} /> : 'N/A'}</p>
-                            </div>
-                          </div>
+                          {/* Status Summary Footer - Always shown */}
+                          {(() => {
+                            // Calculate summary from items directly
+                            const itemsList = itemsWithAssignments || order.items || [];
+                            let totalOriginalQty = 0;
+                            let totalPlanning = 0;
+                            let totalLoading = 0;
+                            let totalOnRoute = 0;
+                            let totalDelivered = 0;
+
+                            itemsList.forEach((item: any) => {
+                              const qty = item.original_quantity !== undefined ? item.original_quantity : item.quantity;
+                              totalOriginalQty += qty;
+
+                              const statusQuantities: Record<string, number> = {
+                                planning: 0,
+                                loading: 0,
+                                on_route: 0,
+                                delivered: 0,
+                                pending_to_assign: 0,
+                                failed: 0,
+                                returned: 0,
+                              };
+
+                              if (item.assignments && item.assignments.length > 0) {
+                                item.assignments.forEach((assignment: OrderItemAssignment) => {
+                                  const status = assignment.item_status;
+                                  if (status in statusQuantities) {
+                                    statusQuantities[status] += assignment.assigned_quantity;
+                                  }
+                                });
+                              }
+
+                              totalPlanning += statusQuantities.planning;
+                              totalLoading += statusQuantities.loading;
+                              totalOnRoute += statusQuantities.on_route;
+                              totalDelivered += statusQuantities.delivered;
+                            });
+
+                            return (
+                              <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+                                <h5 className="text-sm font-bold text-gray-700 mb-3">Order Items Status Summary</h5>
+                                <div className="grid grid-cols-6 gap-3">
+                                  <div className="bg-white rounded-lg p-3 border border-gray-200">
+                                    <p className="text-xs text-gray-600 mb-1">Total Items</p>
+                                    <p className="text-lg font-bold text-gray-900">{totalOriginalQty}</p>
+                                  </div>
+                                  <div className="bg-red-50 rounded-lg p-3 border border-red-200">
+                                    <p className="text-xs text-red-600 mb-1">Remaining</p>
+                                    <p className="text-lg font-bold text-red-700">{totalOriginalQty - totalPlanning - totalLoading - totalOnRoute - totalDelivered}</p>
+                                  </div>
+                                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                                    <p className="text-xs text-blue-600 mb-1">Planning</p>
+                                    <p className="text-lg font-bold text-blue-700">{totalPlanning}</p>
+                                  </div>
+                                  <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
+                                    <p className="text-xs text-orange-600 mb-1">Loading</p>
+                                    <p className="text-lg font-bold text-orange-700">{totalLoading}</p>
+                                  </div>
+                                  <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
+                                    <p className="text-xs text-purple-600 mb-1">On Route</p>
+                                    <p className="text-lg font-bold text-purple-700">{totalOnRoute}</p>
+                                  </div>
+                                  <div className="bg-green-50 rounded-lg p-3 border border-green-200">
+                                    <p className="text-xs text-green-600 mb-1">Delivered</p>
+                                    <p className="text-lg font-bold text-green-700">{totalDelivered}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()}
 
                           {/* Delivery Documents Section */}
                           {(order.status === 'delivered' || order.status === 'partial_delivered') && (
