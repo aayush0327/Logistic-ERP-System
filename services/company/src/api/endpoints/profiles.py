@@ -1225,7 +1225,6 @@ async def get_driver_profile_by_user(
 
 @router.get("/drivers/my/assigned", response_model=List[dict])
 async def get_my_assigned_drivers(
-    status: Optional[str] = Query(None),
     token_data: TokenData = Depends(require_any_permission([
         *DRIVER_READ_ALL, *DRIVER_READ, *RESOURCES_READ, *RESOURCES_READ_ALL
     ])),
@@ -1233,239 +1232,112 @@ async def get_my_assigned_drivers(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get drivers for the current user based on role and assigned branches
+    Get ALL drivers for the tenant (no branch filtering)
 
-    This endpoint:
-    - Returns ALL drivers for Admin OR users with drivers:read_all permission
-    - Returns only drivers from ASSIGNED branches for regular users (like Logistics Managers)
+    Returns all active drivers for the tenant regardless of user role.
 
     Requires:
     - drivers:read_all or drivers:read
     """
-    from src.database import EmployeeBranch, EmployeeProfile
+    from src.database import EmployeeProfile
 
     # Get user_id from token_data
     user_id = token_data.user_id
+    logger.info(f"Fetching ALL drivers for user {user_id}, tenant_id: {tenant_id}")
 
-    # Check if user is superuser OR has drivers:read_all permission OR is Admin
-    is_super = token_data.is_super_user()
-    has_read_all = await token_data.has_permission("drivers:read_all")
-    logger.info(f"Checking driver access for user {token_data}")
-    role = token_data.role
-    is_admin = role == "Admin"
-    # Debug logging
-    logger.info(f"Driver access check - user_id: {user_id}, tenant_id: {tenant_id}, is_super: {is_super}, has_read_all: {has_read_all}, is_admin: {is_admin}")
+    # Return ALL drivers for the tenant (from all branches)
+    logger.info(f"Returning ALL drivers for user {user_id}, tenant_id: {tenant_id}")
 
-    if is_admin:
-        # Admin user - return ALL drivers for the tenant (from all branches)
-        logger.info(f"Returning ALL drivers for admin user {user_id}, tenant_id: {tenant_id}")
+    # First, fetch all driver profiles with their employee profiles
+    # We'll fetch branch data separately to avoid join issues
+    query = select(DriverProfile, EmployeeProfile).join(
+        EmployeeProfile, DriverProfile.employee_profile_id == EmployeeProfile.id
+    ).where(
+        DriverProfile.tenant_id == tenant_id,
+        EmployeeProfile.is_active == True,
+        DriverProfile.is_active == True
+    )
 
-        # First, fetch all driver profiles with their employee profiles
-        # We'll fetch branch data separately to avoid join issues
-        query = select(DriverProfile, EmployeeProfile).join(
-            EmployeeProfile, DriverProfile.employee_profile_id == EmployeeProfile.id
-        ).where(
-            DriverProfile.tenant_id == tenant_id,
-            EmployeeProfile.is_active == True,
-            DriverProfile.is_active == True
-        )
+    result = await db.execute(query)
+    driver_rows = result.all()
 
-        result = await db.execute(query)
-        driver_rows = result.all()
+    logger.info(f"Found {len(driver_rows)} driver-employee pairs")
 
-        logger.info(f"Found {len(driver_rows)} driver-employee pairs for admin user")
+    # Collect all unique branch IDs
+    branch_ids = list(set([
+        str(emp.branch_id) for _, emp in driver_rows if emp.branch_id
+    ]))
 
-        # Collect all unique branch IDs
-        branch_ids = list(set([
-            str(emp.branch_id) for drv, emp in driver_rows if emp.branch_id
-        ]))
+    logger.info(f"Branch IDs to fetch: {branch_ids}")
 
-        logger.info(f"Branch IDs to fetch: {branch_ids}")
+    # Fetch all branches in one query
+    branches_dict = {}
+    if branch_ids:
+        from src.database import Branch
+        branch_query = select(Branch).where(Branch.id.in_(branch_ids))
+        branch_result = await db.execute(branch_query)
+        branches = branch_result.scalars().all()
+        branches_dict = {str(branch.id): branch for branch in branches}
+        logger.info(f"Fetched {len(branches_dict)} branches")
 
-        # Fetch all branches in one query
-        branches_dict = {}
-        if branch_ids:
-            from src.database import Branch
-            branch_query = select(Branch).where(Branch.id.in_(branch_ids))
-            branch_result = await db.execute(branch_query)
-            branches = branch_result.scalars().all()
-            branches_dict = {str(branch.id): branch for branch in branches}
-            logger.info(f"Fetched {len(branches_dict)} branches")
+    # Build response with branch data
+    drivers = []
+    for driver_profile, employee_profile in driver_rows:
+        # Create full name
+        first_name = employee_profile.first_name or ""
+        last_name = employee_profile.last_name or ""
+        full_name = f"{first_name} {last_name}".strip()
 
-        # Build response with branch data
-        drivers = []
-        for driver_profile, employee_profile in driver_rows:
-            # Create full name
-            first_name = employee_profile.first_name or ""
-            last_name = employee_profile.last_name or ""
-            full_name = f"{first_name} {last_name}".strip()
+        # Get branch from cached dict
+        branch = branches_dict.get(str(employee_profile.branch_id)) if employee_profile.branch_id else None
 
-            # Get branch from cached dict
-            branch = branches_dict.get(str(employee_profile.branch_id)) if employee_profile.branch_id else None
+        drivers.append({
+            "id": str(driver_profile.id),
+            "employee_profile_id": driver_profile.employee_profile_id,
+            "tenant_id": driver_profile.tenant_id,
+            "license_number": driver_profile.license_number,
+            "license_type": driver_profile.license_type,
+            "license_expiry": driver_profile.license_expiry,
+            "license_issuing_authority": driver_profile.license_issuing_authority,
+            "badge_number": driver_profile.badge_number,
+            "badge_expiry": driver_profile.badge_expiry,
+            "experience_years": driver_profile.experience_years,
+            "preferred_vehicle_types": driver_profile.preferred_vehicle_types,
+            "current_status": driver_profile.current_status,
+            "last_trip_date": driver_profile.last_trip_date,
+            "total_trips": driver_profile.total_trips,
+            "total_distance": driver_profile.total_distance,
+            "average_rating": driver_profile.average_rating,
+            "accident_count": driver_profile.accident_count,
+            "traffic_violations": driver_profile.traffic_violations,
+            "medical_fitness_certificate_date": driver_profile.medical_fitness_certificate_date,
+            "police_verification_date": driver_profile.police_verification_date,
+            "is_active": driver_profile.is_active,
+            "created_at": driver_profile.created_at,
+            "updated_at": driver_profile.updated_at,
+            "employee": {
+                "id": str(employee_profile.id),
+                "user_id": employee_profile.user_id,
+                "employee_code": employee_profile.employee_code,
+                "first_name": employee_profile.first_name,
+                "last_name": employee_profile.last_name,
+                "full_name": full_name,
+                "phone": employee_profile.phone,
+                "email": employee_profile.email,
+                "branch_id": str(employee_profile.branch_id) if employee_profile.branch_id else None,
+                "branch": {
+                    "id": str(branch.id),
+                    "name": branch.name,
+                    "code": branch.code
+                } if branch else None,
+                "designation": employee_profile.designation,
+                "department": employee_profile.department,
+                "is_active": employee_profile.is_active
+            }
+        })
 
-            drivers.append({
-                "id": str(driver_profile.id),
-                "employee_profile_id": driver_profile.employee_profile_id,
-                "tenant_id": driver_profile.tenant_id,
-                "license_number": driver_profile.license_number,
-                "license_type": driver_profile.license_type,
-                "license_expiry": driver_profile.license_expiry,
-                "license_issuing_authority": driver_profile.license_issuing_authority,
-                "badge_number": driver_profile.badge_number,
-                "badge_expiry": driver_profile.badge_expiry,
-                "experience_years": driver_profile.experience_years,
-                "preferred_vehicle_types": driver_profile.preferred_vehicle_types,
-                "current_status": driver_profile.current_status,
-                "last_trip_date": driver_profile.last_trip_date,
-                "total_trips": driver_profile.total_trips,
-                "total_distance": driver_profile.total_distance,
-                "average_rating": driver_profile.average_rating,
-                "accident_count": driver_profile.accident_count,
-                "traffic_violations": driver_profile.traffic_violations,
-                "medical_fitness_certificate_date": driver_profile.medical_fitness_certificate_date,
-                "police_verification_date": driver_profile.police_verification_date,
-                "is_active": driver_profile.is_active,
-                "created_at": driver_profile.created_at,
-                "updated_at": driver_profile.updated_at,
-                "employee": {
-                    "id": str(employee_profile.id),
-                    "user_id": employee_profile.user_id,
-                    "employee_code": employee_profile.employee_code,
-                    "first_name": employee_profile.first_name,
-                    "last_name": employee_profile.last_name,
-                    "full_name": full_name,
-                    "phone": employee_profile.phone,
-                    "email": employee_profile.email,
-                    "branch_id": str(employee_profile.branch_id) if employee_profile.branch_id else None,
-                    "branch": {
-                        "id": str(branch.id),
-                        "name": branch.name,
-                        "code": branch.code
-                    } if branch else None,
-                    "designation": employee_profile.designation,
-                    "department": employee_profile.department,
-                    "is_active": employee_profile.is_active
-                }
-            })
-
-        logger.info(f"Returning {len(drivers)} drivers for admin user {user_id}")
-        return drivers
-    else:
-        # Regular user - return only drivers from assigned branches
-        logger.info(f"Returning drivers from assigned branches for user {user_id}")
-        # First get the employee profile for this user
-        employee_query = select(EmployeeProfile).where(
-            EmployeeProfile.user_id == user_id,
-            EmployeeProfile.tenant_id == tenant_id
-        )
-        employee_result = await db.execute(employee_query)
-        employee = employee_result.scalar_one_or_none()
-
-        if not employee:
-            # No employee profile found, return empty result
-            logger.warning(f"No employee profile found for user {user_id}")
-            return []
-
-        logger.info(f"Employee profile found: {employee.id}, fetching drivers from assigned branches")
-
-        # Get drivers assigned to this employee's branches through employee_branches table
-        query = select(DriverProfile, EmployeeProfile).join(
-            EmployeeProfile, DriverProfile.employee_profile_id == EmployeeProfile.id
-        ).join(
-            EmployeeBranch,
-            EmployeeProfile.branch_id == EmployeeBranch.branch_id
-        ).where(
-            EmployeeBranch.employee_profile_id == employee.id,
-            EmployeeBranch.tenant_id == tenant_id,
-            DriverProfile.tenant_id == tenant_id,
-            EmployeeProfile.is_active == True,
-            DriverProfile.is_active == True
-        )
-
-        # Apply status filter before executing
-        if status:
-            query = query.where(DriverProfile.current_status == status)
-
-        # Order by created date
-        query = query.order_by(DriverProfile.created_at.desc())
-
-        result = await db.execute(query)
-        driver_rows = result.all()
-
-        logger.info(f"Found {len(driver_rows)} driver-employee pairs for regular user")
-
-        # Collect all unique branch IDs
-        branch_ids = list(set([
-            str(emp.branch_id) for drv, emp in driver_rows if emp.branch_id
-        ]))
-
-        # Fetch all branches in one query
-        branches_dict = {}
-        if branch_ids:
-            from src.database import Branch
-            branch_query = select(Branch).where(Branch.id.in_(branch_ids))
-            branch_result = await db.execute(branch_query)
-            branches = branch_result.scalars().all()
-            branches_dict = {str(branch.id): branch for branch in branches}
-
-        # Build response with branch data
-        drivers = []
-        for driver_profile, employee_profile in driver_rows:
-            # Create full name
-            first_name = employee_profile.first_name or ""
-            last_name = employee_profile.last_name or ""
-            full_name = f"{first_name} {last_name}".strip()
-
-            # Get branch from cached dict
-            branch = branches_dict.get(str(employee_profile.branch_id)) if employee_profile.branch_id else None
-
-            drivers.append({
-                "id": str(driver_profile.id),
-                "employee_profile_id": driver_profile.employee_profile_id,
-                "tenant_id": driver_profile.tenant_id,
-                "license_number": driver_profile.license_number,
-                "license_type": driver_profile.license_type,
-                "license_expiry": driver_profile.license_expiry,
-                "license_issuing_authority": driver_profile.license_issuing_authority,
-                "badge_number": driver_profile.badge_number,
-                "badge_expiry": driver_profile.badge_expiry,
-                "experience_years": driver_profile.experience_years,
-                "preferred_vehicle_types": driver_profile.preferred_vehicle_types,
-                "current_status": driver_profile.current_status,
-                "last_trip_date": driver_profile.last_trip_date,
-                "total_trips": driver_profile.total_trips,
-                "total_distance": driver_profile.total_distance,
-                "average_rating": driver_profile.average_rating,
-                "accident_count": driver_profile.accident_count,
-                "traffic_violations": driver_profile.traffic_violations,
-                "medical_fitness_certificate_date": driver_profile.medical_fitness_certificate_date,
-                "police_verification_date": driver_profile.police_verification_date,
-                "is_active": driver_profile.is_active,
-                "created_at": driver_profile.created_at,
-                "updated_at": driver_profile.updated_at,
-                "employee": {
-                    "id": str(employee_profile.id),
-                    "user_id": employee_profile.user_id,
-                    "employee_code": employee_profile.employee_code,
-                    "first_name": employee_profile.first_name,
-                    "last_name": employee_profile.last_name,
-                    "full_name": full_name,
-                    "phone": employee_profile.phone,
-                    "email": employee_profile.email,
-                    "branch_id": str(employee_profile.branch_id) if employee_profile.branch_id else None,
-                    "branch": {
-                        "id": str(branch.id),
-                        "name": branch.name,
-                        "code": branch.code
-                    } if branch else None,
-                    "designation": employee_profile.designation,
-                    "department": employee_profile.department,
-                    "is_active": employee_profile.is_active
-                }
-            })
-
-        logger.info(f"Returning {len(drivers)} drivers for user {user_id}")
-        return drivers
+    logger.info(f"Returning {len(drivers)} drivers for user {user_id}")
+    return drivers
 
 
 # FINANCE MANAGER PROFILE ENDPOINTS

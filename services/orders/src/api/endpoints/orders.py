@@ -1209,6 +1209,23 @@ async def update_item_status(
 
     # SECOND: Update order_items table
     # Build the query for updating items using the order UUID
+
+    # First, get the list of item IDs that have assignments in trip_item_assignments for this trip
+    # This is necessary because order_items.trip_id is never set (code is commented out)
+    # So we need to use trip_item_assignments as the source of truth for which items belong to this trip
+    assigned_item_ids = set()
+    if status_data.trip_id:
+        # Get item IDs from trip_item_assignments that are assigned to this trip
+        assignments_for_trip_query = select(TripItemAssignment.order_item_id).where(
+            and_(
+                TripItemAssignment.order_id == order.id,
+                TripItemAssignment.trip_id == status_data.trip_id
+            )
+        )
+        assignments_result = await db.execute(assignments_for_trip_query)
+        assigned_item_ids = set(assignments_result.scalars().all())
+        logger.info(f"Found {len(assigned_item_ids)} items assigned to trip {status_data.trip_id} in trip_item_assignments")
+
     if status_data.item_ids:
         # Update specific items
         query = select(OrderItem).where(
@@ -1235,10 +1252,10 @@ async def update_item_status(
     updated_count = 0
     for item in items:
         # For split assignments, only update if the item is assigned to THIS trip
-        # If status_data.trip_id is provided, only update items assigned to that trip
-        if status_data.trip_id and item.trip_id != status_data.trip_id:
-            # This item is assigned to a different trip, skip it
-            logger.info(f"Item {item.id} assigned to trip {item.trip_id}, skipping (target trip: {status_data.trip_id})")
+        # If status_data.trip_id is provided, only update items that have assignments in trip_item_assignments for that trip
+        if status_data.trip_id and item.id not in assigned_item_ids:
+            # This item is not assigned to this trip (based on trip_item_assignments table), skip it
+            logger.info(f"Item {item.id} not found in trip_item_assignments for trip {status_data.trip_id}, skipping")
             continue
 
         # Update the item status
