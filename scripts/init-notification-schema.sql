@@ -1,17 +1,12 @@
 -- Notification Service Database Schema
--- Run this script to create the notification service database tables
+-- Database is already created by init script
 
--- Create database
-CREATE DATABASE IF NOT EXISTS notification_db;
+-- Enable required extensions
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-\c notification_db
-
--- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- ============================================================================
+-- =====================================================================
 -- NOTIFICATIONS TABLE
--- ============================================================================
+-- =====================================================================
 
 CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -32,6 +27,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
 
 -- Create indexes for notifications
 CREATE INDEX IF NOT EXISTS idx_notifications_tenant_user ON notifications(tenant_id, user_id);
