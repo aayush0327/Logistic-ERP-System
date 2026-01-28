@@ -18,6 +18,9 @@ import {
   Shield,
   Building,
   Phone,
+  Key,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import {
@@ -25,6 +28,7 @@ import {
   useUpdateUserMutation,
   useGetBranchesQuery,
   useGetRolesQuery,
+  useChangeUserPasswordMutation,
 } from "@/services/api/companyApi";
 import { UserUpdate, Role, Branch } from "@/services/api/companyApi";
 
@@ -40,11 +44,26 @@ const userUpdateSchema = z.object({
 
 type UserUpdateFormData = z.infer<typeof userUpdateSchema>;
 
+// Password change schema
+const passwordChangeSchema = z.object({
+  new_password: z.string().min(8, "Password must be at least 8 characters"),
+  confirm_password: z.string().min(1, "Please confirm the password"),
+}).refine((data) => data.new_password === data.confirm_password, {
+  message: "Passwords do not match",
+  path: ["confirm_password"],
+});
+
+type PasswordChangeFormData = z.infer<typeof passwordChangeSchema>;
+
 export default function EditUserPage() {
   const params = useParams();
   const router = useRouter();
   const userId = params.id as string;
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [showPasswordFields, setShowPasswordFields] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Fetch user data
   const { data: user, isLoading } = useGetUserQuery(userId, {
@@ -58,8 +77,24 @@ export default function EditUserPage() {
   });
   const { data: roles } = useGetRolesQuery({});
 
-  // Mutation
+  // Mutations
   const [updateUser] = useUpdateUserMutation();
+  const [changeUserPassword] = useChangeUserPasswordMutation();
+
+  // Password form
+  const {
+    register: registerPassword,
+    handleSubmit: handlePasswordSubmit,
+    formState: { errors: passwordErrors, isValid: isPasswordValid },
+    reset: resetPassword,
+    watch: watchPassword,
+  } = useForm<PasswordChangeFormData>({
+    resolver: zodResolver(passwordChangeSchema),
+    defaultValues: {
+      new_password: "",
+      confirm_password: "",
+    },
+  });
 
   const branches = branchesData?.items || [];
 
@@ -137,6 +172,26 @@ export default function EditUserPage() {
       );
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const onPasswordChange = async (data: PasswordChangeFormData) => {
+    setIsChangingPassword(true);
+    try {
+      await changeUserPassword({
+        id: userId,
+        new_password: data.new_password,
+      }).unwrap();
+      toast.success("Password changed successfully");
+      resetPassword();
+      setShowPasswordFields(false);
+    } catch (error: any) {
+      console.error("Password change error:", error);
+      toast.error(
+        error?.data?.detail || error?.message || "Failed to change password"
+      );
+    } finally {
+      setIsChangingPassword(false);
     }
   };
 
@@ -392,6 +447,133 @@ export default function EditUserPage() {
             )}
           </Button>
         </div>
+      </form>
+
+      {/* Password Change Form - Separate from main user form */}
+      <form onSubmit={handlePasswordSubmit(onPasswordChange)} className="space-y-6">
+        {/* Password Change */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center">
+                <Key className="w-5 h-5 mr-2" />
+                Change Password
+              </div>
+              {!showPasswordFields && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowPasswordFields(true)}
+                  className="text-sm"
+                >
+                  Change Password
+                </Button>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!showPasswordFields ? (
+              <p className="text-sm text-gray-600">
+                Click "Change Password" to update this user's password.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="new_password">New Password *</Label>
+                    <div className="relative">
+                      <Input
+                        id="new_password"
+                      type={showNewPassword ? "text" : "password"}
+                        {...registerPassword("new_password")}
+                        placeholder="Enter new password"
+                        className={passwordErrors.new_password ? "border-red-500 pr-10" : "pr-10"}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      >
+                        {showNewPassword ? (
+                          <EyeOff className="w-4 h-4" />
+                        ) : (
+                          <Eye className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                    {passwordErrors.new_password && (
+                      <p className="text-sm text-red-600 mt-1">
+                        {passwordErrors.new_password.message}
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-500 mt-1">
+                      Must be at least 8 characters long
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="confirm_password">Confirm Password *</Label>
+                    <div className="relative">
+                      <Input
+                        id="confirm_password"
+                      type={showConfirmPassword ? "text" : "password"}
+                        {...registerPassword("confirm_password")}
+                        placeholder="Confirm new password"
+                        className={passwordErrors.confirm_password ? "border-red-500 pr-10" : "pr-10"}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      >
+                        {showConfirmPassword ? (
+                          <EyeOff className="w-4 h-4" />
+                        ) : (
+                          <Eye className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                    {passwordErrors.confirm_password && (
+                      <p className="text-sm text-red-600 mt-1">
+                        {passwordErrors.confirm_password.message}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setShowPasswordFields(false);
+                      resetPassword();
+                    }}
+                    disabled={isChangingPassword}
+                    className="bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={!isPasswordValid || isChangingPassword}
+                    className="bg-[#1F40AE] hover:bg-[#203BA0] active:bg-[#192F80] text-white px-4 py-2 rounded-lg font-medium"
+                  >
+                    {isChangingPassword ? (
+                      <div className="flex items-center">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                        Updating...
+                      </div>
+                    ) : (
+                      "Update Password"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </form>
     </div>
   );

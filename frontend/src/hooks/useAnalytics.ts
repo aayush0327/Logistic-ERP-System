@@ -16,6 +16,8 @@ import {
   TruckStatusCountsResponse,
   TruckUtilizationResponse,
   EntityTimelineResponse,
+  OrdersListResponse,
+  TripsListResponse,
 } from "@/services/analytics";
 
 // Generic hook for API calls with loading and error states
@@ -207,6 +209,80 @@ export function useEntityTimeline(
       .catch((err) => setError(err instanceof Error ? err.message : "An error occurred"))
       .finally(() => setLoading(false));
   }, [entityType, entityId, enabled]);
+
+  return { data, loading, error, refetch };
+}
+
+// Recent Orders Hook (for dashboard preview)
+export function useRecentOrders(limit: number = 3) {
+  const [data, setData] = useState<OrdersListResponse | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchRecentOrders = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const result = await analyticsAPI.getOrdersList(1, limit);
+        setData(result);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "An error occurred");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRecentOrders();
+  }, [limit]);
+
+  const refetch = useCallback(() => {
+    setLoading(true);
+    setError(null);
+
+    analyticsAPI.getOrdersList(1, limit)
+      .then(setData)
+      .catch((err) => setError(err instanceof Error ? err.message : "An error occurred"))
+      .finally(() => setLoading(false));
+  }, [limit]);
+
+  return { data, loading, error, refetch };
+}
+
+// Recent Trips Hook (for dashboard preview)
+export function useRecentTrips(limit: number = 3) {
+  const [data, setData] = useState<TripsListResponse | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchRecentTrips = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const result = await analyticsAPI.getTripsList(1, limit);
+        setData(result);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "An error occurred");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRecentTrips();
+  }, [limit]);
+
+  const refetch = useCallback(() => {
+    setLoading(true);
+    setError(null);
+
+    analyticsAPI.getTripsList(1, limit)
+      .then(setData)
+      .catch((err) => setError(err instanceof Error ? err.message : "An error occurred"))
+      .finally(() => setLoading(false));
+  }, [limit]);
 
   return { data, loading, error, refetch };
 }

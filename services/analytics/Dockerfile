@@ -22,4 +22,4 @@ RUN uv sync
 EXPOSE 8008
 
 # Run the application
-CMD ["uv", "run", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8008"]
+CMD ["uv", "run", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8008","--reload"]

@@ -107,7 +107,7 @@ export default function DriverProfileForm({
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
 
-    // Validate license number (required, numeric only)
+    // Validate license number (required, alphanumeric)
     const licenseError = validateField(licenseNumberSchema, formData.license_number)
     if (licenseError) newErrors.license_number = licenseError
 
@@ -322,10 +322,11 @@ export default function DriverProfileForm({
               <Input
                 value={formData.license_number}
                 onChange={(e) => handleInputChange('license_number', e.target.value)}
-                placeholder="Enter license number (numeric only)"
+                placeholder="e.g., DL123456789 or ABC-1234567"
                 required
                 error={!!errors.license_number}
               />
+              <p className="text-xs text-gray-500 mt-1">Alphanumeric only (letters and numbers, no special characters)</p>
               <FormError error={errors.license_number} />
             </div>
             <div>

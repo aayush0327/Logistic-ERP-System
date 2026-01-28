@@ -74,3 +74,15 @@ JOIN role_permissions rp ON r.id = rp.role_id
 JOIN permissions p ON rp.permission_id = p.id
 WHERE r.name = 'Driver'
 ORDER BY r.tenant_id, p.resource, p.action;
+
+INSERT INTO role_permissions (role_id, permission_id, created_at)
+SELECT 2, p.id, NOW()
+FROM permissions p
+WHERE p.resource = 'audit' AND p.action = 'read'
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+INSERT INTO role_permissions (role_id, permission_id, created_at)
+SELECT 8, p.id, NOW()
+FROM permissions p
+WHERE p.resource = 'audit' AND p.action = 'read'
+ON CONFLICT (role_id, permission_id) DO NOTHING;

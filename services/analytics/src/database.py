@@ -69,6 +69,18 @@ class Vehicle(Base):
     is_active: Mapped[bool] = mapped_column(default=True)
 
 
+# Branch Model (from Company DB) - for branch reference lookups
+class Branch(Base):
+    """Branch model for branch information"""
+    __tablename__ = "branches"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String, index=True)
+    code: Mapped[str] = mapped_column(String)
+    name: Mapped[str] = mapped_column(String)
+    is_active: Mapped[bool] = mapped_column(default=True)
+
+
 # Order Model (from Orders DB) - for current status queries
 class Order(Base):
     """Order model for current order status"""

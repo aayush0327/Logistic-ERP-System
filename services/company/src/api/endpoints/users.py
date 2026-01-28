@@ -35,7 +35,8 @@ from src.schemas import (
     UserInvitationCreate,
     UserInvitationUpdate,
     PaginatedResponse,
-    UserManagementResponse
+    UserManagementResponse,
+    UserPasswordChange
 )
 from src.security import (
     TokenData,
@@ -1102,6 +1103,63 @@ async def deactivate_user(
         status="deactivated",
         message="User deactivated successfully"
     )
+
+
+@router.put("/{user_id}/password")
+async def change_user_password(
+    user_id: str,
+    password_data: UserPasswordChange,
+    request: Request,
+    token_data: TokenData = Depends(require_permissions([USER_UPDATE[0]])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Change user password by forwarding to auth service
+
+    This endpoint allows admins to change any user's password.
+    For users changing their own password, they should use the auth service directly.
+
+    Requires:
+    - users:update permission
+    """
+    # Get employee profile to find the auth user_id
+    query = select(EmployeeProfile).where(
+        EmployeeProfile.id == user_id,
+        EmployeeProfile.tenant_id == tenant_id
+    )
+    result = await db.execute(query)
+    employee = result.scalar_one_or_none()
+
+    if not employee:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Get auth token from request header
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        raise HTTPException(status_code=401, detail="Authorization header missing")
+
+    # Forward to auth service
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.put(
+                f"{settings.AUTH_SERVICE_URL}/api/v1/users/{employee.user_id}/password",
+                headers={"Authorization": auth_header},
+                json={
+                    "current_password": password_data.current_password or "",
+                    "new_password": password_data.new_password
+                }
+            )
+
+            if response.status_code == 200:
+                return {"message": "Password updated successfully"}
+            else:
+                detail = response.json().get("detail", "Failed to update password")
+                raise HTTPException(status_code=response.status_code, detail=detail)
+
+    except httpx.RequestError as e:
+        logger.error(f"Error calling auth service for password change: {e}")
+        raise HTTPException(status_code=503, detail="Failed to connect to auth service")
 
 
 @router.delete("/{user_id}", response_model=UserManagementResponse)

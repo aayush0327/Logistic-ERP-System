@@ -344,8 +344,13 @@ async def change_user_password(
             detail="Access denied"
         )
 
-    # If changing own password, verify current password
+    # If changing own password, verify current password is provided and correct
     if is_own_profile:
+        if not password_data.current_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is required when changing your own password"
+            )
         if not verify_password(password_data.current_password, user.password_hash):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

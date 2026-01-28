@@ -21,7 +21,6 @@ export async function GET(request: NextRequest) {
     );
 
     const data = await response.json();
-
     // Return the response with the same status
     return NextResponse.json(data, {
       status: response.status,

@@ -1150,6 +1150,12 @@ class UserManagementResponse(BaseSchema):
     message: str
 
 
+class UserPasswordChange(BaseSchema):
+    """Schema for changing user password"""
+    current_password: Optional[str] = None  # Required if changing own password
+    new_password: str = Field(..., min_length=8, max_length=100)
+
+
 # Generic response schemas
 class PaginatedResponse(BaseSchema):
     """Schema for paginated responses"""

@@ -487,6 +487,7 @@ async def list_trips_with_timeline(
         trips_query = text("""
             SELECT
                 id,
+                branch,
                 status,
                 created_at,
                 updated_at
@@ -517,7 +518,7 @@ async def list_trips_with_timeline(
 
         # Get audit log summaries from company_db for these trips
         audit_query = text("""
-            WITH audit_durations AS (
+            WITH raw_durations AS (
                 SELECT
                     entity_id,
                     EXTRACT(EPOCH FROM (LEAD(created_at) OVER (PARTITION BY entity_id ORDER BY created_at) - created_at)) / 3600.0 as duration_hours
@@ -526,14 +527,35 @@ async def list_trips_with_timeline(
                     AND module = 'trips'
                     AND entity_type = 'trip'
                     AND (from_status IS NOT NULL OR to_status IS NOT NULL)
+            ),
+            audit_durations AS (
+                SELECT
+                    entity_id,
+                    SUM(duration_hours) as total_duration_hours,
+                    COUNT(*) as status_changes_count
+                FROM raw_durations
+                WHERE duration_hours IS NOT NULL
+                GROUP BY entity_id
+            ),
+            audit_users AS (
+                SELECT DISTINCT ON (entity_id)
+                    entity_id,
+                    user_email
+                FROM audit_logs
+                WHERE entity_id = ANY(:trip_ids)
+                    AND module = 'trips'
+                    AND entity_type = 'trip'
+                    AND user_email IS NOT NULL
+                    AND user_email != ''
+                ORDER BY entity_id, created_at ASC
             )
             SELECT
-                entity_id,
-                COALESCE(SUM(duration_hours), 0) as total_duration_hours,
-                COUNT(*) as status_changes_count
-            FROM audit_durations
-            WHERE duration_hours IS NOT NULL
-            GROUP BY entity_id
+                au.entity_id,
+                COALESCE(ad.total_duration_hours, 0) as total_duration_hours,
+                COALESCE(ad.status_changes_count, 0) as status_changes_count,
+                au.user_email
+            FROM audit_users au
+            LEFT JOIN audit_durations ad ON au.entity_id = ad.entity_id
         """)
 
         audit_result = await multi_db.company.execute(
@@ -543,22 +565,28 @@ async def list_trips_with_timeline(
         audit_rows = audit_result.all()
 
         # Create a lookup dict for audit data
-        audit_lookup = {row[0]: (row[1], row[2]) for row in audit_rows}
+        audit_lookup = {row[0]: (row[1], row[2], row[3]) for row in audit_rows}
 
         # Build the final response
         trips = []
         for row in trip_rows:
             trip_id = str(row[0])
-            total_duration, status_count = audit_lookup.get(trip_id, (0.0, 0))
+            total_duration, status_count, user_email = audit_lookup.get(trip_id, (0.0, 0, None))
 
             trips.append(TripTimelineSummary(
                 trip_id=trip_id,
-                current_status=row[1],
+                branch_id=row[1],
+                current_status=row[2],
                 total_duration_hours=round(float(total_duration), 2),
                 status_changes_count=int(status_count),
-                created_at=row[2],
-                updated_at=row[3]
+                created_at=row[3],
+                updated_at=row[4],
+                user_email=user_email
             ))
+
+        logger.info(f"Returning {len(trips)} trips with user_email data")
+        if trips:
+            logger.info(f"First trip: trip_id={trips[0].trip_id}, user_email={trips[0].user_email}")
 
         return TripsListResponse(
             trips=trips,

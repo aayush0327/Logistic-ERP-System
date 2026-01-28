@@ -42,6 +42,7 @@ import {
   useGetAuditLogsQuery,
   useLazyExportAuditLogsQuery,
   useGetAuditSummaryQuery,
+  useGetUserEmailsQuery,
 } from "@/services/api/companyApi";
 import { AuditLog } from "@/services/api/companyApi";
 import { DateDisplay } from "@/components/DateDisplay";
@@ -385,6 +386,7 @@ export default function AuditLogsPage() {
   const [dateFromFilter, setDateFromFilter] = useState("");
   const [dateToFilter, setDateToFilter] = useState("");
   const [userIdFilter, setUserIdFilter] = useState("");
+  const [userEmailFilter, setUserEmailFilter] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
 
@@ -403,10 +405,14 @@ export default function AuditLogsPage() {
     date_from: dateFromFilter || undefined,
     date_to: dateToFilter || undefined,
     user_id: userIdFilter || undefined,
+    user_email: userEmailFilter || undefined,
   });
 
   // Fetch summary statistics
   const { data: summaryData } = useGetAuditSummaryQuery({});
+
+  // Fetch user emails for dropdown
+  const { data: userEmailsData, isLoading: userEmailsLoading } = useGetUserEmailsQuery();
 
   const [triggerExport] = useLazyExportAuditLogsQuery();
 
@@ -423,6 +429,7 @@ export default function AuditLogsPage() {
         date_from: dateFromFilter || undefined,
         date_to: dateToFilter || undefined,
         user_id: userIdFilter || undefined,
+        user_email: userEmailFilter || undefined,
       }).unwrap();
 
       // Create download link
@@ -463,7 +470,7 @@ export default function AuditLogsPage() {
     );
   };
 
-  const hasActiveFilters = actionFilter || moduleFilter || entityTypeFilter || dateFromFilter || dateToFilter || userIdFilter;
+  const hasActiveFilters = actionFilter || moduleFilter || entityTypeFilter || dateFromFilter || dateToFilter || userIdFilter || userEmailFilter;
 
   const clearFilters = () => {
     setActionFilter("");
@@ -472,6 +479,7 @@ export default function AuditLogsPage() {
     setDateFromFilter("");
     setDateToFilter("");
     setUserIdFilter("");
+    setUserEmailFilter("");
   };
 
   return (
@@ -698,6 +706,29 @@ export default function AuditLogsPage() {
                   value={userIdFilter}
                   onChange={(e) => setUserIdFilter(e.target.value)}
                 />
+              </div>
+
+              {/* User Email Filter */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  User Email
+                </label>
+                {userEmailsLoading ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                ) : (
+                  <select
+                    value={userEmailFilter}
+                    onChange={(e) => setUserEmailFilter(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">All User Emails</option>
+                    {userEmailsData?.items.map((item) => (
+                      <option key={item.email} value={item.email}>
+                        {item.email} {item.name ? `(${item.name})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               {/* Clear Filters Button */}

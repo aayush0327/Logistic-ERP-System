@@ -26,14 +26,14 @@ export const phoneSchema = z.string({
 // Optional phone validation
 export const phoneOptionalSchema = phoneSchema.optional().or(z.literal(''))
 
-// License number - numeric only
+// License number - alphanumeric (letters and numbers only)
 export const licenseNumberSchema = z.string({
   required_error: 'License number is required',
 })
   .min(1, 'License number is required')
-  .regex(/^\d+$/, 'License number must contain only numbers')
-  .min(5, 'License number must be at least 5 digits')
-  .max(20, 'License number cannot exceed 20 digits')
+  .regex(/^[A-Za-z0-9]+$/, 'License number can only contain letters and numbers (no special characters)')
+  .min(2, 'License number must be at least 2 characters')
+  .max(50, 'License number cannot exceed 50 characters')
 
 // Blood group - max 5 characters (based on backend schema)
 export const bloodGroupSchema = z.string()

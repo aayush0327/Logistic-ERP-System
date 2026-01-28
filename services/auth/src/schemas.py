@@ -97,7 +97,7 @@ class UserUpdate(BaseSchema):
 
 class UserUpdatePassword(BaseSchema):
     """Schema for updating user password"""
-    current_password: str
+    current_password: Optional[str] = None  # Required when changing own password, optional for admin changes
     new_password: str = Field(..., min_length=8)
 
 

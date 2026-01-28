@@ -53,6 +53,7 @@ async def query_audit_logs(
     date_from: Optional[datetime] = Query(None, description="Filter logs from this date"),
     date_to: Optional[datetime] = Query(None, description="Filter logs until this date"),
     user_id: Optional[str] = Query(None, description="Filter by user ID"),
+    user_email: Optional[str] = Query(None, description="Filter by user email"),
     module: Optional[str] = Query(None, description="Filter by module (orders, trips, etc.)"),
     action: Optional[str] = Query(None, description="Filter by action type"),
     entity_type: Optional[str] = Query(None, description="Filter by entity type"),
@@ -78,6 +79,8 @@ async def query_audit_logs(
         filters.append(AuditLog.created_at <= date_to)
     if user_id:
         filters.append(AuditLog.user_id == user_id)
+    if user_email:
+        filters.append(AuditLog.user_email == user_email)
     if module:
         filters.append(AuditLog.module == module)
     if action:
@@ -115,6 +118,7 @@ async def export_audit_logs(
     date_from: Optional[datetime] = Query(None, description="Filter logs from this date"),
     date_to: Optional[datetime] = Query(None, description="Filter logs until this date"),
     user_id: Optional[str] = Query(None, description="Filter by user ID"),
+    user_email: Optional[str] = Query(None, description="Filter by user email"),
     module: Optional[str] = Query(None, description="Filter by module (orders, trips, etc.)"),
     action: Optional[str] = Query(None, description="Filter by action type"),
     entity_type: Optional[str] = Query(None, description="Filter by entity type"),
@@ -138,6 +142,8 @@ async def export_audit_logs(
         filters.append(AuditLog.created_at <= date_to)
     if user_id:
         filters.append(AuditLog.user_id == user_id)
+    if user_email:
+        filters.append(AuditLog.user_email == user_email)
     if module:
         filters.append(AuditLog.module == module)
     if action:
@@ -256,4 +262,41 @@ async def get_audit_summary(
         "by_module": by_module,
         "by_action": by_action,
         "top_users": by_user
+    }
+
+
+@router.get("/logs/user-emails")
+async def get_user_emails(
+    request: Request,
+    token_data: TokenData = Depends(require_permissions(["audit:read"])),
+    tenant_id: str = Depends(get_current_tenant_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get unique user emails from audit logs
+
+    Returns a list of unique user emails for the current tenant,
+    useful for populating filter dropdowns.
+    """
+    # Query unique user emails for the tenant
+    query = select(
+        AuditLog.user_email,
+        AuditLog.user_name
+    ).where(
+        and_(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.user_email.isnot(None),
+            AuditLog.user_email != ''
+        )
+    ).distinct().order_by(AuditLog.user_email)
+
+    result = await db.execute(query)
+    user_emails = [
+        {"email": row[0], "name": row[1]}
+        for row in result.all()
+    ]
+
+    return {
+        "items": user_emails,
+        "total": len(user_emails)
     }

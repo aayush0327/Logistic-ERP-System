@@ -1175,11 +1175,11 @@ export const companyApi = createApi({
       }),
       invalidatesTags: ['User'],
     }),
-    resetUserPassword: builder.mutation<void, { id: string; new_password: string }>({
-      query: ({ id, new_password }) => ({
-        url: `company/users/${id}/reset-password`,
-        method: 'POST',
-        body: { new_password },
+    changeUserPassword: builder.mutation<{ message: string }, { id: string; current_password?: string; new_password: string }>({
+      query: ({ id, current_password, new_password }) => ({
+        url: `company/users/${id}/password`,
+        method: 'PUT',
+        body: { current_password, new_password },
       }),
     }),
     bulkUpdateUsers: builder.mutation<User[], { updates: Array<{ id: string; [key: string]: any }> }>({
@@ -1363,6 +1363,7 @@ export const companyApi = createApi({
       date_from?: string;
       date_to?: string;
       user_id?: string;
+      user_email?: string;
       module?: string;
       action?: string;
       entity_type?: string;
@@ -1374,6 +1375,7 @@ export const companyApi = createApi({
         date_from,
         date_to,
         user_id,
+        user_email,
         module,
         action,
         entity_type,
@@ -1385,6 +1387,7 @@ export const companyApi = createApi({
         if (date_from) params.append('date_from', date_from)
         if (date_to) params.append('date_to', date_to)
         if (user_id) params.append('user_id', user_id)
+        if (user_email) params.append('user_email', user_email)
         if (module) params.append('module', module)
         if (action) params.append('action', action)
         if (entity_type) params.append('entity_type', entity_type)
@@ -1410,20 +1413,29 @@ export const companyApi = createApi({
       },
       providesTags: ['AuditLog'],
     }),
+    getUserEmails: builder.query<{
+      items: Array<{ email: string; name: string | null }>;
+      total: number;
+    }, void>({
+      query: () => 'audit/logs/user-emails',
+      providesTags: ['AuditLog'],
+    }),
     exportAuditLogs: builder.query<Blob, {
       date_from?: string;
       date_to?: string;
       user_id?: string;
+      user_email?: string;
       module?: string;
       action?: string;
       entity_type?: string;
       entity_id?: string;
     }>({
-      query: ({ date_from, date_to, user_id, module, action, entity_type, entity_id }) => {
+      query: ({ date_from, date_to, user_id, user_email, module, action, entity_type, entity_id }) => {
         const params = new URLSearchParams()
         if (date_from) params.append('date_from', date_from)
         if (date_to) params.append('date_to', date_to)
         if (user_id) params.append('user_id', user_id)
+        if (user_email) params.append('user_email', user_email)
         if (module) params.append('module', module)
         if (action) params.append('action', action)
         if (entity_type) params.append('entity_type', entity_type)
@@ -1510,7 +1522,7 @@ export const {
   useInviteUserMutation,
   useBulkInviteUsersMutation,
   useUpdateUserStatusMutation,
-  useResetUserPasswordMutation,
+  useChangeUserPasswordMutation,
   useBulkUpdateUsersMutation,
   useExportUsersMutation,
   // Role Management hooks
@@ -1540,6 +1552,7 @@ export const {
   useLazyGetAuditLogsQuery,
   useGetAuditSummaryQuery,
   useLazyGetAuditSummaryQuery,
+  useGetUserEmailsQuery,
   useExportAuditLogsQuery,
   useLazyExportAuditLogsQuery,
 } = companyApi

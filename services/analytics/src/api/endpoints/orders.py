@@ -500,6 +500,7 @@ async def list_orders_with_timeline(
             SELECT
                 id,
                 order_number,
+                branch_id,
                 status,
                 created_at,
                 updated_at
@@ -515,8 +516,9 @@ async def list_orders_with_timeline(
         )
         order_rows = orders_result.all()
 
-        # Extract order IDs
+        # Extract order IDs (entity_id in audit_logs is the UUID id, not order_number)
         order_ids = [str(row[0]) for row in order_rows]
+        logger.info(f"Querying audit logs for order_ids (UUIDs): {order_ids}")
 
         if not order_ids:
             return OrdersListResponse(
@@ -530,8 +532,24 @@ async def list_orders_with_timeline(
             )
 
         # Get audit log summaries from company_db for these orders
+        # Note: entity_id in audit_logs is the UUID id, not the order_number
+        # First, let's check if ANY audit logs exist for these orders (for debugging)
+        debug_query = text("""
+            SELECT entity_id, module, entity_type, user_email, action, from_status, to_status, created_at
+            FROM audit_logs
+            WHERE entity_id = ANY(:order_ids)
+            ORDER BY created_at ASC
+            LIMIT 20
+        """)
+
+        debug_result = await multi_db.company.execute(debug_query, {"order_ids": order_ids})
+        debug_rows = debug_result.all()
+        logger.info(f"DEBUG: Found {len(debug_rows)} audit logs (any type) for these order IDs")
+        if debug_rows:
+            logger.info(f"DEBUG: First audit log: entity_id={debug_rows[0][0]}, module={debug_rows[0][1]}, entity_type={debug_rows[0][2]}, user_email={debug_rows[0][3]}, action={debug_rows[0][4]}")
+
         audit_query = text("""
-            WITH audit_durations AS (
+            WITH raw_durations AS (
                 SELECT
                     entity_id,
                     EXTRACT(EPOCH FROM (LEAD(created_at) OVER (PARTITION BY entity_id ORDER BY created_at) - created_at)) / 3600.0 as duration_hours
@@ -540,14 +558,35 @@ async def list_orders_with_timeline(
                     AND module = 'orders'
                     AND entity_type = 'order'
                     AND (from_status IS NOT NULL OR to_status IS NOT NULL)
+            ),
+            audit_durations AS (
+                SELECT
+                    entity_id,
+                    SUM(duration_hours) as total_duration_hours,
+                    COUNT(*) as status_changes_count
+                FROM raw_durations
+                WHERE duration_hours IS NOT NULL
+                GROUP BY entity_id
+            ),
+            audit_users AS (
+                SELECT DISTINCT ON (entity_id)
+                    entity_id,
+                    user_email
+                FROM audit_logs
+                WHERE entity_id = ANY(:order_ids)
+                    AND module = 'orders'
+                    AND entity_type = 'order'
+                    AND user_email IS NOT NULL
+                    AND user_email != ''
+                ORDER BY entity_id, created_at ASC
             )
             SELECT
-                entity_id,
-                COALESCE(SUM(duration_hours), 0) as total_duration_hours,
-                COUNT(*) as status_changes_count
-            FROM audit_durations
-            WHERE duration_hours IS NOT NULL
-            GROUP BY entity_id
+                COALESCE(ad.total_duration_hours, 0) as total_duration_hours,
+                COALESCE(ad.status_changes_count, 0) as status_changes_count,
+                au.user_email,
+                au.entity_id
+            FROM audit_users au
+            LEFT JOIN audit_durations ad ON au.entity_id = ad.entity_id
         """)
 
         audit_result = await multi_db.company.execute(
@@ -555,25 +594,35 @@ async def list_orders_with_timeline(
             {"order_ids": order_ids}
         )
         audit_rows = audit_result.all()
+        logger.info(f"Audit query returned {len(audit_rows)} rows for order_ids")
 
-        # Create a lookup dict for audit data
-        audit_lookup = {row[0]: (row[1], row[2]) for row in audit_rows}
+        # Create a lookup dict for audit data (keyed by order_id/UUID)
+        audit_lookup = {row[3]: (row[0], row[1], row[2]) for row in audit_rows}
+        if audit_rows:
+            logger.info(f"First audit row: entity_id={audit_rows[0][3]}, duration={audit_rows[0][0]}, count={audit_rows[0][1]}, email={audit_rows[0][2]}")
 
         # Build the final response
         orders = []
         for row in order_rows:
-            order_id = str(row[0])
-            total_duration, status_count = audit_lookup.get(order_id, (0.0, 0))
+            order_id = str(row[0])      # UUID
+            order_number = str(row[1])   # order_number
+            total_duration, status_count, user_email = audit_lookup.get(order_id, (0.0, 0, None))
 
             orders.append(OrderTimelineSummary(
                 order_number=row[1],
                 order_id=order_id,
-                current_status=row[2],
+                branch_id=row[2],
+                current_status=row[3],
                 total_duration_hours=round(float(total_duration), 2),
                 status_changes_count=int(status_count),
-                created_at=row[3],
-                updated_at=row[4]
+                created_at=row[4],
+                updated_at=row[5],
+                user_email=user_email
             ))
+
+        logger.info(f"Returning {len(orders)} orders with user_email data")
+        if orders:
+            logger.info(f"First order: order_number={orders[0].order_number}, user_email={orders[0].user_email}")
 
         return OrdersListResponse(
             orders=orders,

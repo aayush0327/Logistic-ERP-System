@@ -211,11 +211,13 @@ export interface TripStatusTimelineResponse {
 export interface OrderTimelineSummary {
   order_number: string;
   order_id: string;
+  branch_id?: string;
   current_status: string;
   total_duration_hours: number;
   status_changes_count: number;
   created_at: string;
   updated_at?: string;
+  user_email?: string;
 }
 
 export interface OrdersListResponse {
@@ -230,11 +232,13 @@ export interface OrdersListResponse {
 
 export interface TripTimelineSummary {
   trip_id: string;
+  branch_id?: string;
   current_status: string;
   total_duration_hours: number;
   status_changes_count: number;
   created_at: string;
   updated_at?: string;
+  user_email?: string;
 }
 
 export interface TripsListResponse {
@@ -245,6 +249,23 @@ export interface TripsListResponse {
   total_pages: number;
   has_next: boolean;
   has_previous: boolean;
+}
+
+// Branch types
+export interface Branch {
+  id: string;
+  code: string;
+  name: string;
+  city?: string;
+  is_active: boolean;
+}
+
+export interface BranchesListResponse {
+  items: Branch[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
 }
 
 // API Client class
@@ -439,7 +460,12 @@ class AnalyticsAPIClient {
       throw new Error(error.detail || `HTTP ${response.status}`);
     }
 
-    return await response.json();
+    const data = await response.json();
+    console.log('📊 Orders List Response:', data);
+    if (data.orders && data.orders.length > 0) {
+      console.log('📊 First order:', data.orders[0]);
+    }
+    return data;
   }
 
   // Trips List (paginated) - uses frontend API route
@@ -461,7 +487,12 @@ class AnalyticsAPIClient {
       throw new Error(error.detail || `HTTP ${response.status}`);
     }
 
-    return await response.json();
+    const data = await response.json();
+    console.log('📊 Trips List Response:', data);
+    if (data.trips && data.trips.length > 0) {
+      console.log('📊 First trip:', data.trips[0]);
+    }
+    return data;
   }
 }
 

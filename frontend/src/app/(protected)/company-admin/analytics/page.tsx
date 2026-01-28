@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAnalyticsDashboard } from "@/hooks/useAnalytics";
+import { useAnalyticsDashboard, useRecentOrders, useRecentTrips } from "@/hooks/useAnalytics";
 import { DateRangePreset, DateRange } from "@/services/analytics";
 import { useStatusTimeline } from "@/components/analytics/StatusTimeline";
 import { useOrdersList } from "@/components/analytics/OrdersList";
@@ -54,9 +54,25 @@ const tripStatusColors: Record<string, string> = {
 // Format status for display
 function formatStatus(status: string): string {
   return status
-    .split("_")
+    .split(/[_-]/)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+// Format duration for display
+function formatDuration(hours: number): string {
+  if (hours < 1) {
+    const minutes = Math.round(hours * 60);
+    return `${minutes}m`;
+  } else if (hours < 24) {
+    const h = Math.floor(hours);
+    const m = Math.round((hours - h) * 60);
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  } else {
+    const days = Math.floor(hours / 24);
+    const h = Math.round(hours % 24);
+    return h > 0 ? `${days}d ${h}h` : `${days}d`;
+  }
 }
 
 export default function AnalyticsPage() {
@@ -102,6 +118,10 @@ export default function AnalyticsPage() {
   // Fetch all dashboard data
   const { summary, orderStatuses, tripStatuses, orderBottlenecks, driverUtilization, truckUtilization, loading, error, refetch } =
     useAnalyticsDashboard(dateRange);
+
+  // Fetch recent orders and trips
+  const { data: recentOrdersData, loading: loadingRecentOrders } = useRecentOrders(2);
+  const { data: recentTripsData, loading: loadingRecentTrips } = useRecentTrips(2);
 
   const dateRangeOptions = [
     { value: "today" as const, label: "Today" },
@@ -397,36 +417,42 @@ export default function AnalyticsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                   onClick={() => openTimeline("order", "ORD-20260112-2F91EEBE")}>
-                <div className="flex items-center gap-3">
-                  <Package className="w-4 h-4 text-blue-500" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">ORD-20260112-2F91EEBE</p>
-                    <p className="text-xs text-gray-500">Finance Approved • 0.1h total</p>
+            {loadingRecentOrders ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              </div>
+            ) : recentOrdersData && recentOrdersData.orders.length > 0 ? (
+              <div className="space-y-2">
+                {recentOrdersData.orders.map((order) => (
+                  <div
+                    key={order.order_id}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                    onClick={() => openTimeline("order", order.order_number)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Package className="w-4 h-4 text-blue-500" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{order.order_number}</p>
+                        <p className="text-xs text-gray-500">
+                          {formatStatus(order.current_status)} • {formatDuration(order.total_duration_hours)} total
+                        </p>
+                      </div>
+                    </div>
+                    <Eye className="w-4 h-4 text-gray-400" />
                   </div>
+                ))}
+                <div className="text-center pt-2">
+                  <Button variant="outline" size="sm" className="text-xs" onClick={() => openOrdersList()}>
+                    <ExternalLink className="w-3 h-3 mr-1" />
+                    View All Orders
+                  </Button>
                 </div>
-                <Eye className="w-4 h-4 text-gray-400" />
               </div>
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                   onClick={() => openTimeline("order", "ORD-20260112-55DD9FA3")}>
-                <div className="flex items-center gap-3">
-                  <Package className="w-4 h-4 text-indigo-500" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">ORD-20260112-55DD9FA3</p>
-                    <p className="text-xs text-gray-500">Finance Approved • 0.1h total</p>
-                  </div>
-                </div>
-                <Eye className="w-4 h-4 text-gray-400" />
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-sm text-gray-500">No recent orders available</p>
               </div>
-              <div className="text-center pt-2">
-                <Button variant="outline" size="sm" className="text-xs" onClick={() => openOrdersList()}>
-                  <ExternalLink className="w-3 h-3 mr-1" />
-                  View All Orders
-                </Button>
-              </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
@@ -442,36 +468,42 @@ export default function AnalyticsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                   onClick={() => openTimeline("trip", "TRIP-01CFE183")}>
-                <div className="flex items-center gap-3">
-                  <Truck className="w-4 h-4 text-green-500" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">TRIP-01CFE183</p>
-                    <p className="text-xs text-gray-500">Completed • 0.5h total</p>
+            {loadingRecentTrips ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
+              </div>
+            ) : recentTripsData && recentTripsData.trips.length > 0 ? (
+              <div className="space-y-2">
+                {recentTripsData.trips.map((trip) => (
+                  <div
+                    key={trip.trip_id}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                    onClick={() => openTimeline("trip", trip.trip_id)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Truck className="w-4 h-4 text-green-500" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{trip.trip_id}</p>
+                        <p className="text-xs text-gray-500">
+                          {formatStatus(trip.current_status)} • {formatDuration(trip.total_duration_hours)} total
+                        </p>
+                      </div>
+                    </div>
+                    <Eye className="w-4 h-4 text-gray-400" />
                   </div>
+                ))}
+                <div className="text-center pt-2">
+                  <Button variant="outline" size="sm" className="text-xs" onClick={() => openTripsList()}>
+                    <ExternalLink className="w-3 h-3 mr-1" />
+                    View All Trips
+                  </Button>
                 </div>
-                <Eye className="w-4 h-4 text-gray-400" />
               </div>
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                   onClick={() => openTimeline("trip", "TRIP-71EB2FB0")}>
-                <div className="flex items-center gap-3">
-                  <Truck className="w-4 h-4 text-yellow-500" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">TRIP-71EB2FB0</p>
-                    <p className="text-xs text-gray-500">Completed • 0.3h total</p>
-                  </div>
-                </div>
-                <Eye className="w-4 h-4 text-gray-400" />
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-sm text-gray-500">No recent trips available</p>
               </div>
-              <div className="text-center pt-2">
-                <Button variant="outline" size="sm" className="text-xs" onClick={() => openTripsList()}>
-                  <ExternalLink className="w-3 h-3 mr-1" />
-                  View All Trips
-                </Button>
-              </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       </div>

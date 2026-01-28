@@ -14,6 +14,8 @@ import {
 import { useState, useEffect } from "react";
 import { analyticsAPI, TripTimelineSummary, TripsListResponse } from "@/services/analytics";
 import { useStatusTimeline } from "./StatusTimeline";
+import { useBranches } from "@/hooks/useBranches";
+import { useUserEmails } from "@/hooks/useUserEmails";
 
 const statusColors: Record<string, string> = {
   planning: "bg-blue-100 text-blue-700 border-blue-200",
@@ -65,7 +67,11 @@ export function TripsList({ onClose }: TripsListProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedBranch, setSelectedBranch] = useState<string>("all");
+  const [selectedUserEmail, setSelectedUserEmail] = useState<string>("all");
   const { open: openTimeline, TimelineModal: StatusTimelineModal } = useStatusTimeline();
+  const { branches, loading: branchesLoading } = useBranches();
+  const { userEmails, loading: userEmailsLoading } = useUserEmails();
 
   useEffect(() => {
     async function fetchTrips() {
@@ -97,13 +103,20 @@ export function TripsList({ onClose }: TripsListProps) {
     }
   };
 
-  // Calculate overall totals
-  const overallTotalDuration = data?.trips.reduce(
+  // Filter trips by branch and user email
+  const filteredTrips = data?.trips.filter((trip) => {
+    if (selectedBranch !== "all" && trip.branch_id !== selectedBranch) return false;
+    if (selectedUserEmail !== "all" && trip.user_email !== selectedUserEmail) return false;
+    return true;
+  }) || [];
+
+  // Calculate overall totals (use filtered trips for display)
+  const overallTotalDuration = filteredTrips.reduce(
     (sum, trip) => sum + trip.total_duration_hours,
     0
-  ) || 0;
-  const avgDuration = data?.trips.length
-    ? overallTotalDuration / data.trips.length
+  );
+  const avgDuration = filteredTrips.length
+    ? overallTotalDuration / filteredTrips.length
     : 0;
 
   return (
@@ -157,7 +170,7 @@ export function TripsList({ onClose }: TripsListProps) {
                       Total Trips
                     </div>
                     <p className="font-semibold text-gray-900 text-lg">
-                      {data.total_count}
+                      {filteredTrips.length}
                     </p>
                   </div>
                   <div className="bg-gray-50 rounded-lg p-4">
@@ -178,6 +191,68 @@ export function TripsList({ onClose }: TripsListProps) {
                       {formatDuration(overallTotalDuration)}
                     </p>
                   </div>
+                </div>
+
+                {/* Branch Filter */}
+                <div className="flex items-center gap-4">
+                  <label className="text-sm font-medium text-gray-700">Filter by Branch:</label>
+                  {branchesLoading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+                  ) : (
+                    <select
+                      value={selectedBranch}
+                      onChange={(e) => setSelectedBranch(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    >
+                      <option value="all">All Branches</option>
+                      {branches.map((branch) => (
+                        <option key={branch.id} value={branch.id}>
+                          {branch.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {selectedBranch !== "all" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedBranch("all")}
+                      className="text-xs"
+                    >
+                      Clear Branch
+                    </Button>
+                  )}
+                </div>
+
+                {/* User Email Filter */}
+                <div className="flex items-center gap-4">
+                  <label className="text-sm font-medium text-gray-700">Filter by User Email:</label>
+                  {userEmailsLoading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+                  ) : (
+                    <select
+                      value={selectedUserEmail}
+                      onChange={(e) => setSelectedUserEmail(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    >
+                      <option value="all">All User Emails</option>
+                      {userEmails.map((user) => (
+                        <option key={user.email} value={user.email}>
+                          {user.email} {user.name ? `(${user.name})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {selectedUserEmail !== "all" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedUserEmail("all")}
+                      className="text-xs"
+                    >
+                      Clear User Email
+                    </Button>
+                  )}
                 </div>
 
                 {/* Trips Table */}
@@ -206,7 +281,7 @@ export function TripsList({ onClose }: TripsListProps) {
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {data.trips.map((trip) => (
+                      {filteredTrips.map((trip) => (
                         <tr key={trip.trip_id} className="hover:bg-gray-50">
                           <td className="px-4 py-3">
                             <div className="font-medium text-gray-900">
@@ -254,8 +329,8 @@ export function TripsList({ onClose }: TripsListProps) {
                 {/* Pagination */}
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-600">
-                    Showing {data.trips.length} of {data.total_count} trips
-                    (Page {data.page} of {data.total_pages})
+                    Showing {filteredTrips.length} of {data.total_count} trips
+                    {(selectedBranch !== "all" || selectedUserEmail !== "all") && ` (filtered)`}
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
