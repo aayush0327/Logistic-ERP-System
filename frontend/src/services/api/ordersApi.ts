@@ -34,6 +34,7 @@ export interface Order {
   payment_type: 'cod' | 'prepaid' | 'credit';
   created_at: string;
   updated_at?: string;
+  created_by_role?: 'admin' | 'branch_manager' | 'marketing_person';
   due_days?: number;
   due_days_marked_created?: boolean;
   items: OrderItem[];
@@ -91,7 +92,7 @@ export interface OrderDocument {
 }
 
 export interface OrderCreate {
-  order_number: string;
+  order_number?: string; // Optional - backend generates if not provided
   tenant_id: string;
   customer_id: string;
   branch_id: string;
@@ -258,6 +259,7 @@ export const ordersApi = createApi({
       order_type?: string;
       priority?: string;
       payment_type?: string;
+      created_by_role?: string;  // NEW: Filter by creator role (admin, branch_manager, marketing_person)
       date_from?: string;
       date_to?: string;
       sort_by?: string;
@@ -386,6 +388,7 @@ export const ordersApi = createApi({
 
     getCustomers: builder.query<Customer[], {
       branch_id?: string;
+      marketing_person_id?: string;  // NEW: Filter customers by marketing person ID
       search?: string;
       is_active?: boolean;
     }>({

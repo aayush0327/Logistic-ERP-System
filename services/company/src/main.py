@@ -13,7 +13,7 @@ from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTEN
 from starlette.responses import Response as StarletteResponse
 from sqlalchemy.exc import IntegrityError
 
-from src.api.endpoints import branches, customers, vehicles, products, product_categories, product_unit_types, business_types, vehicle_types, users, roles, profiles, audit, tenant_cleanup
+from src.api.endpoints import branches, customers, vehicles, products, product_categories, product_unit_types, business_types, vehicle_types, users, roles, profiles, audit, tenant_cleanup, marketing_person_assignments
 from src.config_local import settings
 from src.database import engine, Base
 from src.security import (
@@ -298,6 +298,12 @@ app.include_router(
     audit.router,
     prefix="/audit",
     tags=["Audit Logs"]
+)
+
+app.include_router(
+    marketing_person_assignments.router,
+    prefix="/api/v1/marketing-person-assignments",
+    tags=["Marketing Person Assignments"]
 )
 
 # Internal endpoints for inter-service communication

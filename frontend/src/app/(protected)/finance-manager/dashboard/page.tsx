@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Select } from "@/components/ui/Select";
 import { useState, useEffect, useCallback } from "react";
 import {
   CheckCircle,
@@ -18,7 +19,6 @@ import {
   Phone,
   MapPin,
   Weight,
-  Box,
   CreditCard,
   Building2,
   Search,
@@ -142,28 +142,22 @@ export default function FinanceManager() {
   // Calculate order stats from fetched orders
   const orderStats = {
     total: orders.length,
+    draft: orders.filter((o) => o.status === "draft").length,
     submitted: orders.filter((o) => o.status === "submitted").length,
-    approved: orders.filter((o) => o.status === "finance_approved" || o.status === "logistics_approved").length,
-    rejected: orders.filter((o) =>
-      o.status === "finance_rejected" ||
-      o.status === "logistics_rejected" ||
-      o.approval_status === "rejected"
-    ).length,
+    finance_approved: orders.filter((o) => o.status === "finance_approved").length,
+    finance_rejected: orders.filter((o) => o.status === "finance_rejected").length,
+    logistics_approved: orders.filter((o) => o.status === "logistics_approved").length,
+    logistics_rejected: orders.filter((o) => o.status === "logistics_rejected").length,
+    assigned: orders.filter((o) => o.status === "assigned").length,
+    in_transit: orders.filter((o) => o.status === "in_transit").length,
+    partial_in_transit: orders.filter((o) => o.status === "partial_in_transit").length,
+    partial_delivered: orders.filter((o) => o.status === "partial_delivered").length,
+    delivered: orders.filter((o) => o.status === "delivered").length,
   };
 
   // Filter orders based on status filter
   const filteredOrders = statusFilter
-    ? orders.filter((o) => {
-        if (statusFilter === "approved") {
-          return o.status === "finance_approved" || o.status === "logistics_approved";
-        }
-        if (statusFilter === "rejected") {
-          return o.status === "finance_rejected" ||
-                 o.status === "logistics_rejected" ||
-                 o.approval_status === "rejected";
-        }
-        return o.status === statusFilter;
-      })
+    ? orders.filter((o) => o.status === statusFilter)
     : orders;
 
   const getStatusConfig = (status: string) => {
@@ -252,7 +246,6 @@ export default function FinanceManager() {
         setSelectedOrders([]);
         setShowBulkActions(false);
         fetchOrders();
-        fetchDashboardStats();
       }
     } catch (error) {
       console.error("Error bulk approving orders:", error);
@@ -299,102 +292,53 @@ export default function FinanceManager() {
         </div>
       </div>
 
-      {/* Dashboard Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <Card
-          className={`bg-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${
-            statusFilter === null ? 'ring-4 ring-blue-500' : ''
-          }`}
-          onClick={() => setStatusFilter(null)}
-        >
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-2">
-              <Box className="w-8 h-8 text-gray-600" />
-            </div>
-            <p className="text-3xl font-bold text-gray-900 mb-1">
-              {orderStats.total}
-            </p>
-            <p className="text-sm text-gray-600 font-medium">Total Orders</p>
-          </CardContent>
-        </Card>
-
-        <Card
-          className={`bg-gradient-to-br from-yellow-50 to-orange-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${
-            statusFilter === 'submitted' ? 'ring-4 ring-yellow-500' : ''
-          }`}
-          onClick={() => setStatusFilter(statusFilter === 'submitted' ? null : 'submitted')}
-        >
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-2">
-              <Clock className="w-8 h-8 text-yellow-600" />
-            </div>
-            <p className="text-3xl font-bold text-yellow-700 mb-1">
-              {orderStats.submitted}
-            </p>
-            <p className="text-sm text-yellow-700 font-medium">Pending</p>
-          </CardContent>
-        </Card>
-
-        <Card
-          className={`bg-gradient-to-br from-green-50 to-emerald-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${
-            statusFilter === 'approved' ? 'ring-4 ring-green-500' : ''
-          }`}
-          onClick={() => setStatusFilter(statusFilter === 'approved' ? null : 'approved')}
-        >
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-2">
-              <CheckCircle className="w-8 h-8 text-green-600" />
-            </div>
-            <p className="text-3xl font-bold text-green-700 mb-1">
-              {orderStats.approved}
-            </p>
-            <p className="text-sm text-green-700 font-medium">Approved</p>
-          </CardContent>
-        </Card>
-
-        <Card
-          className={`bg-gradient-to-br from-red-50 to-rose-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer ${
-            statusFilter === 'rejected' ? 'ring-4 ring-red-500' : ''
-          }`}
-          onClick={() => setStatusFilter(statusFilter === 'rejected' ? null : 'rejected')}
-        >
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-2">
-              <XCircle className="w-8 h-8 text-red-600" />
-            </div>
-            <p className="text-3xl font-bold text-red-700 mb-1">
-              {orderStats.rejected}
-            </p>
-            <p className="text-sm text-red-700 font-medium">Rejected</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Search Bar */}
+      {/* Search and Filter Bar */}
       <Card className="mb-8 border-0 shadow-lg bg-white">
         <CardContent className="p-4">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input
-              type="text"
-              placeholder="Search orders by order ID..."
-              value={searchQuery}
-              onChange={(e) => {
-                const newValue = e.target.value;
-                setSearchQuery(newValue);
-              }}
-              className="w-full pl-12 pr-4 py-3 text-gray-900 placeholder-gray-400 border-2 border-gray-200 rounded-xl outline-none transition-all duration-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => {
-                  setSearchQuery("");
+          <div className="flex flex-col md:flex-row gap-4">
+            {/* Search Input */}
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="text"
+                placeholder="Search orders by order ID..."
+                value={searchQuery}
+                onChange={(e) => {
+                  const newValue = e.target.value;
+                  setSearchQuery(newValue);
                 }}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="w-full pl-12 pr-4 py-3 text-gray-900 placeholder-gray-400 border-2 border-gray-200 rounded-xl outline-none transition-all duration-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => {
+                    setSearchQuery("");
+                  }}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+            {/* Status Filter Dropdown */}
+            <div className="md:w-64">
+              <Select
+                value={statusFilter || ""}
+                onChange={(e) => setStatusFilter(e.target.value || null)}
+                className="w-full h-full"
               >
-                <XCircle className="w-5 h-5" />
-              </button>
-            )}
+                <option value="">All Statuses</option>
+                <option value="draft">Draft ({orderStats.draft})</option>
+                <option value="submitted">Submitted ({orderStats.submitted})</option>
+                <option value="finance_approved">Finance Approved ({orderStats.finance_approved})</option>
+                <option value="finance_rejected">Finance Rejected ({orderStats.finance_rejected})</option>
+                <option value="assigned">Assigned ({orderStats.assigned})</option>
+                <option value="in_transit">In Transit ({orderStats.in_transit})</option>
+                <option value="partial_in_transit">Partial In Transit ({orderStats.partial_in_transit})</option>
+                <option value="partial_delivered">Partial Delivered ({orderStats.partial_delivered})</option>
+                <option value="delivered">Delivered ({orderStats.delivered})</option>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>

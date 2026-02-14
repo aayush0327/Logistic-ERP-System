@@ -53,11 +53,13 @@ class OrderBase(BaseModel):
 
 class OrderCreate(OrderBase):
     """Schema for creating an order"""
-    order_number: str = Field(..., max_length=50)
+    order_number: Optional[str] = Field(None, max_length=50, description="Order number - if not provided, backend will generate one")
     tenant_id: str
     customer_id: str
     branch_id: str
     items: List["OrderItemCreateRequest"] = []
+    # created_by_role will be set from token, not from request
+    created_by_role: Optional[str] = Field(None, max_length=50, description="Role of user creating the order: admin, branch_manager, marketing_person")
 
 
 class OrderUpdate(BaseModel):
@@ -174,6 +176,7 @@ class OrderResponse(OrderBase):
 
     # System fields
     created_by: str
+    created_by_role: str = Field(default="admin", description="Role of user who created the order: admin, branch_manager, marketing_person")
     updated_by: Optional[str]
     finance_approved_by: Optional[str]
     logistics_approved_by: Optional[str]
@@ -235,6 +238,7 @@ class OrderListResponse(BaseModel):
     customer: Optional[dict] = None  # Customer details from company service
     items: List[dict] = []  # Order items with product details
     items_count: int = 0  # Number of items in the order (backward compatibility)
+    created_by_role: Optional[str] = None  # Role of user who created the order
 
     # Time in current status fields
     current_status_since: Optional[datetime] = None  # Timestamp when current status was set
@@ -301,6 +305,7 @@ class OrderQueryParams(BaseModel):
     order_type: Optional[OrderType] = None
     priority: Optional[str] = None
     payment_type: Optional[PaymentType] = None
+    created_by_role: Optional[str] = Field(None, pattern="^(admin|branch_manager|marketing_person)$", description="Filter by creator role")
     date_from: Optional[datetime] = None
     date_to: Optional[datetime] = None
     page: int = Field(default=1, ge=1)

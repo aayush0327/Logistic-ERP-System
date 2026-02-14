@@ -843,3 +843,119 @@ END $$;
 
 -- Enable Row Level Security for vehicle_types
 ALTER TABLE vehicle_types ENABLE ROW LEVEL SECURITY;
+
+-- ================================================================================
+-- MIGRATION: Add audit_logs table
+-- ================================================================================
+
+-- Create audit_logs table
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id VARCHAR(255) NOT NULL,
+
+    -- User information
+    user_id VARCHAR(255) NOT NULL,
+    user_name VARCHAR(200),
+    user_email VARCHAR(255),
+    user_role VARCHAR(50),
+
+    -- Action details
+    action VARCHAR(50) NOT NULL,
+    module VARCHAR(50) NOT NULL,
+    sub_module VARCHAR(50),
+    entity_type VARCHAR(50) NOT NULL,
+    entity_id VARCHAR(255) NOT NULL,
+    entity_name VARCHAR(500),
+    description TEXT NOT NULL,
+
+    -- Change tracking
+    old_values JSONB,
+    new_values JSONB,
+
+    -- Status change tracking
+    from_status VARCHAR(50),
+    to_status VARCHAR(50),
+    old_status VARCHAR(50),
+    new_status VARCHAR(50),
+    status_changed BOOLEAN DEFAULT false,
+
+    -- Approval tracking
+    approval_status VARCHAR(20),
+    reason TEXT,
+
+    -- Metadata
+    ip_address VARCHAR(50),
+    user_agent VARCHAR(500),
+    service_name VARCHAR(50),
+    notes TEXT,
+    meta_data JSONB,
+    request_id VARCHAR(100),
+
+    -- Timestamps
+    action_timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create indexes for audit_logs performance
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_created ON audit_logs(tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_action_timestamp ON audit_logs(tenant_id, action_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_module_entity ON audit_logs(tenant_id, module, entity_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_user_created ON audit_logs(tenant_id, user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_user_action_timestamp ON audit_logs(tenant_id, user_id, action_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_entity_type_id ON audit_logs(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_module ON audit_logs(module);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_sub_module ON audit_logs(sub_module);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action_timestamp ON audit_logs(action_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_status_changed ON audit_logs(status_changed);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_request_id ON audit_logs(request_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_from_status ON audit_logs(from_status);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_to_status ON audit_logs(to_status);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_old_status ON audit_logs(old_status);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_new_status ON audit_logs(new_status);
+
+-- Composite index for efficient status change queries
+CREATE INDEX IF NOT EXISTS idx_audit_logs_status_change ON audit_logs(entity_type, entity_id, action, action_timestamp DESC) WHERE action = 'status_change';
+
+-- Add comments for audit_logs
+COMMENT ON TABLE audit_logs IS 'Centralized audit log table for tracking all company operations';
+COMMENT ON COLUMN audit_logs.id IS 'Unique identifier for the audit log entry';
+COMMENT ON COLUMN audit_logs.tenant_id IS 'Tenant identifier for multi-tenancy';
+COMMENT ON COLUMN audit_logs.user_id IS 'ID of the user who performed the action';
+COMMENT ON COLUMN audit_logs.user_name IS 'Name of the user (denormalized for query performance)';
+COMMENT ON COLUMN audit_logs.user_email IS 'Email of the user (denormalized for query performance)';
+COMMENT ON COLUMN audit_logs.user_role IS 'Role of the user';
+COMMENT ON COLUMN audit_logs.action IS 'Action performed (create, update, delete, status_change, approve, reject, etc.)';
+COMMENT ON COLUMN audit_logs.module IS 'Module name (orders, trips, customers, vehicles, etc.)';
+COMMENT ON COLUMN audit_logs.sub_module IS 'Sub-module or feature within the module (e.g., "create", "update", "delete")';
+COMMENT ON COLUMN audit_logs.entity_type IS 'Type of entity (order, trip, customer, etc.)';
+COMMENT ON COLUMN audit_logs.entity_id IS 'ID of the affected entity';
+COMMENT ON COLUMN audit_logs.entity_name IS 'Human-readable name of the entity (e.g., order number, trip name)';
+COMMENT ON COLUMN audit_logs.description IS 'Human-readable description of the action';
+COMMENT ON COLUMN audit_logs.old_values IS 'Previous values (for updates)';
+COMMENT ON COLUMN audit_logs.new_values IS 'New values (for updates/creates)';
+COMMENT ON COLUMN audit_logs.from_status IS 'Previous status (for status changes)';
+COMMENT ON COLUMN audit_logs.to_status IS 'New status (for status changes)';
+COMMENT ON COLUMN audit_logs.old_status IS 'Previous status value before the change';
+COMMENT ON COLUMN audit_logs.new_status IS 'New status value after the change';
+COMMENT ON COLUMN audit_logs.status_changed IS 'Flag to indicate if this audit log represents a status change';
+COMMENT ON COLUMN audit_logs.approval_status IS 'approved/rejected (for approval actions)';
+COMMENT ON COLUMN audit_logs.reason IS 'Reason for rejection/cancellation';
+COMMENT ON COLUMN audit_logs.ip_address IS 'IP address of the user';
+COMMENT ON COLUMN audit_logs.user_agent IS 'Browser/client information';
+COMMENT ON COLUMN audit_logs.service_name IS 'Service that created this log (orders, tms, driver, etc.)';
+COMMENT ON COLUMN audit_logs.notes IS 'Additional notes or comments about the audit event';
+COMMENT ON COLUMN audit_logs.meta_data IS 'Additional metadata about the audit event in JSONB format';
+COMMENT ON COLUMN audit_logs.request_id IS 'Unique request identifier for tracing (e.g., UUID, correlation ID)';
+COMMENT ON COLUMN audit_logs.action_timestamp IS 'Timestamp when the action occurred (used for tracking status changes)';
+COMMENT ON COLUMN audit_logs.created_at IS 'Timestamp of the audit event';
+COMMENT ON COLUMN audit_logs.updated_at IS 'Timestamp when the audit log record was last updated';
+
+-- Create trigger for audit_logs updated_at
+CREATE TRIGGER update_audit_logs_updated_at BEFORE UPDATE ON audit_logs
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable Row Level Security for audit_logs
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;

@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS orders (
     tms_order_status VARCHAR(50) DEFAULT 'available' CHECK (
         tms_order_status IN ('available', 'partial', 'fully_assigned')
     ),
+    items_json JSONB,
+    remaining_items_json JSONB,
 
     -- Pickup information
     pickup_address TEXT,
@@ -58,6 +60,7 @@ CREATE TABLE IF NOT EXISTS orders (
 
     -- System fields
     created_by VARCHAR(255) NOT NULL,
+    created_by_role VARCHAR(50) NOT NULL DEFAULT 'admin',
     updated_by VARCHAR(255),
     finance_approved_by VARCHAR(255),
     logistics_approved_by VARCHAR(255),
@@ -83,8 +86,17 @@ CREATE TABLE IF NOT EXISTS orders (
 
     -- Due Days tracking
     due_days INTEGER,
-    due_days_marked_created BOOLEAN DEFAULT false
+    due_days_marked_created BOOLEAN DEFAULT false,
+
+    -- Check constraint for created_by_role
+    CONSTRAINT chk_created_by_role CHECK (created_by_role IN ('admin', 'branch_manager', 'marketing_person'))
 );
+
+-- Add comments for TMS status columns
+COMMENT ON COLUMN orders.tms_order_status IS 'TMS-specific status: available (not assigned to any trip), partial (some items assigned to trip), fully_assigned (all items assigned)';
+COMMENT ON COLUMN orders.items_json IS 'JSON array of items assigned to trip';
+COMMENT ON COLUMN orders.remaining_items_json IS 'JSON array of items remaining after partial assignment';
+COMMENT ON COLUMN orders.created_by_role IS 'Role of user who created the order: admin, branch_manager, marketing_person';
 
 -- Create order_items table
 CREATE TABLE IF NOT EXISTS order_items (
@@ -158,6 +170,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
 CREATE INDEX IF NOT EXISTS idx_orders_driver_id ON orders(driver_id);
 CREATE INDEX IF NOT EXISTS idx_orders_trip_id ON orders(trip_id);
 CREATE INDEX IF NOT EXISTS idx_orders_is_active ON orders(is_active);
+CREATE INDEX IF NOT EXISTS idx_orders_created_by_role ON orders(created_by_role);
 
 CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_product_id ON order_items(product_id);

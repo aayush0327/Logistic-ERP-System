@@ -217,6 +217,49 @@ export interface AuditLog {
   created_at: string
 }
 
+// Marketing Person Assignment Types
+export interface MarketingPerson {
+  id: string
+  email: string
+  first_name: string
+  last_name: string
+  assigned_customers_count: number
+}
+
+export interface MarketingPersonAssignment {
+  id: string
+  marketing_person: {
+    id: string
+    name: string
+    email?: string
+  }
+  customer: {
+    id: string
+    name: string
+    code: string
+    city?: string
+  }
+  notes?: string
+  assigned_at: string
+  is_active: boolean
+}
+
+export interface CreateMarketingPersonAssignment {
+  marketing_person_id: string
+  customer_ids: string[]
+  notes?: string
+}
+
+export interface UpdateMarketingPersonAssignment {
+  notes?: string
+  is_active?: boolean
+}
+
+export interface CustomerForAssignment extends Customer {
+  assigned_marketing_person_id?: string
+  assigned_marketing_person_name?: string
+}
+
 export interface Customer {
   id: string
   tenant_id: string
@@ -627,7 +670,7 @@ export interface UserProfileUpdate {
 export const companyApi = createApi({
   reducerPath: 'companyApi',
   baseQuery: baseQuery,
-  tagTypes: ['Branch', 'Customer', 'Vehicle', 'VehicleTypeModel', 'Product', 'ProductCategory', 'ProductUnitType', 'BusinessTypeModel', 'PricingRule', 'User', 'Role', 'UserProfile', 'UserDocument', 'AuditLog'],
+  tagTypes: ['Branch', 'Customer', 'Vehicle', 'VehicleTypeModel', 'Product', 'ProductCategory', 'ProductUnitType', 'BusinessTypeModel', 'PricingRule', 'User', 'Role', 'UserProfile', 'UserDocument', 'AuditLog', 'MarketingPersonAssignment'],
   endpoints: (builder) => ({
     // Branch endpoints
     getBranches: builder.query<{ items: Branch[]; total: number; page: number; per_page: number; pages: number }, { page?: number; per_page?: number; search?: string; is_active?: boolean }>({
@@ -1448,6 +1491,94 @@ export const companyApi = createApi({
       },
       providesTags: ['AuditLog'],
     }),
+
+    // Marketing Person Assignment endpoints
+    getMarketingPersons: builder.query<MarketingPerson[], { search?: string } | void>({
+      query: (args) => {
+        const params = new URLSearchParams()
+        if (args && args.search) {
+          params.append('search', args.search)
+        }
+        const queryString = params.toString()
+        return `company/marketing-person-assignments/marketing-persons${queryString ? `?${queryString}` : ''}`
+      },
+      providesTags: ['MarketingPersonAssignment'],
+    }),
+
+    getCustomersForAssignment: builder.query<{
+      items: CustomerForAssignment[];
+      total: number;
+      page: number;
+      per_page: number;
+      pages: number;
+    }, { is_active?: boolean; page?: number; per_page?: number; search?: string }>({
+      query: ({ is_active = true, page = 1, per_page = 100, search }) => {
+        const params = new URLSearchParams()
+        params.append('page', page.toString())
+        params.append('per_page', per_page.toString())
+        if (is_active !== undefined) params.append('is_active', is_active.toString())
+        if (search) params.append('search', search)
+        return `company/marketing-person-assignments/customers/for-assignment?${params}`
+      },
+      providesTags: ['Customer', 'MarketingPersonAssignment'],
+    }),
+
+    getMarketingPersonAssignments: builder.query<{
+      items: MarketingPersonAssignment[];
+      total: number;
+      page: number;
+      per_page: number;
+      pages: number;
+    }, {
+      page?: number;
+      per_page?: number;
+      marketing_person_id?: string;
+      customer_id?: string;
+      is_active?: boolean;
+    }>({
+      query: ({
+        page = 1,
+        per_page = 20,
+        marketing_person_id,
+        customer_id,
+        is_active,
+      }) => {
+        const params = new URLSearchParams()
+        params.append('page', page.toString())
+        params.append('per_page', per_page.toString())
+        if (marketing_person_id) params.append('marketing_person_id', marketing_person_id)
+        if (customer_id) params.append('customer_id', customer_id)
+        if (is_active !== undefined) params.append('is_active', is_active.toString())
+        return `company/marketing-person-assignments?${params}`
+      },
+      providesTags: ['MarketingPersonAssignment'],
+    }),
+
+    createMarketingPersonAssignment: builder.mutation<MarketingPersonAssignment[], CreateMarketingPersonAssignment>({
+      query: (data) => ({
+        url: 'company/marketing-person-assignments',
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: ['MarketingPersonAssignment', 'Customer'],
+    }),
+
+    updateMarketingPersonAssignment: builder.mutation<MarketingPersonAssignment, { id: string; data: UpdateMarketingPersonAssignment }>({
+      query: ({ id, data }) => ({
+        url: `company/marketing-person-assignments/${id}`,
+        method: 'PUT',
+        body: data,
+      }),
+      invalidatesTags: ['MarketingPersonAssignment'],
+    }),
+
+    deleteMarketingPersonAssignment: builder.mutation<void, string>({
+      query: (id) => ({
+        url: `company/marketing-person-assignments/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['MarketingPersonAssignment', 'Customer'],
+    }),
   }),
 })
 
@@ -1555,4 +1686,14 @@ export const {
   useGetUserEmailsQuery,
   useExportAuditLogsQuery,
   useLazyExportAuditLogsQuery,
+  // Marketing Person Assignment hooks
+  useGetMarketingPersonsQuery,
+  useLazyGetMarketingPersonsQuery,
+  useGetCustomersForAssignmentQuery,
+  useLazyGetCustomersForAssignmentQuery,
+  useGetMarketingPersonAssignmentsQuery,
+  useLazyGetMarketingPersonAssignmentsQuery,
+  useCreateMarketingPersonAssignmentMutation,
+  useUpdateMarketingPersonAssignmentMutation,
+  useDeleteMarketingPersonAssignmentMutation,
 } = companyApi

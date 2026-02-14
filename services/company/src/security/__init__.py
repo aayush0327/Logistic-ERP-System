@@ -75,6 +75,11 @@ from .dependencies import (
     # Report permissions
     COMPANY_REPORTS_READ,
     COMPANY_REPORTS_EXPORT,
+    # Marketing Person Assignment permissions
+    MARKETING_PERSON_ASSIGNMENTS_READ,
+    MARKETING_PERSON_ASSIGNMENTS_CREATE,
+    MARKETING_PERSON_ASSIGNMENTS_UPDATE,
+    MARKETING_PERSON_ASSIGNMENTS_DELETE,
 )
 from .permissions import (
     Permission,
@@ -88,6 +93,7 @@ from .permissions import (
     VEHICLE_PERMISSIONS,
     PRODUCT_PERMISSIONS,
     REPORT_PERMISSIONS,
+    MARKETING_PERSON_ASSIGNMENTS_PERMISSIONS,
 )
 from .exceptions import (
     SecurityException,
@@ -186,6 +192,11 @@ __all__ = [
     # Report permissions
     "COMPANY_REPORTS_READ",
     "COMPANY_REPORTS_EXPORT",
+    # Marketing Person Assignment permissions
+    "MARKETING_PERSON_ASSIGNMENTS_READ",
+    "MARKETING_PERSON_ASSIGNMENTS_CREATE",
+    "MARKETING_PERSON_ASSIGNMENTS_UPDATE",
+    "MARKETING_PERSON_ASSIGNMENTS_DELETE",
 
     # Permissions
     "Permission",
@@ -199,6 +210,7 @@ __all__ = [
     "VEHICLE_PERMISSIONS",
     "PRODUCT_PERMISSIONS",
     "REPORT_PERMISSIONS",
+    "MARKETING_PERSON_ASSIGNMENTS_PERMISSIONS",
 
     # Exceptions
     "SecurityException",

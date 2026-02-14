@@ -101,6 +101,9 @@ async def create_default_roles_for_tenant(db: AsyncSession, tenant_id: str) -> d
                 "finance:read", "finance:approve", "finance:approve_bulk", "finance:reports", "finance:export",
                 # Audit
                 "audit:read", "audit:export",
+                # Marketing Person Assignments
+                "marketing_person_assignments:read", "marketing_person_assignments:create",
+                "marketing_person_assignments:update", "marketing_person_assignments:delete",
             ]
         },
         {
@@ -115,6 +118,7 @@ async def create_default_roles_for_tenant(db: AsyncSession, tenant_id: str) -> d
                 "branches:read", "branches:read_all", "branches:update", "branches:manage_own",
                 "customers:create", "customers:read", "customers:read_all", "customers:update",
                 "vehicles:read", "vehicles:read_all", "vehicles:assign",
+                "products:read", "products:read_all",
                 "company_reports:read", "company_reports:export",
                 "reports:read", "dashboard:read",
                 "finance:read", "finance:reports",
@@ -131,6 +135,7 @@ async def create_default_roles_for_tenant(db: AsyncSession, tenant_id: str) -> d
                 "orders:payment_process", "orders:refund_process", "orders:export",
                 "order_documents:read", "order_documents:read_all", "order_documents:verify", "order_documents:download",
                 "billing:create", "billing:read", "billing:read_all", "billing:update", "billing:delete",
+                "branches:read", "branches:read_all",
                 "company_reports:read", "company_reports:read_all", "company_reports:export",
                 "reports:read", "dashboard:read",
                 "finance:read", "finance:approve", "finance:approve_bulk", "finance:reports", "finance:export",
@@ -174,10 +179,29 @@ async def create_default_roles_for_tenant(db: AsyncSession, tenant_id: str) -> d
                 "vehicles:read", "vehicles:update",
                 "drivers:update", "drivers:read",
                 "driver:read", "driver:update",
+                "trips:update", "trips:pause",
                 "tms:status_update",
                 "users:update_own",
                 "shipping:read", "shipping:update",
                 "dashboard:read",
+            ]
+        },
+        {
+            "name": "Marketing Person",
+            "description": "Marketing team member with branch-level access",
+            "is_system": False,
+            "permissions": [
+                "orders:create", "orders:read", "orders:read_all", "orders:update", "orders:delete",
+                "orders:cancel", "orders:status_update", "orders:priority_update", "orders:export",
+                "order_documents:upload", "order_documents:read", "order_documents:read_all",
+                "order_documents:update", "order_documents:delete", "order_documents:download",
+                "branches:read", "branches:read_all", "branches:update", "branches:manage_own",
+                "customers:create", "customers:read", "customers:read_all", "customers:update",
+                "vehicles:read", "vehicles:read_all", "vehicles:assign",
+                "products:read", "products:read_all",
+                "company_reports:read", "company_reports:export",
+                "reports:read", "dashboard:read",
+                "finance:read", "finance:reports",
             ]
         },
         {

@@ -177,18 +177,6 @@ export default function UserDetailPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <p className="text-sm text-gray-500">Role</p>
-              <Badge
-                variant={
-                  user.role?.name.toLowerCase() === "admin"
-                    ? "destructive"
-                    : "secondary"
-                }
-              >
-                {user.role?.name || "N/A"}
-              </Badge>
-            </div>
-            <div>
               <p className="text-sm text-gray-500">Status</p>
               <Badge variant={user.is_active ? "success" : "default"}>
                 {user.is_active ? "Active" : "Inactive"}
@@ -201,11 +189,23 @@ export default function UserDetailPage() {
               </Badge>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Assigned Branch</p>
-              <p className="font-medium flex items-center">
-                <Building className="w-4 h-4 mr-2" />
-                {user.branch?.name || "Not assigned"}
-              </p>
+              <p className="text-sm text-gray-500">Assigned Branches</p>
+              {user.branches && user.branches.length > 0 ? (
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {user.branches.map((branch) => (
+                    <Badge
+                      key={branch.id}
+                      variant="secondary"
+                      className="flex items-center gap-1"
+                    >
+                      <Building className="w-3 h-3" />
+                      {branch.name}
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <p className="font-medium text-gray-400">Not assigned</p>
+              )}
             </div>
             <div>
               <p className="text-sm text-gray-500">Last Login</p>

@@ -34,6 +34,7 @@ import {
   X,
   ChevronDown,
   Trash2,
+  GitBranch,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
@@ -52,20 +53,17 @@ import { toast } from "react-hot-toast";
 import {
   useGetUsersQuery,
   useGetBranchesQuery,
-  useGetRolesQuery,
   useDeleteUserMutation,
   useUpdateUserStatusMutation,
   useExportUsersMutation,
   useBulkUpdateUsersMutation,
 } from "@/services/api/companyApi";
-import { User, Role, Branch } from "@/services/api/companyApi";
+import { User, Branch } from "@/services/api/companyApi";
 import { UserInvitationModal } from "./UserInvitationModal";
-import { RoleBadge } from "./RoleSelector";
 
 export default function UsersPage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState<number | null>(null);
   const [branchFilter, setBranchFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<
     "all" | "active" | "inactive"
@@ -94,7 +92,6 @@ export default function UsersPage() {
   } = useGetUsersQuery({
     page,
     search: searchQuery || undefined,
-    role_id: roleFilter || undefined,
     branch_id: branchFilter || undefined,
     is_active: statusFilter === "all" ? undefined : statusFilter === "active",
     include_profile: true,
@@ -105,10 +102,6 @@ export default function UsersPage() {
     page: 1,
     per_page: 100,
   });
-
-  // Fetch roles for filter dropdown
-  const { data: rolesData } = useGetRolesQuery({});
-  const roles = Array.isArray(rolesData) ? rolesData : rolesData?.items || [];
 
   // Mutations
   const [deleteUser] = useDeleteUserMutation();
@@ -250,8 +243,42 @@ export default function UsersPage() {
     }
   };
 
-  const getRoleBadge = (role?: Role) => {
-    return <RoleBadge role={role} />;
+  const getBranchesDisplay = (user: User) => {
+    // Show assigned branches
+    const branches = user.branches || [];
+    if (branches.length === 0) {
+      return (
+        <div className="flex items-center text-sm text-gray-400">
+          <GitBranch className="w-3 h-3 mr-1" />
+          <span>Not Assigned</span>
+        </div>
+      );
+    }
+
+    // Show first 2 branches and count for remaining
+    const displayBranches = branches.slice(0, 2);
+    const remainingCount = branches.length - 2;
+
+    return (
+      <div className="space-y-1">
+        {displayBranches.map((branch) => (
+          <div
+            key={branch.id}
+            className="flex items-center text-sm text-gray-900"
+          >
+            <GitBranch className="w-3 h-3 mr-1 text-blue-500 flex-shrink-0" />
+            <span className="truncate" title={branch.name}>
+              {branch.name}
+            </span>
+          </div>
+        ))}
+        {remainingCount > 0 && (
+          <div className="text-xs text-gray-500 ml-4">
+            +{remainingCount} more
+          </div>
+        )}
+      </div>
+    );
   };
 
   const formatDate = (dateString?: string) => {
@@ -511,24 +538,6 @@ export default function UsersPage() {
                 )}
               </div>
 
-              {/* Role Filter */}
-              <select
-                value={roleFilter || ""}
-                onChange={(e) =>
-                  setRoleFilter(
-                    e.target.value ? parseInt(e.target.value) : null
-                  )
-                }
-                className="px-3 py-2 border border-gray-300 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              >
-                <option value="">All Roles</option>
-                {roles?.map((role) => (
-                  <option key={role.id} value={role.id}>
-                    {role.name}
-                  </option>
-                ))}
-              </select>
-
               {/* Branch Filter */}
               <select
                 value={branchFilter || ""}
@@ -594,8 +603,7 @@ export default function UsersPage() {
                     </TableHead>
                     <TableHead className="whitespace-nowrap">Name</TableHead>
                     <TableHead className="whitespace-nowrap">Email</TableHead>
-                    <TableHead className="whitespace-nowrap">Role</TableHead>
-                    <TableHead className="whitespace-nowrap">Branch</TableHead>
+                    <TableHead className="whitespace-nowrap">Branches</TableHead>
                     <TableHead className="whitespace-nowrap">Status</TableHead>
                     <TableHead className="whitespace-nowrap">Last Login</TableHead>
                     <TableHead className="text-right whitespace-nowrap">Actions</TableHead>
@@ -612,9 +620,6 @@ export default function UsersPage() {
                       </TableCell>
                       <TableCell>
                         <div className="h-4 bg-gray-200 rounded w-36" />
-                      </TableCell>
-                      <TableCell>
-                        <div className="h-6 bg-gray-200 rounded w-20" />
                       </TableCell>
                       <TableCell>
                         <div className="h-4 bg-gray-200 rounded w-24" />
@@ -652,14 +657,12 @@ export default function UsersPage() {
               </h3>
               <p className="text-gray-500 mb-4">
                 {searchQuery ||
-                roleFilter ||
                 branchFilter ||
                 statusFilter !== "all"
                   ? "Try adjusting your filters"
                   : "Get started by creating your first user"}
               </p>
               {!searchQuery &&
-                !roleFilter &&
                 !branchFilter &&
                 statusFilter === "all" && (
                   <Button
@@ -690,8 +693,7 @@ export default function UsersPage() {
                     </TableHead>
                     <TableHead className="whitespace-nowrap">Name</TableHead>
                     <TableHead className="whitespace-nowrap">Email</TableHead>
-                    <TableHead className="whitespace-nowrap">Role</TableHead>
-                    <TableHead className="whitespace-nowrap">Branch</TableHead>
+                    <TableHead className="whitespace-nowrap">Branches</TableHead>
                     <TableHead className="whitespace-nowrap">Status</TableHead>
                     <TableHead className="whitespace-nowrap">
                       Last Login
@@ -725,13 +727,7 @@ export default function UsersPage() {
                           {user.email}
                         </div>
                       </TableCell>
-                      <TableCell>{getRoleBadge(user.role)}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center text-sm text-gray-900">
-                          <Building className="w-4 h-4 mr-2" />
-                          {user.branch?.name || "Not Assigned"}
-                        </div>
-                      </TableCell>
+                      <TableCell>{getBranchesDisplay(user)}</TableCell>
                       <TableCell>
                         <Badge variant={user.is_active ? "success" : "default"}>
                           {user.is_active ? "Active" : "Inactive"}

@@ -31,6 +31,35 @@ class OrderService:
         self.auth_headers = auth_headers or {}
         self.tenant_id = tenant_id
 
+    async def generate_order_number(self, tenant_id: str) -> str:
+        """
+        Generate order number: ORD-DDMMYYYY-{sequence}
+        Sequence resets to 1 for each new day
+        """
+        # Get current date in DDMMYYYY format
+        today_date = datetime.now().strftime("%d%m%Y")
+
+        # Find last order number for today's date for this tenant
+        prefix = f"ORD-{today_date}"
+        last_order_query = select(Order.order_number).where(
+            and_(
+                Order.tenant_id == tenant_id,
+                Order.order_number.like(f"{prefix}-%")
+            )
+        ).order_by(desc(Order.order_number)).limit(1)
+
+        result = await self.db.execute(last_order_query)
+        last_order_number = result.scalar()
+
+        # Extract sequence number and increment
+        if last_order_number:
+            last_seq = int(last_order_number.split("-")[-1])
+            new_seq = last_seq + 1
+        else:
+            new_seq = 1
+
+        return f"{prefix}-{new_seq}"
+
     async def get_orders_paginated(
         self,
         filters: List = None,
@@ -223,23 +252,30 @@ class OrderService:
         self,
         order_data: OrderCreate,
         user_id: str,
-        tenant_id: str
+        tenant_id: str,
+        created_by_role: str = 'admin'
     ) -> Order:
         """Create a new order with items in a transaction-safe manner"""
         try:
-            # Validate order_number uniqueness within tenant
-            existing_order_query = select(Order.id).where(
-                and_(
-                    Order.tenant_id == tenant_id,
-                    Order.order_number == order_data.order_number
+            # Generate order number if not provided
+            if order_data.order_number:
+                # Frontend provided order_number - validate uniqueness
+                existing_order_query = select(Order.id).where(
+                    and_(
+                        Order.tenant_id == tenant_id,
+                        Order.order_number == order_data.order_number
+                    )
                 )
-            )
-            existing_result = await self.db.execute(existing_order_query)
-            if existing_result.scalar():
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Order number '{order_data.order_number}' already exists"
-                )
+                existing_result = await self.db.execute(existing_order_query)
+                if existing_result.scalar():
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Order number '{order_data.order_number}' already exists"
+                    )
+                order_number = order_data.order_number
+            else:
+                # Generate new order number with DDMMYYYY-{sequence} format
+                order_number = await self.generate_order_number(tenant_id)
 
             # Initialize order totals (will be calculated from items)
             total_weight = 0.0
@@ -287,7 +323,7 @@ class OrderService:
 
             # Create order with calculated totals
             order = Order(
-                order_number=order_data.order_number,  # Use frontend order number
+                order_number=order_number,  # Use generated or provided order number
                 tenant_id=tenant_id,
                 customer_id=order_data.customer_id,
                 branch_id=order_data.branch_id,
@@ -318,6 +354,7 @@ class OrderService:
                 delivery_date=order_data.delivery_date,
                 due_days=order_data.due_days if hasattr(order_data, 'due_days') else 7,
                 created_by=user_id,
+                created_by_role=created_by_role,
                 updated_by=user_id
             )
 

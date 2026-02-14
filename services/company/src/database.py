@@ -4,7 +4,7 @@ Database configuration for Company Service
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, ForeignKey, Enum, Text, JSON
+from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, ForeignKey, Enum, Text, JSON, Index, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID, ENUM as SQLEnum
@@ -407,6 +407,35 @@ class VehicleBranch(Base):
     # Relationships
     vehicle = relationship("Vehicle", back_populates="branches")
     branch = relationship("Branch")
+
+
+class MarketingPersonCustomer(Base):
+    """Junction table for Marketing Person to Customer assignments"""
+    __tablename__ = "marketing_person_customers"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    marketing_person_id = Column(String, nullable=False)  # User ID from auth service (no FK - cross-service)
+    customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE"), nullable=False)
+    tenant_id = Column(String, nullable=False)
+    assigned_at = Column(DateTime(timezone=True), server_default=func.now())
+    assigned_by = Column(String, nullable=True)  # User ID from auth service (no FK - cross-service)
+    notes = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships - Customer needs to be defined with back_populates if we add it later
+    # marketing_person = relationship("User", foreign_keys=[marketing_person_id])
+    # customer = relationship("Customer", foreign_keys=[customer_id])
+    # assigned_by_user = relationship("User", foreign_keys=[assigned_by])
+
+    __table_args__ = (
+        Index('idx_mpc_marketing_person', 'marketing_person_id'),
+        Index('idx_mpc_customer', 'customer_id'),
+        Index('idx_mpc_tenant', 'tenant_id'),
+        Index('idx_mpc_is_active', 'is_active'),
+        UniqueConstraint('marketing_person_id', 'customer_id', 'tenant_id', name='uq_marketing_person_customer'),
+    )
 
 
 class PricingRule(Base):

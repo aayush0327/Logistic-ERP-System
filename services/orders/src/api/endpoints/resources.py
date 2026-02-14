@@ -144,10 +144,17 @@ async def get_customers(
     ),
     tenant_id: str = Depends(get_current_tenant_id),
     branch_id: Optional[str] = Query(None, description="Filter by home branch ID"),
+    marketing_person_id: Optional[str] = Query(None, description="Filter by marketing person ID (returns assigned customers)"),
     is_active: Optional[bool] = Query(True, description="Filter active customers only"),
     search: Optional[str] = Query(None, description="Search customers by name or email")
 ):
-    """Get all customers from Company service"""
+    """
+    Get customers from Company service
+
+    If marketing_person_id is provided, returns only customers assigned to that marketing person
+    If branch_id is provided, filters by branch
+    Both can be combined for marketing person + branch filtering
+    """
     # Get authorization header from the request and forward it
     headers = {}
     auth_header = request.headers.get("authorization")
@@ -156,24 +163,41 @@ async def get_customers(
 
     async with AsyncClient(timeout=30.0) as client:
         try:
-            params = {
-                "is_active": is_active,
-                "per_page": 100,  # Maximum allowed by company service
-                "tenant_id": tenant_id
-            }
+            if marketing_person_id:
+                # Call marketing person customers endpoint
+                params = {
+                    "is_active": is_active,
+                    "tenant_id": tenant_id
+                }
+                # Note: branch_id filtering not supported for marketing person customers
+                if search:
+                    params["search"] = search
 
-            if branch_id:
-                params["home_branch_id"] = branch_id
+                response = await client.get(
+                    f"{COMPANY_SERVICE_URL}/api/v1/marketing-person-assignments/marketing-person/{marketing_person_id}/customers",
+                    params=params,
+                    headers=headers
+                )
+            else:
+                # Call regular customers endpoint
+                params = {
+                    "is_active": is_active,
+                    "per_page": 100,  # Maximum allowed by company service
+                    "tenant_id": tenant_id
+                }
 
-            if search:
-                params["search"] = search
+                if branch_id:
+                    params["home_branch_id"] = branch_id
 
-            # Call Company service customers endpoint
-            response = await client.get(
-                f"{COMPANY_SERVICE_URL}/customers/",
-                params=params,
-                headers=headers
-            )
+                if search:
+                    params["search"] = search
+
+                # Call Company service customers endpoint
+                response = await client.get(
+                    f"{COMPANY_SERVICE_URL}/customers/",
+                    params=params,
+                    headers=headers
+                )
 
             if response.status_code != 200:
                 logger.error(f"Failed to fetch customers from Company service: {response.status_code}")

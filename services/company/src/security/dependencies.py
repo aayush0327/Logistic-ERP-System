@@ -427,3 +427,9 @@ PRODUCT_STOCK_ADJUST = ["products:stock_adjust"]
 
 COMPANY_REPORTS_READ = ["company_reports:read"]
 COMPANY_REPORTS_EXPORT = ["company_reports:export"]
+
+# Marketing Person Assignment permissions
+MARKETING_PERSON_ASSIGNMENTS_READ = ["marketing_person_assignments:read"]
+MARKETING_PERSON_ASSIGNMENTS_CREATE = ["marketing_person_assignments:create"]
+MARKETING_PERSON_ASSIGNMENTS_UPDATE = ["marketing_person_assignments:update"]
+MARKETING_PERSON_ASSIGNMENTS_DELETE = ["marketing_person_assignments:delete"]

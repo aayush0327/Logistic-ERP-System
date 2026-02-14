@@ -7,6 +7,7 @@ export const ROLES = {
   SUPER_ADMIN: "super_admin",
   COMPANY_ADMIN: "company_admin",
   BRANCH_MANAGER: "branch_manager",
+  MARKETING_PERSON: "marketing_person",
   FINANCE_MANAGER: "finance_manager",
   LOGISTICS_MANAGER: "logistics_manager",
   DRIVER: "driver",
@@ -22,6 +23,7 @@ export const ROLE_HIERARCHY: Record<Role, number> = {
   [ROLES.FINANCE_MANAGER]: 60,
   [ROLES.LOGISTICS_MANAGER]: 60,
   [ROLES.BRANCH_MANAGER]: 50,
+  [ROLES.MARKETING_PERSON]: 45,  // NEW: Marketing Person
   [ROLES.DRIVER]: 10,
   [ROLES.USER]: 5,
 };
@@ -35,6 +37,7 @@ export const ROLE_ID_MAP: Record<number, Role> = {
   5: ROLES.LOGISTICS_MANAGER, // "Logistics Manager"
   6: ROLES.DRIVER, // "Driver"
   7: ROLES.USER, // "User"
+  8: ROLES.MARKETING_PERSON, // "Marketing Person" - NEW
 };
 
 // Role display names
@@ -42,6 +45,7 @@ export const ROLE_NAMES: Record<Role, string> = {
   [ROLES.SUPER_ADMIN]: "Super Admin",
   [ROLES.COMPANY_ADMIN]: "Company Admin",
   [ROLES.BRANCH_MANAGER]: "Branch Manager",
+  [ROLES.MARKETING_PERSON]: "Marketing Person",  // NEW
   [ROLES.FINANCE_MANAGER]: "Finance Manager",
   [ROLES.LOGISTICS_MANAGER]: "Logistics Manager",
   [ROLES.DRIVER]: "Driver",
@@ -62,12 +66,14 @@ export const ROLE_ROUTES: Record<Role, string[]> = {
   [ROLES.COMPANY_ADMIN]: [
     "/company-admin",
     "/branch-manager",
+    "/marketing-person",  // NEW
     "/finance-manager",
     "/logistics-manager",
   ],
   [ROLES.FINANCE_MANAGER]: ["/finance-manager"],
   [ROLES.LOGISTICS_MANAGER]: ["/logistics-manager"],
   [ROLES.BRANCH_MANAGER]: ["/branch-manager"],
+  [ROLES.MARKETING_PERSON]: ["/marketing-person"],  // NEW
   [ROLES.DRIVER]: ["/drivermodule"], // Temporary renamed protected driver route
   [ROLES.USER]: [], // User role - no access yet (awaiting instructions)
 };
@@ -85,6 +91,7 @@ export const ROLE_DEFAULT_ROUTE: Record<Role, string> = {
   [ROLES.SUPER_ADMIN]: "/super-admin/dashboard",
   [ROLES.COMPANY_ADMIN]: "/company-admin/masters",
   [ROLES.BRANCH_MANAGER]: "/branch-manager/dashboard",
+  [ROLES.MARKETING_PERSON]: "/marketing-person/dashboard",
   [ROLES.FINANCE_MANAGER]: "/finance-manager/dashboard",
   [ROLES.LOGISTICS_MANAGER]: "/logistics-manager/trips-management",
   [ROLES.DRIVER]: "/drivermodule/trips", // Temporary renamed protected driver route
@@ -139,6 +146,8 @@ function normalizeRoleName(roleName: string | undefined): Role | undefined {
     "admin": ROLES.COMPANY_ADMIN,
     "branch manager": ROLES.BRANCH_MANAGER,
     "branch_manager": ROLES.BRANCH_MANAGER,
+    "marketing person": ROLES.MARKETING_PERSON,
+    "marketing_person": ROLES.MARKETING_PERSON,
     "finance manager": ROLES.FINANCE_MANAGER,
     "finance_manager": ROLES.FINANCE_MANAGER,
     "logistics manager": ROLES.LOGISTICS_MANAGER,

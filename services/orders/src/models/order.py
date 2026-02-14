@@ -158,6 +158,13 @@ class Order(Base):
         nullable=False,
         comment="User ID who created the order"
     )
+    created_by_role: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="admin",
+        index=True,
+        comment="Role of user who created the order: admin, branch_manager, marketing_person"
+    )
     updated_by: Mapped[Optional[str]] = mapped_column(
         String(255),
         nullable=True,

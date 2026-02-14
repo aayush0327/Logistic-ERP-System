@@ -288,6 +288,8 @@ async def get_profile_completion(
     """
     Get profile completion percentage for any profile type
 
+    Simplified: Profile is complete (100%) if updated_at is not None, else 0%
+
     Requires:
     - users:read_all (to view all profiles) OR
     - users:read (to view basic profile info)
@@ -301,155 +303,78 @@ async def get_profile_completion(
             detail=f"Invalid profile type. Must be one of: {', '.join(valid_profile_types)}"
         )
 
-    # Define completion criteria for each profile type
-    completion_criteria = {
-        "employee": [
-            ("first_name", "Personal Information"),
-            ("phone", "Contact Details"),
-            ("address", "Address"),
-            ("department", "Employment Details"),
-            ("designation", "Employment Details"),
-            ("hire_date", "Employment Details"),
-            ("pan_number", "Financial Information")
-        ],
-        "driver": [
-            ("license_number", "License Details"),
-            ("license_expiry", "License Details"),
-            ("license_type", "License Details"),
-            ("medical_fitness_certificate_date", "Medical Records"),
-            ("police_verification_date", "Verification Records")
-        ],
-        "finance_manager": [
-            ("can_approve_payments", "Permissions"),
-            ("max_approval_limit", "Permissions"),
-            ("access_levels", "Access Control")
-        ],
-        "branch_manager": [
-            ("managed_branch_id", "Branch Assignment"),
-            ("can_create_quotes", "Permissions"),
-            ("can_manage_inventory", "Permissions"),
-            ("staff_management_permissions", "Staff Management")
-        ],
-        "logistics_manager": [
-            ("managed_zones", "Zone Management"),
-            ("can_assign_drivers", "Driver Management"),
-            ("can_plan_routes", "Route Planning")
-        ]
-    }
-
-    completed_sections = []
-    missing_sections = []
+    # Get the profile based on type and check updated_at
+    updated_at = None
+    profile_model_name = profile_type.replace("_", " ").title()
 
     if profile_type == "employee":
-        # Get employee profile
         query = select(EmployeeProfile).where(
             EmployeeProfile.id == profile_id,
             EmployeeProfile.tenant_id == tenant_id
         )
         result = await db.execute(query)
         profile = result.scalar_one_or_none()
-
         if not profile:
             raise HTTPException(status_code=404, detail="Employee profile not found")
-
-        # Check completion for employee
-        for field, section in completion_criteria["employee"]:
-            value = getattr(profile, field, None)
-            if value and str(value).strip():
-                completed_sections.append(section)
-            else:
-                missing_sections.append(section)
+        updated_at = profile.updated_at
 
     elif profile_type == "driver":
-        # Get driver profile with employee
         query = select(DriverProfile).where(
             DriverProfile.id == profile_id,
             DriverProfile.tenant_id == tenant_id
-        ).options(selectinload(DriverProfile.employee))
+        )
         result = await db.execute(query)
         profile = result.scalar_one_or_none()
-
         if not profile:
             raise HTTPException(status_code=404, detail="Driver profile not found")
-
-        # Check completion for driver
-        for field, section in completion_criteria["driver"]:
-            value = getattr(profile, field, None)
-            if value:
-                completed_sections.append(section)
-            else:
-                missing_sections.append(section)
-
-    # Similar logic for other profile types...
-    # For brevity, I'll include one more example
+        updated_at = profile.updated_at
 
     elif profile_type == "finance_manager":
         query = select(FinanceManagerProfile).where(
             FinanceManagerProfile.id == profile_id,
             FinanceManagerProfile.tenant_id == tenant_id
-        ).options(selectinload(FinanceManagerProfile.employee))
+        )
         result = await db.execute(query)
         profile = result.scalar_one_or_none()
-
         if not profile:
             raise HTTPException(status_code=404, detail="Finance manager profile not found")
-
-        # Check completion
-        for field, section in completion_criteria["finance_manager"]:
-            value = getattr(profile, field, None)
-            if value is not None and (not isinstance(value, (list, dict)) or len(value) > 0):
-                completed_sections.append(section)
-            else:
-                missing_sections.append(section)
+        updated_at = profile.updated_at
 
     elif profile_type == "branch_manager":
         query = select(BranchManagerProfile).where(
             BranchManagerProfile.id == profile_id,
             BranchManagerProfile.tenant_id == tenant_id
-        ).options(selectinload(BranchManagerProfile.employee))
+        )
         result = await db.execute(query)
         profile = result.scalar_one_or_none()
-
         if not profile:
             raise HTTPException(status_code=404, detail="Branch manager profile not found")
-
-        # Check completion for branch manager
-        for field, section in completion_criteria["branch_manager"]:
-            value = getattr(profile, field, None)
-            if value is not None and (not isinstance(value, (list, dict)) or len(value) > 0):
-                completed_sections.append(section)
-            else:
-                missing_sections.append(section)
+        updated_at = profile.updated_at
 
     elif profile_type == "logistics_manager":
         query = select(LogisticsManagerProfile).where(
             LogisticsManagerProfile.id == profile_id,
             LogisticsManagerProfile.tenant_id == tenant_id
-        ).options(selectinload(LogisticsManagerProfile.employee))
+        )
         result = await db.execute(query)
         profile = result.scalar_one_or_none()
-
         if not profile:
             raise HTTPException(status_code=404, detail="Logistics manager profile not found")
+        updated_at = profile.updated_at
 
-        # Check completion for logistics manager
-        for field, section in completion_criteria["logistics_manager"]:
-            value = getattr(profile, field, None)
-            if value is not None and (not isinstance(value, (list, dict)) or len(value) > 0):
-                completed_sections.append(section)
-            else:
-                missing_sections.append(section)
-
-    # Calculate completion percentage
-    total_sections = len(set(completed_sections + missing_sections))
-    completion_percentage = (len(completed_sections) / total_sections * 100) if total_sections > 0 else 0
+    # Simplified: Profile is complete if updated_at is not None
+    is_complete = updated_at is not None
+    completion_percentage = 100 if is_complete else 0
+    completed_sections = [f"{profile_model_name} Updated"] if is_complete else []
+    missing_sections = [] if is_complete else [f"{profile_model_name} Not Updated"]
+    total_sections = 1
 
     return ProfileCompletionResponse(
         profile_id=profile_id,
         profile_type=profile_type,
         completion_percentage=round(completion_percentage, 2),
-        completed_sections=list(set(completed_sections)),
-        missing_sections=list(set(missing_sections)),
+        completed_sections=completed_sections,
+        missing_sections=missing_sections,
         total_sections=total_sections,
         last_updated=datetime.utcnow()
     )
@@ -2461,6 +2386,7 @@ async def get_profile_statistics(
 async def _calculate_average_completion(db: AsyncSession, tenant_id: str) -> float:
     """
     Calculate the average profile completion percentage across all employees
+    Simplified: Profile is complete (100%) if updated_at is not None, else 0%
     """
     # Get all employees
     query = select(EmployeeProfile).where(
@@ -2473,17 +2399,10 @@ async def _calculate_average_completion(db: AsyncSession, tenant_id: str) -> flo
         return 0.0
 
     total_completion = 0
-    required_fields = [
-        "first_name", "phone", "address", "department",
-        "designation", "hire_date", "pan_number"
-    ]
 
     for employee in employees:
-        completed_fields = sum(
-            1 for field in required_fields
-            if getattr(employee, field, None) and str(getattr(employee, field, None)).strip()
-        )
-        completion_percentage = (completed_fields / len(required_fields)) * 100
+        # Simplified: 100% if updated_at is not None, else 0%
+        completion_percentage = 100 if employee.updated_at is not None else 0
         total_completion += completion_percentage
 
     return round(total_completion / len(employees), 2)
@@ -2612,28 +2531,15 @@ async def get_profiles_by_role(
         completion_percentage = 0
         completed_sections = []
         missing_sections = []
+        total_sections = 0
 
         if include_completion_stats:
-            # Check required fields for profile completion
-            required_fields = [
-                ("first_name", "Personal Information"),
-                ("phone", "Contact Details"),
-                ("address", "Address"),
-                ("department", "Employment Details"),
-                ("designation", "Employment Details"),
-                ("hire_date", "Employment Details"),
-                ("pan_number", "Financial Information")
-            ]
-
-            for field, section in required_fields:
-                value = getattr(employee, field, None)
-                if value and str(value).strip():
-                    completed_sections.append(section)
-                else:
-                    missing_sections.append(section)
-
-            total_sections = len(set(completed_sections + missing_sections))
-            completion_percentage = (len(completed_sections) / total_sections * 100) if total_sections > 0 else 0
+            # Simplified: Profile is complete if updated_at is not None (has been updated at least once)
+            is_complete = employee.updated_at is not None
+            completion_percentage = 100 if is_complete else 0
+            completed_sections = ["Profile Updated"] if is_complete else []
+            missing_sections = [] if is_complete else ["Profile Not Updated"]
+            total_sections = 1
 
         # Get branch information
         branch_name = None

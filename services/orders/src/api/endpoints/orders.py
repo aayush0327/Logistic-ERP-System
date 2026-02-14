@@ -133,6 +133,7 @@ async def list_orders(
     order_type: Optional[str] = Query(None, description="Filter by order type"),
     priority: Optional[str] = Query(None, description="Filter by priority"),
     payment_type: Optional[str] = Query(None, description="Filter by payment type"),
+    created_by_role: Optional[str] = Query(None, description="Filter by creator role: admin, branch_manager, marketing_person"),
     date_from: Optional[datetime] = Query(None, description="Filter by date from"),
     date_to: Optional[datetime] = Query(None, description="Filter by date to"),
     page: int = Query(1, ge=1, description="Page number"),
@@ -219,6 +220,8 @@ async def list_orders(
         filters.append(Order.priority == priority)
     if payment_type:
         filters.append(Order.payment_type == payment_type)
+    if created_by_role:
+        filters.append(Order.created_by_role == created_by_role)
     if date_from:
         filters.append(Order.created_at >= date_from)
     if date_to:
@@ -614,6 +617,7 @@ async def list_orders(
             # Time in current status
             'current_status_since': current_status_since.isoformat() if current_status_since else None,
             'time_in_current_status_minutes': time_in_status_minutes,
+            'created_by_role': order.created_by_role,
         }
         enriched_orders.append(OrderListResponse(**order_dict))
 
@@ -689,6 +693,7 @@ async def get_order(
         'special_instructions': order.special_instructions,
         'delivery_instructions': order.delivery_instructions,
         'created_by': order.created_by,
+        'created_by_role': order.created_by_role,
         'updated_by': order.updated_by,
         'driver_id': order.driver_id,
         'trip_id': order.trip_id,
@@ -743,8 +748,16 @@ async def create_order(
 
     order_service = OrderService(db, auth_headers, tenant_id)
 
+    # Determine created_by_role based on user's role
+    created_by_role = 'admin'  # default
+    user_role_lower = token_data.role.lower() if token_data.role else ''
+    if user_role_lower == 'branch manager':
+        created_by_role = 'branch_manager'
+    elif user_role_lower == 'marketing person':
+        created_by_role = 'marketing_person'
+
     # Order service will use the tenant_id from the token
-    order = await order_service.create_order(order_data, user_id, tenant_id)
+    order = await order_service.create_order(order_data, user_id, tenant_id, created_by_role)
 
     return order
 

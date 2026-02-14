@@ -235,34 +235,59 @@ async def list_users(
     # Process each user to get relationship data
     processed_users = []
     auth_token = extract_auth_token(request)
+
+    # Fetch all employee-branch relationships at once for better performance
+    all_user_ids = [u.id for u in users]
+    if all_user_ids:
+        eb_query = select(EmployeeBranch).where(
+            EmployeeBranch.employee_profile_id.in_(all_user_ids)
+        )
+        eb_result = await db.execute(eb_query)
+        all_employee_branches = eb_result.scalars().all()
+
+        # Group by employee_profile_id
+        from collections import defaultdict
+        branches_by_user = defaultdict(list)
+        for eb in all_employee_branches:
+            branches_by_user[eb.employee_profile_id].append(eb.branch_id)
+
+        # Fetch all branch data at once
+        all_branch_ids = list(set([eb.branch_id for eb in all_employee_branches]))
+        branches_by_id = {}
+        if all_branch_ids:
+            branches_query = select(Branch).where(Branch.id.in_(all_branch_ids))
+            branches_result = await db.execute(branches_query)
+            for branch in branches_result.scalars().all():
+                branches_by_id[branch.id] = {
+                    'id': branch.id,
+                    'tenant_id': branch.tenant_id,
+                    'code': branch.code,
+                    'name': branch.name,
+                    'address': branch.address,
+                    'city': branch.city,
+                    'state': branch.state,
+                    'postal_code': branch.postal_code,
+                    'phone': branch.phone,
+                    'email': branch.email,
+                    'manager_id': branch.manager_id,
+                    'is_active': branch.is_active if branch.is_active is not None else True,
+                    'created_at': branch.created_at,
+                    'updated_at': branch.updated_at
+                }
+    else:
+        branches_by_user = defaultdict(list)
+        branches_by_id = {}
+
     for user in users:
         # Get role data from auth service (always returns a dict now)
         role_data = await get_role_from_auth_service(user.role_id, auth_token)
 
-        # Get branch data separately
-        branch_data = None
-        if user.branch_id:
-            branch_query = select(Branch).where(Branch.id == user.branch_id)
-            branch_result = await db.execute(branch_query)
-            branch_obj = branch_result.scalar_one_or_none()
+        # Get branches for this user from junction table
+        user_branch_ids = branches_by_user.get(user.id, [])
+        branches_data = [branches_by_id[bid] for bid in user_branch_ids if bid in branches_by_id]
 
-            if branch_obj:
-                branch_data = {
-                    'id': branch_obj.id,
-                    'tenant_id': branch_obj.tenant_id,
-                    'code': branch_obj.code,
-                    'name': branch_obj.name,
-                    'address': branch_obj.address,
-                    'city': branch_obj.city,
-                    'state': branch_obj.state,
-                    'postal_code': branch_obj.postal_code,
-                    'phone': branch_obj.phone,
-                    'email': branch_obj.email,
-                    'manager_id': branch_obj.manager_id,
-                    'is_active': branch_obj.is_active if branch_obj.is_active is not None else True,
-                    'created_at': branch_obj.created_at,
-                    'updated_at': branch_obj.updated_at
-                }
+        # Use first branch for backward compatibility (single branch field)
+        branch_data = branches_data[0] if branches_data else None
 
         # Convert user to dict and add relationships
         user_dict = {
@@ -303,6 +328,7 @@ async def list_users(
             'updated_at': user.updated_at,
             'role': role_data,
             'branch': branch_data,
+            'branches': branches_data,  # All assigned branches
             'documents': []  # Empty for now
         }
 
@@ -363,9 +389,45 @@ async def get_user(
     auth_token = extract_auth_token(request)
     role_data = await get_role_from_auth_service(user.role_id, auth_token)
 
-    # Get branch data separately
+    # Get all assigned branches from employee_branches junction table
+    branches_query = select(EmployeeBranch).where(
+        EmployeeBranch.employee_profile_id == user_id
+    )
+    branches_result = await db.execute(branches_query)
+    employee_branches = branches_result.scalars().all()
+
+    branches_data = []
     branch_data = None
-    if user.branch_id:
+
+    if employee_branches:
+        branch_ids = [eb.branch_id for eb in employee_branches]
+        branches_query = select(Branch).where(Branch.id.in_(branch_ids))
+        branches_result = await db.execute(branches_query)
+        branches_objs = branches_result.scalars().all()
+
+        for branch_obj in branches_objs:
+            branch_dict = {
+                'id': branch_obj.id,
+                'tenant_id': branch_obj.tenant_id,
+                'code': branch_obj.code,
+                'name': branch_obj.name,
+                'address': branch_obj.address,
+                'city': branch_obj.city,
+                'state': branch_obj.state,
+                'postal_code': branch_obj.postal_code,
+                'phone': branch_obj.phone,
+                'email': branch_obj.email,
+                'manager_id': branch_obj.manager_id,
+                'is_active': branch_obj.is_active if branch_obj.is_active is not None else True,
+                'created_at': branch_obj.created_at,
+                'updated_at': branch_obj.updated_at
+            }
+            branches_data.append(branch_dict)
+
+        # Use first branch for backward compatibility
+        branch_data = branches_data[0] if branches_data else None
+    elif user.branch_id:
+        # Fallback to single branch from employee_profile
         branch_query = select(Branch).where(Branch.id == user.branch_id)
         branch_result = await db.execute(branch_query)
         branch_obj = branch_result.scalar_one_or_none()
@@ -387,6 +449,10 @@ async def get_user(
                 'created_at': branch_obj.created_at,
                 'updated_at': branch_obj.updated_at
             }
+            branches_data.append(branch_data)
+
+    # Build branch_ids array for response
+    branch_ids = [b['id'] for b in branches_data] if branches_data else []
 
     # Convert user to dict and add relationships
     # Map backend fields to frontend expected format
@@ -401,7 +467,7 @@ async def get_user(
         'role_id': user.role_id,
         'role_name': role_data.get('role_name') or role_data.get('name'),  # Add role_name at top level
         'branch_id': str(user.branch_id) if user.branch_id else None,
-        'branch_ids': [str(user.branch_id)] if user.branch_id else [],
+        'branch_ids': branch_ids,
         'first_name': user.first_name,
         'last_name': user.last_name,
         'phone': user.phone,
@@ -470,7 +536,7 @@ async def get_user(
         'updated_at': user.updated_at.isoformat() if user.updated_at else None,
         'role': role_data,
         'branch': branch_data,
-        'branches': [branch_data] if branch_data else [],
+        'branches': branches_data,
         'documents': [],  # Empty for now
         'profile': None  # Will be populated if profile exists
     }
@@ -694,6 +760,7 @@ async def update_user(
     user_data: EmployeeProfileUpdate,
     token_data: TokenData = Depends(require_any_permission([USER_UPDATE[0], USER_UPDATE_OWN[0], USER_MANAGE_ALL[0]])),
     tenant_id: str = Depends(get_current_tenant_id),
+    current_user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -717,10 +784,28 @@ async def update_user(
     # Update user
     update_data = user_data.model_dump(exclude_unset=True)
 
-    # Handle branch_id auto-population from branch_ids
-    if "branch_ids" in update_data and update_data["branch_ids"]:
-        if "branch_id" not in update_data or not update_data["branch_id"]:
-            update_data["branch_id"] = update_data["branch_ids"][0]
+    # Handle branch_ids - update junction table
+    branch_ids_to_update = None
+    if "branch_ids" in update_data:
+        branch_ids_to_update = update_data["branch_ids"]
+
+        # Validate branch_ids
+        if branch_ids_to_update:
+            for branch_id in branch_ids_to_update:
+                try:
+                    await validate_branch_exists(db, branch_id, tenant_id)
+                except ValueError as e:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid branch ID {branch_id}: {str(e)}"
+                    )
+
+        # Auto-populate branch_id from branch_ids[0]
+        if branch_ids_to_update and len(branch_ids_to_update) > 0:
+            update_data["branch_id"] = branch_ids_to_update[0]
+
+        # Exclude branch_ids from update_data (not a column in EmployeeProfile)
+        del update_data["branch_ids"]
 
     # Verify role if updating
     if "role_id" in update_data:
@@ -770,19 +855,76 @@ async def update_user(
                 detail="Employee with this code already exists"
             )
 
+    # Update EmployeeProfile fields
     for field, value in update_data.items():
         setattr(user, field, value)
 
     await db.commit()
     await db.refresh(user)
 
+    # Update employee_branches junction table if branch_ids was provided
+    if branch_ids_to_update is not None:
+        # Delete existing employee-branch assignments
+        await db.execute(
+            delete(EmployeeBranch).where(EmployeeBranch.employee_profile_id == user_id)
+        )
+
+        # Create new employee-branch assignments
+        if branch_ids_to_update:
+            for branch_id in branch_ids_to_update:
+                employee_branch = EmployeeBranch(
+                    tenant_id=tenant_id,
+                    employee_profile_id=user.id,
+                    branch_id=branch_id,
+                    assigned_by=current_user_id
+                )
+                db.add(employee_branch)
+
+        await db.commit()
+
     # Get role data from auth service
     auth_token = extract_auth_token(request)
     role_data = await get_role_from_auth_service(user.role_id, auth_token)
 
-    # Get branch data separately
+    # Get all assigned branches from employee_branches table
+    branches_query = select(EmployeeBranch).where(
+        EmployeeBranch.employee_profile_id == user.id
+    )
+    branches_result = await db.execute(branches_query)
+    employee_branches = branches_result.scalars().all()
+
+    branches_data = []
     branch_data = None
-    if user.branch_id:
+
+    if employee_branches:
+        branch_ids = [eb.branch_id for eb in employee_branches]
+        branches_query = select(Branch).where(Branch.id.in_(branch_ids))
+        branches_result = await db.execute(branches_query)
+        branches_objs = branches_result.scalars().all()
+
+        for branch_obj in branches_objs:
+            branch_dict = {
+                'id': branch_obj.id,
+                'tenant_id': branch_obj.tenant_id,
+                'code': branch_obj.code,
+                'name': branch_obj.name,
+                'address': branch_obj.address,
+                'city': branch_obj.city,
+                'state': branch_obj.state,
+                'postal_code': branch_obj.postal_code,
+                'phone': branch_obj.phone,
+                'email': branch_obj.email,
+                'manager_id': branch_obj.manager_id,
+                'is_active': branch_obj.is_active if branch_obj.is_active is not None else True,
+                'created_at': branch_obj.created_at,
+                'updated_at': branch_obj.updated_at
+            }
+            branches_data.append(branch_dict)
+
+        # Use first branch for backward compatibility
+        branch_data = branches_data[0] if branches_data else None
+    elif user.branch_id:
+        # Fallback to single branch from employee_profile
         branch_query = select(Branch).where(Branch.id == user.branch_id)
         branch_result = await db.execute(branch_query)
         branch_obj = branch_result.scalar_one_or_none()
@@ -804,6 +946,10 @@ async def update_user(
                 'created_at': branch_obj.created_at,
                 'updated_at': branch_obj.updated_at
             }
+            branches_data.append(branch_data)
+
+    # Build branch_ids array for response
+    branch_ids = [b['id'] for b in branches_data] if branches_data else []
 
     # Convert user to dict and add relationships
     user_dict = {
@@ -814,6 +960,7 @@ async def update_user(
         'role_id': user.role_id,
         'role_name': role_data.get('role_name') or role_data.get('name'),  # Add role_name at top level
         'branch_id': user.branch_id,
+        'branch_ids': branch_ids,
         'first_name': user.first_name,
         'last_name': user.last_name,
         'phone': user.phone,
@@ -844,6 +991,7 @@ async def update_user(
         'updated_at': user.updated_at,
         'role': role_data,
         'branch': branch_data,
+        'branches': branches_data,
         'documents': []  # Empty for now
     }
 

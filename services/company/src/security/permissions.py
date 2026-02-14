@@ -90,6 +90,12 @@ class Permission(Enum):
     AUDIT_READ = "audit:read"
     AUDIT_EXPORT = "audit:export"
 
+    # Marketing Person Assignments
+    MARKETING_PERSON_ASSIGNMENTS_READ = "marketing_person_assignments:read"
+    MARKETING_PERSON_ASSIGNMENTS_CREATE = "marketing_person_assignments:create"
+    MARKETING_PERSON_ASSIGNMENTS_UPDATE = "marketing_person_assignments:update"
+    MARKETING_PERSON_ASSIGNMENTS_DELETE = "marketing_person_assignments:delete"
+
 
 # Permission groups for easier management
 PERMISSION_GROUPS = {
@@ -195,6 +201,10 @@ ROLE_PERMISSIONS = {
             Permission.PRICING_RULES_DELETE.value,
             Permission.AUDIT_READ.value,
             Permission.AUDIT_EXPORT.value,
+            Permission.MARKETING_PERSON_ASSIGNMENTS_READ.value,
+            Permission.MARKETING_PERSON_ASSIGNMENTS_CREATE.value,
+            Permission.MARKETING_PERSON_ASSIGNMENTS_UPDATE.value,
+            Permission.MARKETING_PERSON_ASSIGNMENTS_DELETE.value,
         ]
     ),
 
@@ -393,3 +403,9 @@ CUSTOMER_PERMISSIONS = [perm.value for perm in Permission if perm.value.startswi
 VEHICLE_PERMISSIONS = [perm.value for perm in Permission if perm.value.startswith("vehicles:")]
 PRODUCT_PERMISSIONS = [perm.value for perm in Permission if perm.value.startswith("products:")]
 REPORT_PERMISSIONS = [perm.value for perm in Permission if perm.value.startswith("company_reports:")]
+MARKETING_PERSON_ASSIGNMENTS_PERMISSIONS = [
+    Permission.MARKETING_PERSON_ASSIGNMENTS_READ.value,
+    Permission.MARKETING_PERSON_ASSIGNMENTS_CREATE.value,
+    Permission.MARKETING_PERSON_ASSIGNMENTS_UPDATE.value,
+    Permission.MARKETING_PERSON_ASSIGNMENTS_DELETE.value,
+]

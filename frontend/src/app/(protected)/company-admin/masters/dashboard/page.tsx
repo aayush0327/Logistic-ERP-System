@@ -22,6 +22,7 @@ import {
   MapPin,
   Phone,
   Mail,
+  UserRound,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -246,6 +247,13 @@ export default function MastersDashboard() {
       icon: <Package className="w-5 h-5 text-orange-600" />,
       onClick: () => router.push("/company-admin/masters/products/new"),
       color: "orange" as const,
+    },
+    {
+      title: "Marketing Assignments",
+      description: "Assign customers to marketing persons",
+      icon: <UserRound className="w-5 h-5 text-indigo-600" />,
+      onClick: () => router.push("/company-admin/masters/marketing-person-assignments"),
+      color: "blue" as const,
     },
   ];
 

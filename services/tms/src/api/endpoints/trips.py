@@ -30,6 +30,7 @@ from src.security import (
 )
 from src.config import settings
 from src.services.audit_client import AuditClient
+from src.services.trip_service import TripService
 
 logger = logging.getLogger(__name__)
 
@@ -1017,38 +1018,15 @@ async def create_trip(
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
-    """Create a new trip"""
+    """Create a new trip with sequential trip ID (TRIP-DDMMYYYY-{sequence})"""
     # Get authorization header for audit client
     auth_headers = {}
     auth_header = request.headers.get("authorization")
     if auth_header:
         auth_headers["Authorization"] = auth_header
 
-    # Create new trip
-    trip = Trip(
-        user_id=user_id,
-        company_id=tenant_id,
-        branch=trip_data.branch,  # Contains branch UUID
-        truck_plate=trip_data.truck_plate,
-        truck_model=trip_data.truck_model,
-        truck_capacity=trip_data.truck_capacity,
-        driver_id=trip_data.driver_id,
-        driver_name=trip_data.driver_name,
-        driver_phone=trip_data.driver_phone,
-        status=trip_data.status,
-        origin=trip_data.origin,
-        destination=trip_data.destination,
-        distance=trip_data.distance,
-        estimated_duration=trip_data.estimated_duration,
-        pre_trip_time=trip_data.pre_trip_time,
-        post_trip_time=trip_data.post_trip_time,
-        capacity_total=trip_data.capacity_total,
-        trip_date=trip_data.trip_date
-    )
-
-    db.add(trip)
-    await db.commit()
-    await db.refresh(trip)
+    # Create new trip using service (generates sequential ID)
+    trip = await TripService.create_trip(db, trip_data, user_id, tenant_id)
 
     # Update truck and driver status to 'assigned' when trip is created
     await _update_resource_statuses_for_trip(

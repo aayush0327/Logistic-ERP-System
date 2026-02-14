@@ -7,4 +7,5 @@ export type { OrderStats } from './OrdersSummaryCards';
 export { OrdersSearchBar } from './OrdersSearchBar';
 export { OrdersList } from './OrdersList';
 export { DueDaysTab } from './DueDaysTab';
+export { RoleBadge } from './RoleBadge';
 
