@@ -327,7 +327,37 @@ async def get_profile_completion(
         profile = result.scalar_one_or_none()
         if not profile:
             raise HTTPException(status_code=404, detail="Driver profile not found")
-        updated_at = profile.updated_at
+
+        # For drivers: need to check BOTH employee.updated_at AND driver.license_number
+        # First get the employee profile
+        employee_query = select(EmployeeProfile).where(
+            EmployeeProfile.id == profile.employee_profile_id,
+            EmployeeProfile.tenant_id == tenant_id
+        )
+        employee_result = await db.execute(employee_query)
+        employee = employee_result.scalar_one_or_none()
+
+        # Driver is complete if: employee.updated_at is not None AND license_number exists
+        is_complete = (employee is not None and employee.updated_at is not None
+                      and profile.license_number is not None)
+        updated_at = employee.updated_at if employee else None
+
+        # Skip the generic logic below since we already calculated is_complete
+        profile_model_name = profile_type.replace("_", " ").title()
+        completion_percentage = 100 if is_complete else 0
+        completed_sections = [f"{profile_model_name} Updated"] if is_complete else []
+        missing_sections = [] if is_complete else [f"{profile_model_name} Not Updated"]
+        total_sections = 1
+
+        return ProfileCompletionResponse(
+            profile_id=profile_id,
+            profile_type=profile_type,
+            completion_percentage=round(completion_percentage, 2),
+            completed_sections=completed_sections,
+            missing_sections=missing_sections,
+            total_sections=total_sections,
+            last_updated=datetime.utcnow()
+        )
 
     elif profile_type == "finance_manager":
         query = select(FinanceManagerProfile).where(
@@ -953,6 +983,9 @@ async def update_driver_status_internal(
             status_code=400,
             detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
         )
+
+    # NEW: Log incoming request details for debugging
+    logger.info(f"Driver status update REQUEST: driver_id={driver_id}, current_status={driver.current_status}, new_status={status}, tenant_id={tenant_id}")
 
     # Update status
     driver.current_status = status
@@ -2387,6 +2420,7 @@ async def _calculate_average_completion(db: AsyncSession, tenant_id: str) -> flo
     """
     Calculate the average profile completion percentage across all employees
     Simplified: Profile is complete (100%) if updated_at is not None, else 0%
+    For drivers: need BOTH employee.updated_at AND driver.license_number
     """
     # Get all employees
     query = select(EmployeeProfile).where(
@@ -2398,11 +2432,29 @@ async def _calculate_average_completion(db: AsyncSession, tenant_id: str) -> flo
     if not employees:
         return 0.0
 
+    # Get all driver profiles for this tenant
+    driver_query = select(DriverProfile).where(
+        DriverProfile.tenant_id == tenant_id
+    )
+    driver_result = await db.execute(driver_query)
+    driver_profiles = driver_result.scalars().all()
+
+    # Create a map of employee_profile_id -> driver_profile
+    driver_map = {dp.employee_profile_id: dp for dp in driver_profiles}
+
     total_completion = 0
 
     for employee in employees:
         # Simplified: 100% if updated_at is not None, else 0%
-        completion_percentage = 100 if employee.updated_at is not None else 0
+        is_complete = employee.updated_at is not None
+
+        # For drivers, also check if license_number exists
+        driver = driver_map.get(employee.id)
+        if driver:
+            if not driver.license_number:
+                is_complete = False
+
+        completion_percentage = 100 if is_complete else 0
         total_completion += completion_percentage
 
     return round(total_completion / len(employees), 2)
@@ -2471,6 +2523,16 @@ async def get_profiles_by_role(
     # Create a map of user_id -> employee_profile
     profile_map = {ep.user_id: ep for ep in employee_profiles}
 
+    # Fetch all driver profiles for this tenant to check license_number
+    driver_query = select(DriverProfile).where(
+        DriverProfile.tenant_id == tenant_id
+    )
+    driver_result = await db.execute(driver_query)
+    driver_profiles = driver_result.scalars().all()
+
+    # Create a map of employee_profile_id -> driver_profile for quick lookup
+    driver_map = {dp.employee_profile_id: dp for dp in driver_profiles}
+
     # Fetch all roles from auth service for role name lookup
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
@@ -2535,7 +2597,15 @@ async def get_profiles_by_role(
 
         if include_completion_stats:
             # Simplified: Profile is complete if updated_at is not None (has been updated at least once)
+            # Special case for drivers: also need license_number
             is_complete = employee.updated_at is not None
+
+            # For drivers, also check if license_number exists
+            if role_name.lower() == "driver":
+                driver_profile = driver_map.get(employee.id)
+                if not driver_profile or not driver_profile.license_number:
+                    is_complete = False
+
             completion_percentage = 100 if is_complete else 0
             completed_sections = ["Profile Updated"] if is_complete else []
             missing_sections = [] if is_complete else ["Profile Not Updated"]

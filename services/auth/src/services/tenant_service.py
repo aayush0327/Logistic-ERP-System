@@ -157,6 +157,7 @@ async def create_default_roles_for_tenant(db: AsyncSession, tenant_id: str) -> d
                 "resources:read", "resources:read_all",
                 "drivers:assign", "drivers:update",
                 "driver:read", "driver:read_all", "driver:update",
+                "tms:status_update", "users:update_own",
                 "vehicles:read", "vehicles:read_all", "vehicles:assign", "vehicles:maintenance",
                 "routes:create", "routes:optimize", "routes:update",
                 "schedules:read", "schedules:update",

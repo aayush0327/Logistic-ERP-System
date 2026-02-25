@@ -195,9 +195,12 @@ async def _update_driver_status(
                 logger.error(f"Failed to update driver status: {update_response.status_code} - {update_response.text}")
     except Exception as e:
         logger.error(f"Error updating driver status: {str(e)}")
+        # CRITICAL FIX: Raise to alert caller of failure
+        raise
 
 
 async def _update_resource_statuses_for_trip(
+    trip_id: str,
     trip_status: str,
     truck_plate: str,
     driver_id: str,
@@ -253,10 +256,14 @@ async def _update_resource_statuses_for_trip(
     logger.info(f"Resource status mapping: truck={mapping['truck']}, driver={mapping['driver']}")
 
     # Update truck status
-    await _update_truck_status(truck_plate, mapping["truck"], auth_headers, tenant_id)
+    truck_success = await _update_truck_status(truck_plate, mapping["truck"], auth_headers, tenant_id)
 
     # Update driver status
-    await _update_driver_status(driver_id, mapping["driver"], auth_headers, tenant_id)
+    driver_success = await _update_driver_status(driver_id, mapping["driver"], auth_headers, tenant_id)
+
+    # NEW: Log if either update fails
+    if not truck_success or not driver_success:
+        logger.error(f"Resource status update FAILED - trip: {trip_id}, truck_ok: {truck_success}, driver_ok: {driver_success}")
 
 
 async def _check_trip_completion_and_update_status(
@@ -300,6 +307,7 @@ async def _check_trip_completion_and_update_status(
 
                 # Update resource statuses (will set to available)
                 await _update_resource_statuses_for_trip(
+                    trip_id,
                     "completed",
                     trip.truck_plate,
                     trip.driver_id,
@@ -1030,6 +1038,7 @@ async def create_trip(
 
     # Update truck and driver status to 'assigned' when trip is created
     await _update_resource_statuses_for_trip(
+        trip.id,
         trip.status or "planning",  # Use trip status or default to planning
         trip.truck_plate,
         trip.driver_id,
@@ -1154,6 +1163,7 @@ async def update_trip(
 
         # Update truck and driver statuses based on new trip status
         await _update_resource_statuses_for_trip(
+            trip_id,
             trip.status,
             trip.truck_plate,
             trip.driver_id,
@@ -1303,6 +1313,7 @@ async def delete_trip(
 
     # Release truck and driver - set them back to available
     await _update_resource_statuses_for_trip(
+        trip_id,
         "cancelled",  # Use cancelled status mapping to release resources
         truck_plate,
         driver_id,
@@ -1364,6 +1375,7 @@ async def pause_trip(
 
     # Update truck and driver statuses
     await _update_resource_statuses_for_trip(
+        trip_id,
         "paused",
         trip.truck_plate,
         trip.driver_id,
@@ -1491,6 +1503,7 @@ async def resume_trip(
 
     # Update truck and driver statuses back to on-trip
     await _update_resource_statuses_for_trip(
+        trip_id,
         "on-route",
         trip.truck_plate,
         trip.driver_id,
@@ -2945,6 +2958,7 @@ async def confirm_loading_assignment(
 
         # Step 3: Update truck/driver status via existing function
         await _update_resource_statuses_for_trip(
+            trip_id,
             "loading",
             trip.truck_plate,
             trip.driver_id,
